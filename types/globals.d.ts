@@ -60,9 +60,6 @@ declare global {
     getBigInt (byteOffset: number, littleEndian?: boolean): vue.BigInt
     setBigInt (byteOffset: number, value: vue.BigInt, littleEndian?: boolean): void
   }
-
-  function log (msg: string): void
-  function debug (msg: string): void
 }
 
 type NonPointerTypes = `${'Int' | 'Uint'}${8 | 16 | 32 | 64}`
@@ -187,3 +184,11 @@ type ArgTypeToRealType<T> = T extends 'bigint' ? vue.BigInt :
 declare type fn = {
   create <const Args extends ('bigint' | 'number' | 'boolean' | 'string')[], Return extends ('bigint' | 'boolean' | 'string')>(addr: vue.BigInt | number, args: Args, ret: Return): (...func_args: { [K in keyof Args]: ArgTypeToRealType<Args[K]> }) => ArgTypeToRealType<Return>
 }
+
+declare var jsc_addr: vue.BigInt
+declare var libc_addr: vue.BigInt
+declare var eboot_addr: vue.BigInt
+declare var gadgets: Record<string, vue.BigInt>
+
+function log (msg: string): void
+function debug (msg: string): void
