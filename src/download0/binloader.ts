@@ -752,6 +752,7 @@ export function binloader_init () {
   }
 
   return {
+    bin_loader_main,
     bl_load_from_file,
     bl_network_loader
   }
