@@ -4,7 +4,7 @@
 import argparse
 import asyncio
 import pathlib
-import readline
+import readline  # noqa: F401
 from datetime import datetime
 
 import websockets
@@ -24,12 +24,12 @@ DELAY = args.delay
 RETRY = True
 
 
-def log_print(message):
+def log_print(message: str) -> None:
     time_now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"[{time_now}] {message}")
 
 
-async def send_file(ws: websockets.ClientConnection, file_path: str):
+async def send_file(ws: websockets.ClientConnection, file_path: str) -> None:
     try:
         path = pathlib.Path(file_path)
         if not path.is_file():
@@ -44,13 +44,13 @@ async def send_file(ws: websockets.ClientConnection, file_path: str):
         log_print(f"[!] Failed to send file: {e}")
 
 
-async def command(ws: websockets.ClientConnection):
+async def command(ws: websockets.ClientConnection) -> None:
     global RETRY
 
     loop = asyncio.get_event_loop()
     while ws.state == websockets.protocol.State.OPEN:
         try:
-            cmd = await loop.run_in_executor(None, input, "> ")
+            cmd = await loop.run_in_executor(None, input, ">")
         except (EOFError, KeyboardInterrupt):
             print()
             log_print("[*] Disconnecting...")
@@ -68,11 +68,10 @@ async def command(ws: websockets.ClientConnection):
             RETRY = False
             break
         else:
-            if cmd.strip():
-                log_print("[*] Unknown command. Use: send <path-to-file>")
+            log_print("[*] Unknown command. Use: send <path-to-file>")
 
 
-async def receiver(ws: websockets.ClientConnection):
+async def receiver(ws: websockets.ClientConnection) -> None:
     try:
         async for data in ws:
             if isinstance(data, str):
@@ -84,13 +83,13 @@ async def receiver(ws: websockets.ClientConnection):
         log_print(f"[!] {e}")
 
 
-async def main():
+async def main() -> None:
     while RETRY:
         ws = None
         receiver_task = None
         command_task = None
         try:
-            #            log_print(f"[*] Connecting to {IP}:{PORT}...")
+            # log_print(f"[*] Connecting to {IP}:{PORT}...")
             async with websockets.connect(f"ws://{IP}:{PORT}", ping_timeout=None) as ws:
                 log_print(f"[*] Connected to {IP}:{PORT} !!")
                 receiver_task = asyncio.create_task(receiver(ws))
@@ -101,8 +100,8 @@ async def main():
                     return_when=asyncio.FIRST_COMPLETED,
                 )
         except Exception as e:
-            #            log_print(f"[!] Error: {e}")
-            #            log_print(f"[*] Retrying in {DELAY} seconds...")
+            # log_print(f"[!] Error: {e}")
+            # log_print(f"[*] Retrying in {DELAY} seconds...")
             await asyncio.sleep(DELAY)
         finally:
             if receiver_task is not None:
