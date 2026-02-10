@@ -28,25 +28,29 @@ export default defineConfig([
   }),
   {
     rules: {
-      '@stylistic/quote-props': 'off',
-      '@stylistic/quotes': 'off',
+    
+    '@stylistic/quotes': ['error', 'single', { avoidEscape: true }],
 
-      'quote-props': ['error', 'consistent-as-needed'],
+   
+    '@stylistic/quote-props': ['error', 'consistent-as-needed'],
 
-      "camelcase": 'off',
-      'no-unused-vars': 'off', // jsmaf, log, psn, all defined globally
-      'no-var': 'off',
-      'no-undef': 'off',
-      'no-redeclare': 'off',
-      'no-unused-expressions': 'off',
-      'no-fallthrough': 'off',
-      'no-new-native-nonconstructor': 'off', // we use our own BigInt
-      'no-extend-native': 'off', // we extend native for better usage
-      'no-new': 'off',
+  
+    quotes: 'off',
+    'quote-props': 'off',
 
-      // TS duplicates
-      '@typescript-eslint/no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-expressions': 'off',
-    },
+    camelcase: 'off',
+    'no-unused-vars': 'off',
+    'no-var': 'off',
+    'no-undef': 'off',
+    'no-redeclare': 'off',
+    'no-unused-expressions': 'off',
+    'no-fallthrough': 'off',
+    'no-new-native-nonconstructor': 'off',
+    'no-extend-native': 'off',
+    'no-new': 'off',
+
+    '@typescript-eslint/no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-expressions': 'off',
+  },
   },
 ])
