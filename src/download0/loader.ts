@@ -6,47 +6,12 @@ import { lapse } from 'download0/lapse'
 import { binloader_init } from 'download0/binloader'
 import { checkJailbroken } from 'download0/check-jailbroken'
 
-// لو هنستخدم NetCtrl لازم نضمن تحميله هنا مرة واحدة
-include('netctrl_c0w_twins.js')
-
-// === netctrl wrapper مدمج داخل اللودر بدل ملف جديد ===
-
-function run_netctrl_once (): boolean {
-  log('[netctrl_wrapper] starting netctrl_exploit()')
-  try {
-    // الدالة الأصلية من netctrl_c0w_twins.js
-    // لازم تكون متاحة في السياق العالمي
-    // @ts-expect-error
-    netctrl_exploit()
-    log('[netctrl_wrapper] netctrl_exploit() returned (no crash)')
-    return true
-  } catch (e) {
-    log('[netctrl_wrapper] ERROR in netctrl_exploit(): ' + (e as Error).message)
-    return false
-  }
-}
-
-function run_netctrl_with_retries (maxTries: number): boolean {
-  for (let i = 1; i <= maxTries; i++) {
-    log('[netctrl_wrapper] Attempt ' + i + '/' + maxTries)
-    const ok = run_netctrl_once()
-    if (ok) {
-      log('[netctrl_wrapper] Success on attempt ' + i)
-      return true
-    }
-  }
-  log('[netctrl_wrapper] All attempts failed')
-  return false
-}
-
-// =====================================================
-// تحميل باقي السكربتات
-// =====================================================
-
-// Check if libc_addr is defined
+// لو libc_addr مش متعرفة، نحمل userland
 if (typeof libc_addr === 'undefined') {
   include('userland.js')
 }
+
+// تحميل باقي السكربتات
 include('stats-tracker.js')
 include('binloader.js')
 include('lapse.js')
@@ -55,7 +20,7 @@ include('check-jailbroken.js')
 include('stats-tracker.js')
 log('All scripts loaded')
 
-// Increment total attempts
+// تحميل الإحصائيات
 stats.load()
 
 export function show_success () {
@@ -67,12 +32,13 @@ export function show_success () {
 }
 
 const audio = new jsmaf.AudioClip()
-audio.volume = 0.5  // 50% volume
+audio.volume = 0.5
 audio.open('file://../download0/sfx/bgm.wav')
 
 const is_jailbroken = checkJailbroken()
 
-// Check if exploit has completed successfully
+// ===== Helpers =====
+
 function is_exploit_complete () {
   fn.register(24, 'getuid', [], 'bigint')
   fn.register(585, 'is_in_sandbox', [], 'bigint')
@@ -105,8 +71,8 @@ function get_fwversion () {
   const size = malloc(0x8)
   write64(size, 0x8)
   if (sysctlbyname('kern.sdk_version', buf, size, 0, 0)) {
-    const byte1 = Number(read8(buf.add(2)))  // Minor
-    const byte2 = Number(read8(buf.add(3)))  // Major
+    const byte1 = Number(read8(buf.add(2)))
+    const byte2 = Number(read8(buf.add(3)))
     const version = byte2.toString(16) + '.' + byte1.toString(16).padStart(2, '0')
     return version
   }
@@ -130,8 +96,42 @@ const compare_version = (a: string, b: string) => {
   return amaj === bmaj ? amin - bmin : amaj - bmaj
 }
 
+// ===== NetCtrl wrapper مدمج هنا =====
+
+include('netctrl_c0w_twins.js')  // نفس الملف الأصلي
+
+function run_netctrl_once (): boolean {
+  log('[netctrl_wrapper] starting netctrl_exploit()')
+  try {
+    netctrl_exploit()
+    log('[netctrl_wrapper] netctrl_exploit() returned (no crash)')
+    return true
+  } catch (e) {
+    log('[netctrl_wrapper] ERROR in netctrl_exploit(): ' + (e as Error).message)
+    return false
+  }
+}
+
+function run_netctrl_with_retries (maxTries: number): boolean {
+  for (let i = 1; i <= maxTries; i++) {
+    log('[netctrl_wrapper] Attempt ' + i + '/' + maxTries)
+    const ok = run_netctrl_once()
+    if (ok) {
+      log('[netctrl_wrapper] Success on attempt ' + i)
+      return true
+    }
+  }
+  log('[netctrl_wrapper] All attempts failed')
+  return false
+}
+
+// ===== Main logic =====
+
 if (!is_jailbroken) {
-  const jb_behavior = (typeof CONFIG !== 'undefined' && typeof CONFIG.jb_behavior === 'number') ? CONFIG.jb_behavior : 0
+  const jb_behavior =
+    (typeof CONFIG !== 'undefined' && typeof CONFIG.jb_behavior === 'number')
+      ? CONFIG.jb_behavior
+      : 0
 
   stats.incrementTotal()
   utils.notify(FW_VERSION + ' Detected!')
@@ -147,15 +147,17 @@ if (!is_jailbroken) {
     use_lapse = true
   } else {
     log('JB Behavior: Auto Detect')
-    if (compare_version(FW_VERSION, '7.00') >= 0 && compare_version(FW_VERSION, '12.02') <= 0) {
+    if (compare_version(FW_VERSION, '7.00') >= 0 &&
+        compare_version(FW_VERSION, '12.02') <= 0) {
       use_lapse = true
-    } else if (compare_version(FW_VERSION, '12.50') >= 0 && compare_version(FW_VERSION, '13.00') <= 0) {
+    } else if (compare_version(FW_VERSION, '12.50') >= 0 &&
+               compare_version(FW_VERSION, '13.00') <= 0) {
       use_netctrl = true
     }
   }
 
-  // تشغيل Lapse لو متفعّل
   if (use_lapse) {
+    log('[loader] Running Lapse exploit...')
     lapse()
 
     const start_time = Date.now()
@@ -169,9 +171,7 @@ if (!is_jailbroken) {
         throw new Error('Lapse timeout')
       }
       const poll_start = Date.now()
-      while (Date.now() - poll_start < 500) {
-        // busy wait
-      }
+      while (Date.now() - poll_start < 500) {}
     }
 
     show_success()
@@ -193,13 +193,11 @@ if (!is_jailbroken) {
     }
   }
 
-  // تشغيل NetCtrl مع retries لو متفعّل
   if (use_netctrl) {
-    log('[loader] Using NetCtrl with retries')
-    const ok = run_netctrl_with_retries(3)  // هنا تقدر تغيّر 3 لو حابب
+    log('[loader] Running NetCtrl exploit with retries...')
+    const ok = run_netctrl_with_retries(3)
     if (!ok) {
       log('[loader] NetCtrl failed after all retries')
-      // هنا نسيب السلوك كما هو (مجرد فشل) عشان ما نغيّرش منطق حساس
     }
   }
 } else {
