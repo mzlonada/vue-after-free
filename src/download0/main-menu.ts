@@ -21,9 +21,11 @@ import { fn, BigInt } from 'download0/types'
   new Style({ name: 'white', color: 'white', size: 24 })
   new Style({ name: 'title', color: 'white', size: 32 })
 
-  const audio = new jsmaf.AudioClip()
-  audio.volume = 0.5  // 50% volume
-  audio.open('file://../download0/sfx/bgm.wav')
+  if (typeof CONFIG !== 'undefined' && CONFIG.music) {
+    const audio = new jsmaf.AudioClip()
+    audio.volume = 0.5
+    audio.open('file://../download0/sfx/bgm.wav')
+  }
 
   const background = new Image({
     url: 'file:///../download0/img/multiview_bg_VAF.png',
@@ -299,6 +301,9 @@ import { fn, BigInt } from 'download0/types'
     } else if (currentButton < menuOptions.length) {
       const selectedOption = menuOptions[currentButton]
       if (!selectedOption) return
+      if (selectedOption.script === 'loader.js') {
+        jsmaf.onKeyDown = function () {}
+      }
       log('Loading ' + selectedOption.script + '...')
       try {
         include(selectedOption.script)

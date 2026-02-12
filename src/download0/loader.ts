@@ -17,14 +17,19 @@ include('stats-tracker.js')
 include('binloader.js')
 include('lapse.js')
 include('kernel.js')
+include('check-jailbroken.js')
+include('stats-tracker.js')
+log('All scripts loaded')
 
 // Increment total attempts
 stats.load()
 
 export function show_success () {
-  jsmaf.root.children.push(bg_success)
-  log('Logging Success...')
-  stats.incrementSuccess()
+  setTimeout(() => {
+    jsmaf.root.children.push(bg_success)
+    log('Logging Success...')
+    stats.incrementSuccess()
+  }, 2000)
 }
 
 const audio = new jsmaf.AudioClip()

@@ -207,35 +207,48 @@ try {
     
     
    
+    var needsConfig = false;
     try {
         include('config.js')
+        if (typeof CONFIG === 'undefined') {
+            log('CONFIG var missing from config.js, regenerating')
+            needsConfig = true;
+        }
     }
     catch(e){
-            var config = [
+        log(e.message)
+        log('config.js not found! creating config')
+        needsConfig = true;
+    }
+
+    if (needsConfig) {
+        var config = [
             'var CONFIG = {',
             '    autolapse: false,',
             '    autopoop: false,',
             '    autoclose: false,',
+            '    music: true,',
             '    jb_behavior: 0',
             '};',
             '',
             'var payloads = [ //to be ran after jailbroken',
             '];'
         ].join('\n');
-        log(e.message)
-        log('config.js not found! creating config')
         fs.write("config.js", config, function(err) {
             if (!err) console.log("config.js written");
             include('config.js');
         });
-        
     }
     
-    if(CONFIG.autolapse){  include('loader.js')  }
-    if(CONFIG.autopoop && psn.mainUser.signedIn){  include('netctrl_c0w_twins.js')  } //failsafe so poopsploit users dont get stuck 
-    
-    include('main-menu.js')
-    
+    if(CONFIG.autolapse){
+        include('loader.js')
+    } else if(CONFIG.autopoop && psn.mainUser.signedIn){
+        CONFIG.jb_behavior = 1
+        include('loader.js')
+    } 
+    else {
+        include('main-menu.js')
+    }
     
     // handle WebSocket received messages
     ws.onmessage = function(c, e) {

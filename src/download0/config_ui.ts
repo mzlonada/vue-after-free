@@ -41,16 +41,19 @@ if (typeof lang === 'undefined') {
     autolapse: boolean
     autopoop: boolean
     autoclose: boolean
+    music: boolean
     jb_behavior: number
   } = {
     autolapse: false,
     autopoop: false,
     autoclose: false,
+    music: true,
     jb_behavior: 0
   }
 
   // Store user's payloads so we don't overwrite them
   let userPayloads: string[] = []
+  let configLoaded = false
 
   const jbBehaviorLabels = [lang.jbBehaviorAuto, lang.jbBehaviorNetctrl, lang.jbBehaviorLapse]
   const jbBehaviorImgKeys = ['jbBehaviorAuto', 'jbBehaviorNetctrl', 'jbBehaviorLapse']
@@ -70,6 +73,12 @@ if (typeof lang === 'undefined') {
 
   new Style({ name: 'white', color: 'white', size: 24 })
   new Style({ name: 'title', color: 'white', size: 32 })
+
+  if (typeof CONFIG !== 'undefined' && CONFIG.music) {
+    const audio = new jsmaf.AudioClip()
+    audio.volume = 0.5
+    audio.open('file://../download0/sfx/bgm.wav')
+  }
 
   const background = new Image({
     url: 'file:///../download0/img/multiview_bg_VAF.png',
@@ -151,6 +160,7 @@ if (typeof lang === 'undefined') {
     { key: 'autolapse', label: lang.autoLapse, imgKey: 'autoLapse', type: 'toggle' },
     { key: 'autopoop', label: lang.autoPoop, imgKey: 'autoPoop', type: 'toggle' },
     { key: 'autoclose', label: lang.autoClose, imgKey: 'autoClose', type: 'toggle' },
+    { key: 'music', label: lang.music, imgKey: 'music', type: 'toggle' },
     { key: 'jb_behavior', label: lang.jbBehavior, imgKey: 'jbBehavior', type: 'cycle' }
   ]
 
@@ -415,10 +425,15 @@ if (typeof lang === 'undefined') {
   }
 
   function saveConfig () {
+    if (!configLoaded) {
+      log('Config not loaded yet, skipping save')
+      return
+    }
     let configContent = 'const CONFIG = {\n'
     configContent += '    autolapse: ' + currentConfig.autolapse + ',\n'
     configContent += '    autopoop: ' + currentConfig.autopoop + ',\n'
     configContent += '    autoclose: ' + currentConfig.autoclose + ',\n'
+    configContent += '    music: ' + currentConfig.music + ',\n'
     configContent += '    jb_behavior: ' + currentConfig.jb_behavior + '\n'
     configContent += '};\n\n'
     configContent += 'const payloads = [ //to be ran after jailbroken\n'
@@ -453,6 +468,7 @@ if (typeof lang === 'undefined') {
           currentConfig.autolapse = CONFIG.autolapse || false
           currentConfig.autopoop = CONFIG.autopoop || false
           currentConfig.autoclose = CONFIG.autoclose || false
+          currentConfig.music = CONFIG.music !== false
           currentConfig.jb_behavior = CONFIG.jb_behavior || 0
 
           // Preserve user's payloads
@@ -463,22 +479,20 @@ if (typeof lang === 'undefined') {
           for (let i = 0; i < configOptions.length; i++) {
             updateValueText(i)
           }
+          configLoaded = true
           log('Config loaded successfully')
         }
       } catch (e) {
         log('ERROR: Failed to parse config: ' + (e as Error).message)
+        configLoaded = true // Allow saving even on error
       }
     })
   }
 
   function handleButtonPress () {
     if (currentButton === buttons.length - 1) {
-      log('Going back to main menu...')
-      try {
-        include('main-menu.js')
-      } catch (e) {
-        log('ERROR loading main-menu.js: ' + (e as Error).message)
-      }
+      log('Restarting...')
+      debugging.restart()
     } else if (currentButton < configOptions.length) {
       const option = configOptions[currentButton]!
       const key = option.key
@@ -487,7 +501,7 @@ if (typeof lang === 'undefined') {
         currentConfig.jb_behavior = (currentConfig.jb_behavior + 1) % jbBehaviorLabels.length
         log(key + ' = ' + jbBehaviorLabels[currentConfig.jb_behavior])
       } else {
-        const boolKey = key as 'autolapse' | 'autopoop' | 'autoclose'
+        const boolKey = key as 'autolapse' | 'autopoop' | 'autoclose' | 'music'
         currentConfig[boolKey] = !currentConfig[boolKey]
 
         if (key === 'autolapse' && currentConfig.autolapse === true) {
@@ -528,12 +542,8 @@ if (typeof lang === 'undefined') {
     } else if (keyCode === 14) {
       handleButtonPress()
     } else if (keyCode === 13) {
-      log('Going back to main menu...')
-      try {
-        include('main-menu.js')
-      } catch (e) {
-        log('ERROR loading main-menu.js: ' + (e as Error).message)
-      }
+      log('Restarting...')
+      debugging.restart()
     }
   }
 

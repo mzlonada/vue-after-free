@@ -37,6 +37,8 @@ declare namespace jsmaf {
 
     constructor ()
     open (url: string): void
+    stop (): void
+    close (): void
   }
 
   declare class XMLHttpRequest {
