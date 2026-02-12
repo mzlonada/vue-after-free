@@ -40,6 +40,7 @@ Q: How can I run a payload? A: Closing and Reopening Vue is required between run
 Q: Can I run the jailbreak offline? A: No. PS Vue requires any form of network connection, internet is not required as such you can use any network like home WiFi or Hotspot from your mobile phone or a network from a micro controller like ESP32 or an Ethernet network from a reporpused PPPwn device.     
 Q: I am getting "This service requires you to sign in to PlayStation Network" even after replacing the save file how can I fix it? A: Your Vue app most likely updated, this usually happens when not using a DNS or blocking Sony servers in general. You will have to delete and reinstall it.     
 Q: My payload is not recognized what should I do? A: Format your USB drive to mbr partition and exfat format. 
+Q: I am getting " There is a network communication issue" error. It indicates that either Vue has updated or your save file has reset and you should use your own profile backup's save. Or if using the system backup from this repo unpack the encryptedsavebackup.zip to a usb and import it with the ps4 saved data management.
 
 > [!IMPORTANT]
 > The Vue save file may occasionally reset. To avoid issues please copy the encrypted save to a USB, from the PS4 settings menu for the user that is used to run the jailbreak, for easy future recovery.   
@@ -73,7 +74,7 @@ A network connection of any kind is required, before trying to run Vue please co
   6. Download the `VueManualSetup.7z` from releases.
   7. Go to the following path with FTP `/user/download/CUSA00960` (create path if needed) and place `download0.dat` there.
   8. On your USB unpack the save.zip ( or FTP to `/data/fakeusb/` ). The files will show up in USB Saves as if it is a real USB. It can be toggled in Apollo Settings>USB Saves Sources to be the only thing displayed even while a real USB is plugged in.
-  9. In the root of your USB place HEN or GoldHEN named as `payload.bin`. Or place it in `/data/`.
+  9. In the root of your USB place HEN or GoldHEN named as `payload.bin`. Or place it in `/data/`. It will be loaded from `/data/` in the future so you do not need the USB after the first time.
   10. Plug the USB into the console.
   11. In Apollo Save Tool go to USB Saves and select the PS Vue save(CUSA00960) and choose the option "Copy save game to HDD".
   12. Reboot your console then open PS Vue run the exploit by pressing on the jailbreak button or configure the autoloader.
@@ -92,10 +93,13 @@ A network connection of any kind is required, before trying to run Vue please co
   6. Go to Settings>Storage>System Storage>Capture Gallery>All and backup your captures to the USB. (Sufficient space required.)
   7. Go to Settings>System>Back Up and Restore>Restore PS4 and select the system backup there and restore it.
   8. When the console reboots you will have a fake activated user account and PS Vue and it's exploit data.
-  9. In the root of your USB place HEN or GoldHEN named as `payload.bin`.
+  9. In the root of your USB place HEN or GoldHEN named as `payload.bin`. It will be loaded from `/data/` in the future so you do not need the USB after the first time.
   10. Open PS Vue run the exploit by pressing on the jailbreak button or configure the autoloader.
   11. Optionally after jailbreaking run the [np-fake-signin](https://github.com/Vuemony/vue-after-free/blob/main/README.md#np-fake-signin) payload to avoid the PSN pop-up.
   * User account ID is "1111111111111111" you cannot change it but you can create another user and fake activate it (instructions below), then while jailbroken follow the instructions above for jailbroken users to set up PS Vue while signed into the newly activated account.
+
+### Updating Vue Exploit
+1. Download the `VueManualSetup.7z` and replace download0.dat in `user/download/CUSA000960` with FTP while jailbroken. 
 
 # Connecting to the internet.
   1. Navigate to Settings > System > Automatic Downloads, and uncheck "Featured Content", "System Software Update Files" and "Application Update Files".
