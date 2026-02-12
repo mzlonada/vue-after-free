@@ -98,7 +98,8 @@ const compare_version = (a: string, b: string) => {
 
 // ===== NetCtrl wrapper مدمج هنا =====
 
-include('netctrl_c0w_twins.js')  // نفس الملف الأصلي
+// لو هتستخدم النسخة المعدلة حط اسم الملف اللي فيها الكود الجديد
+include('netctrl_c0w_twins.js')  // أو netctrl_c0w_twins2.js حسب ما سميته
 
 function run_netctrl_once (): boolean {
   log('[netctrl_wrapper] starting netctrl_exploit()')
@@ -198,6 +199,9 @@ if (!is_jailbroken) {
     const ok = run_netctrl_with_retries(3)
     if (!ok) {
       log('[loader] NetCtrl failed after all retries')
+      utils.notify('NetCtrl failed after retries - reboot and try again')
+      // لو حابب تحسبها فشل في الإحصائيات:
+      // stats.incrementFailure()
     }
   }
 } else {

