@@ -1013,11 +1013,14 @@ function exploit_phase_setup () {
   yield_to_render(exploit_phase_trigger)
 }
 
+
 function exploit_phase_trigger () {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed to acquire kernel R/W')
+    const msg = 'Netctrl failed - Reboot and try again'
+    log('ERROR: ' + msg)
+    send_notification(msg)
     cleanup()
-    return
+    throw new Error(msg)
   }
 
   exploit_count++
@@ -1042,6 +1045,7 @@ function exploit_phase_leak () {
   log('Setting up arbitrary R/W...')
   yield_to_render(exploit_phase_rw)
 }
+
 
 function exploit_phase_rw () {
   setup_arbitrary_rw()
