@@ -1,6 +1,4 @@
-import 'download0/languages'
 import { lang } from 'download0/languages'
-import { fn, BigInt, mem } from 'download0/types'
 
 ;(function () {
 
@@ -8,6 +6,7 @@ import { fn, BigInt, mem } from 'download0/types'
 
   jsmaf.root.children.length = 0
 
+  // الخلفية
   const background = new Image({
     url: 'file:///../download0/img/background.png',
     x: 0, y: 0,
@@ -15,31 +14,31 @@ import { fn, BigInt, mem } from 'download0/types'
   })
   jsmaf.root.children.push(background)
 
-  const successImg = new Image({
-    url: 'file:///../download0/img/success_full.png',
-    x: 0, y: 0,
-    width: 1920, height: 1080,
-    visible: false
+  // اللوجو
+  const logo = new Image({
+    url: 'file:///../download0/img/logo.png',
+    x: 660, y: 80,
+    width: 600, height: 338
   })
-  jsmaf.root.children.push(successImg)
+  jsmaf.root.children.push(logo)
 
-  const failImg = new Image({
-    url: 'file:///../download0/img/fail_full.png',
-    x: 0, y: 0,
-    width: 1920, height: 1080,
-    visible: false
-  })
-  jsmaf.root.children.push(failImg)
+  // رسالة بسيطة
+  const loadingText = new jsmaf.Text()
+  loadingText.text = lang.loadingMainMenu
+  loadingText.x = 1920 / 2 - 200
+  loadingText.y = 900
+  loadingText.style = 'white'
+  jsmaf.root.children.push(loadingText)
 
-  ;(window as any).showSuccess = () => {
-    successImg.visible = true
-    failImg.visible = false
-  }
-
-  ;(window as any).showFail = () => {
-    failImg.visible = true
-    successImg.visible = false
-  }
+  // بعد ثانية → شغّل الإكسبلويت تلقائيًا
+  jsmaf.setTimeout(() => {
+    try {
+      log('Auto‑loading loader.js...')
+      include('loader.js')
+    } catch (e) {
+      log('ERROR loading loader.js: ' + (e as Error).message)
+    }
+  }, 1000)
 
   log(lang.mainMenuLoaded)
 })()
