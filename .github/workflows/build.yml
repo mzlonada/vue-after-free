@@ -2,6 +2,8 @@ name: Build and Release
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 on:
   push:
@@ -36,8 +38,12 @@ jobs:
           cp src/download0/payloads/*.bin dist/download0/payloads/
           cp -r src/download0/img dist/download0/
           cp -r src/download0/sfx dist/download0/
-          cp -r src/download0/vid dist/download0/
           cp src/download0/*.aes dist/download0/
+
+      - name: Generate manifest
+        run: |
+          cd dist/download0
+          find . -type f | sed 's|^\./||' | sort > manifest.txt
 
       - name: Encrypt savedata
         run: |
@@ -67,6 +73,30 @@ jobs:
         with:
           files: vue-after-free-${{ github.ref_name }}.zip
 
+  deploy-pages:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        
   ufs-image:
     needs: build
     runs-on: ubuntu-latest
