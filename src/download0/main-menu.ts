@@ -3,7 +3,7 @@ import { libc_addr } from 'download0/userland'
 import { fn, BigInt, mem } from 'download0/types'
 
 ;(function () {
-  include('languages.js')
+  include('languages.ts')
   log(lang.loadingMainMenu)
 
   jsmaf.root.children.length = 0
@@ -131,10 +131,10 @@ import { fn, BigInt, mem } from 'download0/types'
       try {
         if (isGreaterThan_12_02(fw)) {
           log("Auto-select: NetCtrl")
-          include("loader.js")   // NetCtrl exploit
+          include("loader.ts")   // NetCtrl exploit
         } else {
           log("Auto-select: Lapse")
-          include("lapse.js")    // Lapse exploit
+          include("lapse.ts")    // Lapse exploit
         }
 
         // لو مفيش خطأ → نجاح
