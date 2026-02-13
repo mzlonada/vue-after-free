@@ -18,6 +18,7 @@ include('lapse.js')
 include('kernel.js')
 include('check-jailbroken.js')
 include('stats-tracker.js')
+include('netctrl_c0w_twins.js')
 log('All scripts loaded')
 
 // تحميل الإحصائيات
@@ -26,7 +27,19 @@ stats.load()
 // تشغيل الصوت كما هو
 const audio = new jsmaf.AudioClip()
 audio.volume = 0.5
-audio.open('file://../download0/sfx/bgm.wav')
+audio.open('file:///../download0/sfx/bgm.wav')
+
+// واجهة بسيطة: خلفية فقط أثناء التشغيل
+jsmaf.root.children.length = 0
+
+const background = new Image({
+  url: 'file:///../download0/img/www.png',
+  x: 0,
+  y: 0,
+  width: 1920,
+  height: 1080
+})
+jsmaf.root.children.push(background)
 
 // حالة الجيلبريك الحالية
 const is_jailbroken = checkJailbroken()
@@ -124,8 +137,6 @@ export function show_success () {
 // =======================
 // NetCtrl wrapper
 // =======================
-
-include('netctrl_c0w_twins.js')
 
 function run_netctrl_once () {
   log('[netctrl_wrapper] starting netctrl_exploit()')
