@@ -6,36 +6,27 @@ import { lapse } from 'download0/lapse'
 import { binloader_init } from 'download0/binloader'
 import { checkJailbroken } from 'download0/check-jailbroken'
 
-// لو libc_addr مش متعرفة، نحمل userland
+// تحميل userland لو مش موجود
 if (typeof libc_addr === 'undefined') {
-  include('userland.js')
+  include('download0/userland.js')
 }
 
-// تحميل باقي السكربتات
-include('stats-tracker.js')
-include('binloader.js')
-include('lapse.js')
-include('kernel.js')
-include('check-jailbroken.js')
-include('stats-tracker.js')
+// تحميل السكربتات
+include('download0/stats-tracker.js')
+include('download0/binloader.js')
+include('download0/lapse.js')
+include('download0/kernel.js')
+include('download0/check-jailbroken.js')
+include('download0/netctrl_c0w_twins.js')
+
 log('All scripts loaded')
 
 // تحميل الإحصائيات
 stats.load()
 
-export function show_success () {
-  setTimeout(() => {
-    jsmaf.root.children.push(bg_success)
-    log('Logging Success...')
-    stats.incrementSuccess()
-  }, 2000)
-}
-
-const audio = new jsmaf.AudioClip()
-audio.volume = 0.5
-audio.open('file://../download0/sfx/bgm.wav')
-
-const is_jailbroken = checkJailbroken()
+// ربط UI المينيو الجديد
+declare const showSuccess: (() => void) | undefined
+declare const showFail: (() => void) | undefined
 
 // ===== Helpers =====
 
@@ -45,10 +36,8 @@ function is_exploit_complete () {
   try {
     const uid = fn.getuid()
     const sandbox = fn.is_in_sandbox()
-    if (!uid.eq(0) || !sandbox.eq(0)) {
-      return false
-    }
-  } catch (e) {
+    if (!uid.eq(0) || !sandbox.eq(0)) return false
+  } catch {
     return false
   }
   return true
@@ -73,33 +62,28 @@ function get_fwversion () {
   if (sysctlbyname('kern.sdk_version', buf, size, 0, 0)) {
     const byte1 = Number(read8(buf.add(2)))
     const byte2 = Number(read8(buf.add(3)))
-    const version = byte2.toString(16) + '.' + byte1.toString(16).padStart(2, '0')
-    return version
+    return byte2.toString(16) + '.' + byte1.toString(16).padStart(2, '0')
   }
   return null
 }
 
-const FW_VERSION: string | null = get_fwversion()
-
+const FW_VERSION = get_fwversion()
 if (FW_VERSION === null) {
   log('ERROR: Failed to determine FW version')
   throw new Error('Failed to determine FW version')
 }
 
 const compare_version = (a: string, b: string) => {
-  const a_arr = a.split('.')
-  const amaj = Number(a_arr[0])
-  const amin = Number(a_arr[1])
-  const b_arr = b.split('.')
-  const bmaj = Number(b_arr[0])
-  const bmin = Number(b_arr[1])
+  const aa = a.split('.')
+  const bb = b.split('.')
+  const amaj = Number(aa[0])
+  const amin = Number(aa[1])
+  const bmaj = Number(bb[0])
+  const bmin = Number(bb[1])
   return amaj === bmaj ? amin - bmin : amaj - bmaj
 }
 
-// ===== NetCtrl wrapper مدمج هنا =====
-
-// لو هتستخدم النسخة المعدلة حط اسم الملف اللي فيها الكود الجديد
-include('netctrl_c0w_twins.js')  // أو netctrl_c0w_twins2.js حسب ما سميته
+// ===== NetCtrl wrapper =====
 
 function run_netctrl_once (): boolean {
   log('[netctrl_wrapper] starting netctrl_exploit()')
@@ -128,7 +112,10 @@ function run_netctrl_with_retries (maxTries: number): boolean {
 
 // ===== Main logic =====
 
+const is_jailbroken = checkJailbroken()
+
 if (!is_jailbroken) {
+
   const jb_behavior =
     (typeof CONFIG !== 'undefined' && typeof CONFIG.jb_behavior === 'number')
       ? CONFIG.jb_behavior
@@ -141,13 +128,10 @@ if (!is_jailbroken) {
   let use_netctrl = false
 
   if (jb_behavior === 1) {
-    log('JB Behavior: NetControl (forced)')
     use_netctrl = true
   } else if (jb_behavior === 2) {
-    log('JB Behavior: Lapse (forced)')
     use_lapse = true
   } else {
-    log('JB Behavior: Auto Detect')
     if (compare_version(FW_VERSION, '7.00') >= 0 &&
         compare_version(FW_VERSION, '12.02') <= 0) {
       use_lapse = true
@@ -157,70 +141,62 @@ if (!is_jailbroken) {
     }
   }
 
+  // ===== Lapse =====
   if (use_lapse) {
     log('[loader] Running Lapse exploit...')
     lapse()
 
-    const start_time = Date.now()
-    const max_wait_seconds = 5
-    const max_wait_ms = max_wait_seconds * 1000
+    const start = Date.now()
+    const timeout = 5000
 
     while (!is_exploit_complete()) {
-      const elapsed = Date.now() - start_time
-      if (elapsed > max_wait_ms) {
-        log('ERROR: Timeout waiting for exploit to complete (' + max_wait_seconds + ' seconds)')
+      if (Date.now() - start > timeout) {
+        log('ERROR: Lapse timeout')
+        if (typeof showFail === 'function') showFail()
         throw new Error('Lapse timeout')
       }
-      const poll_start = Date.now()
-      while (Date.now() - poll_start < 500) {}
     }
 
-    show_success()
-    const total_wait = ((Date.now() - start_time) / 1000).toFixed(1)
-    log('Exploit completed successfully after ' + total_wait + ' seconds')
+    if (typeof showSuccess === 'function') showSuccess()
+    log('Lapse exploit completed successfully')
 
-    log('Initializing binloader...')
     try {
       binloader_init()
-      log('Binloader initialized and running!')
+      log('Binloader initialized!')
     } catch (e) {
       log('ERROR: Failed to initialize binloader')
-      log('Error message: ' + (e as Error).message)
-      log('Error name: ' + (e as Error).name)
-      if ((e as Error).stack) {
-        log('Stack trace: ' + (e as Error).stack)
-      }
       throw e
     }
   }
 
+  // ===== NetCtrl =====
   if (use_netctrl) {
     log('[loader] Running NetCtrl exploit with retries...')
     const ok = run_netctrl_with_retries(3)
-    if (!ok) {
+
+    if (ok) {
+      log('[loader] NetCtrl exploit completed successfully')
+      if (typeof showSuccess === 'function') showSuccess()
+      // binloader_init() لو عايز تشغله بعد النجاح
+    } else {
       log('[loader] NetCtrl failed after all retries')
-      utils.notify('NetCtrl failed after retries - reboot and try again')
-      // لو حابب تحسبها فشل في الإحصائيات:
-      // stats.incrementFailure()
+      if (typeof showFail === 'function') showFail()
+      utils.notify('NetCtrl failed - reboot and try again')
     }
   }
+
 } else {
   utils.notify('Already Jailbroken!')
-  include('main-menu.js')
+  include('download0/main-menu.js')
 }
 
+// ===== Binloader manual run =====
 export function run_binloader () {
-  log('Initializing binloader...')
   try {
     binloader_init()
     log('Binloader initialized and running!')
   } catch (e) {
     log('ERROR: Failed to initialize binloader')
-    log('Error message: ' + (e as Error).message)
-    log('Error name: ' + (e as Error).name)
-    if ((e as Error).stack) {
-      log('Stack trace: ' + (e as Error).stack)
-    }
     throw e
   }
 }

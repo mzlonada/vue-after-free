@@ -3,13 +3,15 @@ import { libc_addr } from 'download0/userland'
 import { fn, BigInt, mem } from 'download0/types'
 
 ;(function () {
-  include('languages.ts')
+
+  // تحميل اللغة (JS بعد الـ build)
+  include('download0/languages.js')
   log(lang.loadingMainMenu)
 
   jsmaf.root.children.length = 0
 
   // ============================
-  //  تشغيل الصوت القديم (bgm.wav)
+  //  تشغيل الموسيقى
   // ============================
   if (typeof CONFIG !== 'undefined' && CONFIG.music) {
     const bgm = new jsmaf.AudioClip()
@@ -19,45 +21,36 @@ import { fn, BigInt, mem } from 'download0/types'
   }
 
   // ============================
-  //  الخلفية (ملء الشاشة)
+  //  الخلفية
   // ============================
   const background = new Image({
     url: 'file:///../download0/img/background.png',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080
+    x: 0, y: 0,
+    width: 1920, height: 1080
   })
   jsmaf.root.children.push(background)
 
   // ============================
-  //  صورة النجاح (ملء الشاشة)
+  //  صور النجاح والفشل
   // ============================
   const successImg = new Image({
     url: 'file:///../download0/img/success_full.png',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080,
+    x: 0, y: 0,
+    width: 1920, height: 1080,
     visible: false
   })
   jsmaf.root.children.push(successImg)
 
-  // ============================
-  //  صورة الفشل (ملء الشاشة)
-  // ============================
   const failImg = new Image({
     url: 'file:///../download0/img/fail_full.png',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080,
+    x: 0, y: 0,
+    width: 1920, height: 1080,
     visible: false
   })
   jsmaf.root.children.push(failImg)
 
   // ============================
-  //  قراءة الفيرجن من kern.osrelease
+  //  قراءة الفيرجن
   // ============================
   function getFirmwareVersion () {
     try {
@@ -92,8 +85,6 @@ import { fn, BigInt, mem } from 'download0/types'
 
   // ============================
   //  مقارنة الفيرجن
-  //  FW <= 12.02 → Lapse
-  //  FW > 12.02 → NetCtrl
   // ============================
   function isGreaterThan_12_02(fw) {
     const p = fw.split(".")
@@ -106,39 +97,37 @@ import { fn, BigInt, mem } from 'download0/types'
   }
 
   // ============================
-  //  عرض النجاح
+  //  عرض النجاح والفشل
   // ============================
   function showSuccess() {
     successImg.visible = true
     failImg.visible = false
   }
 
-  // ============================
-  //  عرض الفشل
-  // ============================
   function showFail() {
     failImg.visible = true
     successImg.visible = false
   }
 
   // ============================
-  //  تشغيل الاستغلال تلقائيًا
+  //  اختيار الاستغلال تلقائيًا
   // ============================
   function auto_select_exploit() {
     const fw = getFirmwareVersion()
 
     setTimeout(() => {
       try {
+
         if (isGreaterThan_12_02(fw)) {
           log("Auto-select: NetCtrl")
-          include("loader.ts")   // NetCtrl exploit
+          include("download0/loader.js")   // ← JS بعد build
         } else {
           log("Auto-select: Lapse")
-          include("lapse.ts")    // Lapse exploit
+          include("download0/lapse.js")    // ← JS بعد build
         }
 
-        // لو مفيش خطأ → نجاح
-        showSuccess()
+        // مفيش showSuccess هنا
+        // النجاح الحقيقي يحصل من داخل loader.js
 
       } catch(e) {
         log("Exploit failed: " + e.message)
