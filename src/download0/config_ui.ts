@@ -472,7 +472,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
       }
     })
   }
-  
+
   function loadConfig() {
     fs.read('config.js', (err: Error | null, data?: string) => {
       if (err) {
@@ -510,3 +510,4 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
       }
     })
   }
+})();
