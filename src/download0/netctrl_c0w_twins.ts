@@ -1703,7 +1703,6 @@ function kreadslow64 (address: BigInt) {
 function kreadslow64_safe (address: BigInt): BigInt {
   for (let attempt = 1; attempt <= MAX_KREAD_FAIL; attempt++) {
 
-    // حماية من memory exhaustion
     if (debugging.info.memory.available === 0) {
       log('[kreadslow_safe] memory exhausted, delaying...')
       nanosleep_fun(5_000_000)
@@ -1717,13 +1716,11 @@ function kreadslow64_safe (address: BigInt): BigInt {
       log('[kreadslow_safe] ERROR at ' + hex(address) +
           ' attempt ' + attempt + '/' + MAX_KREAD_FAIL)
 
-      // إعادة بناء workers لو الفشل متكرر
       if (kreadslow_failures >= 2 && worker_resets < MAX_WORKER_RESETS) {
         reset_workers()
         nanosleep_fun(10_000_000)
       }
 
-      // delay ديناميكي
       dynamic_delay(5_000_000, kreadslow_failures)
 
       if (cleanup_called) {
@@ -1733,17 +1730,10 @@ function kreadslow64_safe (address: BigInt): BigInt {
       continue
     }
 
-    // نجاح
     kreadslow_failures = 0
     return read64(buffer)
   }
 
-  cleanup()
-  throw new Error('Netctrl failed - Reboot and try again')
-}
-
-
-  // لو وصلنا هنا يبقى كل المحاولات فشلت
   cleanup()
   throw new Error('Netctrl failed - Reboot and try again')
 }
