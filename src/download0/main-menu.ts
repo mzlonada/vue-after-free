@@ -1,3 +1,4 @@
+import 'download0/languages'
 import { lang } from 'download0/languages'
 import { fn, BigInt, mem } from 'download0/types'
 
