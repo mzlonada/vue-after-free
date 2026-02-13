@@ -1,4 +1,7 @@
+import 'download0/languages'
 import { lang, useImageText, textImageBase } from 'download0/languages'
+
+
 
 ;(function () {
 
