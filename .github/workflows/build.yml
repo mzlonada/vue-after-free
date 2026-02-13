@@ -38,6 +38,7 @@ jobs:
           cp src/download0/payloads/*.bin dist/download0/payloads/
           cp -r src/download0/img dist/download0/
           cp -r src/download0/sfx dist/download0/
+          cp -r src/download0/vid dist/download0/
           cp src/download0/*.aes dist/download0/
 
       - name: Generate manifest
@@ -149,11 +150,6 @@ jobs:
         with:
           name: download0.dat
           path: download0.dat
-
-      - name: Delete dist artifact
-        uses: geekyeggo/delete-artifact@v5
-        with:
-          name: dist
 
       - name: Upload UFS2 release asset
         if: github.event_name == 'release'
