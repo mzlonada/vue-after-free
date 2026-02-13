@@ -95,7 +95,6 @@ function run_netctrl_with_retries (maxTries: number): boolean {
 const is_jailbroken = checkJailbroken()
 
 if (!is_jailbroken) {
-
   const jb_behavior =
     (typeof CONFIG !== 'undefined' && typeof CONFIG.jb_behavior === 'number')
       ? CONFIG.jb_behavior
@@ -163,7 +162,6 @@ if (!is_jailbroken) {
       utils.notify('NetCtrl failed - reboot and try again')
     }
   }
-
 } else {
   utils.notify('Already Jailbroken!')
   import('download0/main-menu')
