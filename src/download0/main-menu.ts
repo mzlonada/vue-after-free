@@ -3,7 +3,6 @@ import { libc_addr } from 'download0/userland'
 import { fn, BigInt, mem } from 'download0/types'
 
 ;(function () {
-
   // تحميل اللغة (JS بعد الـ build)
   include('download0/languages.js')
   log(lang.loadingMainMenu)
@@ -25,8 +24,10 @@ import { fn, BigInt, mem } from 'download0/types'
   // ============================
   const background = new Image({
     url: 'file:///../download0/img/background.png',
-    x: 0, y: 0,
-    width: 1920, height: 1080
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080
   })
   jsmaf.root.children.push(background)
 
@@ -35,16 +36,20 @@ import { fn, BigInt, mem } from 'download0/types'
   // ============================
   const successImg = new Image({
     url: 'file:///../download0/img/success_full.png',
-    x: 0, y: 0,
-    width: 1920, height: 1080,
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080,
     visible: false
   })
   jsmaf.root.children.push(successImg)
 
   const failImg = new Image({
     url: 'file:///../download0/img/fail_full.png',
-    x: 0, y: 0,
-    width: 1920, height: 1080,
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080,
     visible: false
   })
   jsmaf.root.children.push(failImg)
@@ -54,7 +59,7 @@ import { fn, BigInt, mem } from 'download0/types'
   // ============================
   function getFirmwareVersion () {
     try {
-      fn.register(0x1A, 'sysctl', ['bigint','bigint','bigint','bigint','bigint'], 'bigint')
+      fn.register(0x1A, 'sysctl', ['bigint', 'bigint', 'bigint', 'bigint', 'bigint'], 'bigint')
 
       const name = mem.malloc(32)
       const old = mem.malloc(32)
@@ -66,30 +71,30 @@ import { fn, BigInt, mem } from 'download0/types'
 
       mem.view(oldlen).setUint32(0, 32, true)
 
-      fn.sysctl(name, old, oldlen, new BigInt(0,0), new BigInt(0,0))
+      fn.sysctl(name, old, oldlen, new BigInt(0, 0), new BigInt(0, 0))
 
-      let fw = ""
+      let fw = ''
       for (let i = 0; i < 32; i++) {
         const c = mem.view(old).getUint8(i)
         if (c === 0) break
         fw += String.fromCharCode(c)
       }
 
-      log("Detected FW: " + fw)
+      log('Detected FW: ' + fw)
       return fw
-    } catch(e) {
-      log("FW detection failed: " + e.message)
-      return "0.00"
+    } catch (e) {
+      log('FW detection failed: ' + e.message)
+      return '0.00'
     }
   }
 
   // ============================
   //  مقارنة الفيرجن
   // ============================
-  function isGreaterThan_12_02(fw) {
-    const p = fw.split(".")
-    const major = parseInt(p[0] || "0")
-    const minor = parseInt(p[1] || "0")
+  function isGreaterThan_12_02 (fw) {
+    const p = fw.split('.')
+    const major = parseInt(p[0] || '0')
+    const minor = parseInt(p[1] || '0')
 
     if (major < 12) return false
     if (major > 12) return true
@@ -99,12 +104,12 @@ import { fn, BigInt, mem } from 'download0/types'
   // ============================
   //  عرض النجاح والفشل
   // ============================
-  function showSuccess() {
+  function showSuccess () {
     successImg.visible = true
     failImg.visible = false
   }
 
-  function showFail() {
+  function showFail () {
     failImg.visible = true
     successImg.visible = false
   }
@@ -112,28 +117,25 @@ import { fn, BigInt, mem } from 'download0/types'
   // ============================
   //  اختيار الاستغلال تلقائيًا
   // ============================
-  function auto_select_exploit() {
+  function auto_select_exploit () {
     const fw = getFirmwareVersion()
 
     setTimeout(() => {
       try {
-
         if (isGreaterThan_12_02(fw)) {
-          log("Auto-select: NetCtrl")
-          include("download0/loader.js")   // ← JS بعد build
+          log('Auto-select: NetCtrl')
+          include('download0/loader.js')   // ← JS بعد build
         } else {
-          log("Auto-select: Lapse")
-          include("download0/lapse.js")    // ← JS بعد build
+          log('Auto-select: Lapse')
+          include('download0/lapse.js')    // ← JS بعد build
         }
 
         // مفيش showSuccess هنا
         // النجاح الحقيقي يحصل من داخل loader.js
-
-      } catch(e) {
-        log("Exploit failed: " + e.message)
+      } catch (e) {
+        log('Exploit failed: ' + e.message)
         showFail()
       }
-
     }, 1500)
   }
 

