@@ -1,20 +1,21 @@
+// ????? ??????? ???????? ?????? (Side-effect imports)
+import 'download0/userland'
+import 'download0/languages'
+import 'download0/stats-tracker'
+
 import { libc_addr } from 'download0/userland'
 import { stats } from 'download0/stats-tracker'
 import { lang, useImageText, textImageBase } from 'download0/languages'
 
-if (typeof libc_addr === 'undefined') {
-  include('userland.js')
-}
+;(function () {
 
-if (typeof lang === 'undefined') {
-  include('languages.js')
-}
-
-(function () {
   log(lang.loadingConfig)
 
+  // ============================
+  //  ???? ??????? ????????
+  // ============================
   const fs = {
-    write: function (filename: string, content: string, callback: (error: Error | null) => void) {
+    write(filename: string, content: string, callback: (error: Error | null) => void) {
       const xhr = new jsmaf.XMLHttpRequest()
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4 && callback) {
@@ -25,7 +26,7 @@ if (typeof lang === 'undefined') {
       xhr.send(content)
     },
 
-    read: function (filename: string, callback: (error: Error | null, data?: string) => void) {
+    read(filename: string, callback: (error: Error | null, data?: string) => void) {
       const xhr = new jsmaf.XMLHttpRequest()
       xhr.onreadystatechange = function () {
         if (xhr.readyState === 4 && callback) {
@@ -37,13 +38,10 @@ if (typeof lang === 'undefined') {
     }
   }
 
-  const currentConfig: {
-    autolapse: boolean
-    autopoop: boolean
-    autoclose: boolean
-    music: boolean
-    jb_behavior: number
-  } = {
+  // ============================
+  //  ????????? ??????????
+  // ============================
+  const currentConfig = {
     autolapse: false,
     autopoop: false,
     autoclose: false,
@@ -51,24 +49,24 @@ if (typeof lang === 'undefined') {
     jb_behavior: 0
   }
 
-  // Store user's payloads so we don't overwrite them
   let userPayloads: string[] = []
   let configLoaded = false
 
-  const jbBehaviorLabels = [lang.jbBehaviorAuto, lang.jbBehaviorNetctrl, lang.jbBehaviorLapse]
-  const jbBehaviorImgKeys = ['jbBehaviorAuto', 'jbBehaviorNetctrl', 'jbBehaviorLapse']
+  const jbBehaviorLabels = [
+    lang.jbBehaviorAuto,
+    lang.jbBehaviorNetctrl,
+    lang.jbBehaviorLapse
+  ]
 
-  let currentButton = 0
-  const buttons: Image[] = []
-  const buttonTexts: jsmaf.Text[] = []
-  const buttonMarkers: (Image | null)[] = []
-  const buttonOrigPos: { x: number; y: number }[] = []
-  const textOrigPos: { x: number; y: number }[] = []
-  const valueTexts: Image[] = []
+  const jbBehaviorImgKeys = [
+    'jbBehaviorAuto',
+    'jbBehaviorNetctrl',
+    'jbBehaviorLapse'
+  ]
 
-  const normalButtonImg = 'file:///assets/img/button_over_9.png'
-  const selectedButtonImg = 'file:///assets/img/button_over_9.png'
-
+  // ============================
+  //  UI ???????
+  // ============================
   jsmaf.root.children.length = 0
 
   new Style({ name: 'white', color: 'white', size: 24 })
@@ -82,31 +80,24 @@ if (typeof lang === 'undefined') {
 
   const background = new Image({
     url: 'file:///../download0/img/multiview_bg_VAF.png',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080
+    x: 0, y: 0,
+    width: 1920, height: 1080
   })
   jsmaf.root.children.push(background)
 
   const logo = new Image({
     url: 'file:///../download0/img/logo.png',
-    x: 1620,
-    y: 0,
-    width: 300,
-    height: 169
+    x: 1620, y: 0,
+    width: 300, height: 169
   })
   jsmaf.root.children.push(logo)
 
   if (useImageText) {
-    const title = new Image({
+    jsmaf.root.children.push(new Image({
       url: textImageBase + 'config.png',
-      x: 860,
-      y: 100,
-      width: 200,
-      height: 60
-    })
-    jsmaf.root.children.push(title)
+      x: 860, y: 100,
+      width: 200, height: 60
+    }))
   } else {
     const title = new jsmaf.Text()
     title.text = lang.config
@@ -116,36 +107,45 @@ if (typeof lang === 'undefined') {
     jsmaf.root.children.push(title)
   }
 
-  // Include the stats tracker
-  include('stats-tracker.js')
-
-  // Load and display stats
+  // ============================
+  //  ??????????
+  // ============================
   stats.load()
   const statsData = stats.get()
 
-  // Create text elements for each stat
   const statsImgKeys = ['totalAttempts', 'successes', 'failures', 'successRate', 'failureRate']
-  const statsValues = [statsData.total, statsData.success, statsData.failures, statsData.successRate, statsData.failureRate]
-  const statsLabels = [lang.totalAttempts, lang.successes, lang.failures, lang.successRate, lang.failureRate]
+  const statsValues = [
+    statsData.total,
+    statsData.success,
+    statsData.failures,
+    statsData.successRate,
+    statsData.failureRate
+  ]
+  const statsLabels = [
+    lang.totalAttempts,
+    lang.successes,
+    lang.failures,
+    lang.successRate,
+    lang.failureRate
+  ]
 
-  // Display each stat line
   for (let i = 0; i < statsImgKeys.length; i++) {
     const yPos = 120 + (i * 25)
+
     if (useImageText) {
-      const labelImg = new Image({
+      jsmaf.root.children.push(new Image({
         url: textImageBase + statsImgKeys[i] + '.png',
-        x: 20,
-        y: yPos,
-        width: 180,
-        height: 25
-      })
-      jsmaf.root.children.push(labelImg)
+        x: 20, y: yPos,
+        width: 180, height: 25
+      }))
+
       const valueText = new jsmaf.Text()
       valueText.text = String(statsValues[i])
       valueText.x = 210
       valueText.y = yPos
       valueText.style = 'white'
       jsmaf.root.children.push(valueText)
+
     } else {
       const lineText = new jsmaf.Text()
       lineText.text = statsLabels[i] + statsValues[i]
@@ -156,6 +156,9 @@ if (typeof lang === 'undefined') {
     }
   }
 
+  // ============================
+  //  ?????? ?????????
+  // ============================
   const configOptions = [
     { key: 'autolapse', label: lang.autoLapse, imgKey: 'autoLapse', type: 'toggle' },
     { key: 'autopoop', label: lang.autoPoop, imgKey: 'autoPoop', type: 'toggle' },
@@ -170,17 +173,25 @@ if (typeof lang === 'undefined') {
   const buttonWidth = 400
   const buttonHeight = 80
 
+  const buttons: Image[] = []
+  const buttonTexts: (Image | jsmaf.Text)[] = []
+  const buttonMarkers: (Image | null)[] = []
+  const buttonOrigPos: { x: number; y: number }[] = []
+  const textOrigPos: { x: number; y: number }[] = []
+  const valueTexts: (Image | jsmaf.Text)[] = []
+
+  const normalButtonImg = 'file:///assets/img/button_over_9.png'
+  const selectedButtonImg = 'file:///assets/img/button_over_9.png'
+
   for (let i = 0; i < configOptions.length; i++) {
-    const configOption = configOptions[i]!
+    const opt = configOptions[i]
     const btnX = centerX - buttonWidth / 2
     const btnY = startY + i * buttonSpacing
 
     const button = new Image({
       url: normalButtonImg,
-      x: btnX,
-      y: btnY,
-      width: buttonWidth,
-      height: buttonHeight
+      x: btnX, y: btnY,
+      width: buttonWidth, height: buttonHeight
     })
     buttons.push(button)
     jsmaf.root.children.push(button)
@@ -190,45 +201,43 @@ if (typeof lang === 'undefined') {
     let btnText: Image | jsmaf.Text
     if (useImageText) {
       btnText = new Image({
-        url: textImageBase + configOption.imgKey + '.png',
-        x: btnX + 20,
-        y: btnY + 15,
-        width: 200,
-        height: 50
+        url: textImageBase + opt.imgKey + '.png',
+        x: btnX + 20, y: btnY + 15,
+        width: 200, height: 50
       })
     } else {
       btnText = new jsmaf.Text()
-      btnText.text = configOption.label
+      btnText.text = opt.label
       btnText.x = btnX + 30
       btnText.y = btnY + 28
       btnText.style = 'white'
     }
+
     buttonTexts.push(btnText)
     jsmaf.root.children.push(btnText)
 
-    if (configOption.type === 'toggle') {
+    if (opt.type === 'toggle') {
       const checkmark = new Image({
-        url: currentConfig[configOption.key as keyof typeof currentConfig] ? 'file:///assets/img/check_small_on.png' : 'file:///assets/img/check_small_off.png',
-        x: btnX + 320,
-        y: btnY + 20,
-        width: 40,
-        height: 40
+        url: currentConfig[opt.key as keyof typeof currentConfig]
+          ? 'file:///assets/img/check_small_on.png'
+          : 'file:///assets/img/check_small_off.png',
+        x: btnX + 320, y: btnY + 20,
+        width: 40, height: 40
       })
       valueTexts.push(checkmark)
       jsmaf.root.children.push(checkmark)
+
     } else {
       let valueLabel: Image | jsmaf.Text
       if (useImageText) {
         valueLabel = new Image({
           url: textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png',
-          x: btnX + 230,
-          y: btnY + 15,
-          width: 150,
-          height: 50
+          x: btnX + 230, y: btnY + 15,
+          width: 150, height: 50
         })
       } else {
         valueLabel = new jsmaf.Text()
-        valueLabel.text = jbBehaviorLabels[currentConfig.jb_behavior] || jbBehaviorLabels[0]!
+        valueLabel.text = jbBehaviorLabels[currentConfig.jb_behavior]
         valueLabel.x = btnX + 250
         valueLabel.y = btnY + 28
         valueLabel.style = 'white'
@@ -241,15 +250,16 @@ if (typeof lang === 'undefined') {
     textOrigPos.push({ x: btnText.x, y: btnText.y })
   }
 
+  // ============================
+  //  ?? ??????
+  // ============================
   const backX = centerX - buttonWidth / 2
   const backY = startY + configOptions.length * buttonSpacing + 100
 
   const backButton = new Image({
     url: normalButtonImg,
-    x: backX,
-    y: backY,
-    width: buttonWidth,
-    height: buttonHeight
+    x: backX, y: backY,
+    width: buttonWidth, height: buttonHeight
   })
   buttons.push(backButton)
   jsmaf.root.children.push(backButton)
@@ -258,8 +268,7 @@ if (typeof lang === 'undefined') {
     url: 'file:///assets/img/ad_pod_marker.png',
     x: backX + buttonWidth - 50,
     y: backY + 35,
-    width: 12,
-    height: 12,
+    width: 12, height: 12,
     visible: false
   })
   buttonMarkers.push(backMarker)
@@ -269,10 +278,8 @@ if (typeof lang === 'undefined') {
   if (useImageText) {
     backText = new Image({
       url: textImageBase + 'back.png',
-      x: backX + 20,
-      y: backY + 15,
-      width: 200,
-      height: 50
+      x: backX + 20, y: backY + 15,
+      width: 200, height: 50
     })
   } else {
     backText = new jsmaf.Text()
@@ -287,25 +294,27 @@ if (typeof lang === 'undefined') {
   buttonOrigPos.push({ x: backX, y: backY })
   textOrigPos.push({ x: backText.x, y: backText.y })
 
+  // ============================
+  //  ????????? + ??????
+  // ============================
   let zoomInInterval: number | null = null
   let zoomOutInterval: number | null = null
   let prevButton = -1
+  let currentButton = 0
 
-  function easeInOut (t: number) {
+  function easeInOut(t: number) {
     return (1 - Math.cos(t * Math.PI)) / 2
   }
 
-  function animateZoomIn (btn: Image, text: jsmaf.Text, btnOrigX: number, btnOrigY: number, textOrigX: number, textOrigY: number) {
+  function animateZoomIn(btn: Image, text: any, ox: number, oy: number, tx: number, ty: number) {
     if (zoomInInterval) jsmaf.clearInterval(zoomInInterval)
-    const btnW = buttonWidth
-    const btnH = buttonHeight
     const startScale = btn.scaleX || 1.0
     const endScale = 1.1
     const duration = 175
     let elapsed = 0
     const step = 16
 
-    zoomInInterval = jsmaf.setInterval(function () {
+    zoomInInterval = jsmaf.setInterval(() => {
       elapsed += step
       const t = Math.min(elapsed / duration, 1)
       const eased = easeInOut(t)
@@ -313,31 +322,30 @@ if (typeof lang === 'undefined') {
 
       btn.scaleX = scale
       btn.scaleY = scale
-      btn.x = btnOrigX - (btnW * (scale - 1)) / 2
-      btn.y = btnOrigY - (btnH * (scale - 1)) / 2
+      btn.x = ox - (buttonWidth * (scale - 1)) / 2
+      btn.y = oy - (buttonHeight * (scale - 1)) / 2
+
       text.scaleX = scale
       text.scaleY = scale
-      text.x = textOrigX - (btnW * (scale - 1)) / 2
-      text.y = textOrigY - (btnH * (scale - 1)) / 2
+      text.x = tx - (buttonWidth * (scale - 1)) / 2
+      text.y = ty - (buttonHeight * (scale - 1)) / 2
 
       if (t >= 1) {
-        jsmaf.clearInterval(zoomInInterval ?? -1)
+        jsmaf.clearInterval(zoomInInterval!)
         zoomInInterval = null
       }
     }, step)
   }
 
-  function animateZoomOut (btn: Image, text: jsmaf.Text, btnOrigX: number, btnOrigY: number, textOrigX: number, textOrigY: number) {
+  function animateZoomOut(btn: Image, text: any, ox: number, oy: number, tx: number, ty: number) {
     if (zoomOutInterval) jsmaf.clearInterval(zoomOutInterval)
-    const btnW = buttonWidth
-    const btnH = buttonHeight
     const startScale = btn.scaleX || 1.1
     const endScale = 1.0
     const duration = 175
     let elapsed = 0
     const step = 16
 
-    zoomOutInterval = jsmaf.setInterval(function () {
+    zoomOutInterval = jsmaf.setInterval(() => {
       elapsed += step
       const t = Math.min(elapsed / duration, 1)
       const eased = easeInOut(t)
@@ -345,178 +353,203 @@ if (typeof lang === 'undefined') {
 
       btn.scaleX = scale
       btn.scaleY = scale
-      btn.x = btnOrigX - (btnW * (scale - 1)) / 2
-      btn.y = btnOrigY - (btnH * (scale - 1)) / 2
+      btn.x = ox - (buttonWidth * (scale - 1)) / 2
+      btn.y = oy - (buttonHeight * (scale - 1)) / 2
+
       text.scaleX = scale
       text.scaleY = scale
-      text.x = textOrigX - (btnW * (scale - 1)) / 2
-      text.y = textOrigY - (btnH * (scale - 1)) / 2
+      text.x = tx - (buttonWidth * (scale - 1)) / 2
+      text.y = ty - (buttonHeight * (scale - 1)) / 2
 
       if (t >= 1) {
-        jsmaf.clearInterval(zoomOutInterval ?? -1)
+        jsmaf.clearInterval(zoomOutInterval!)
         zoomOutInterval = null
       }
     }, step)
   }
 
-  function updateHighlight () {
-    // Animate out the previous button
-    const prevButtonObj = buttons[prevButton]
-    const buttonMarker = buttonMarkers[prevButton]
-    if (prevButton >= 0 && prevButton !== currentButton && prevButtonObj) {
-      prevButtonObj.url = normalButtonImg
-      prevButtonObj.alpha = 0.7
-      prevButtonObj.borderColor = 'transparent'
-      prevButtonObj.borderWidth = 0
-      if (buttonMarker) buttonMarker.visible = false
-      animateZoomOut(prevButtonObj, buttonTexts[prevButton]!, buttonOrigPos[prevButton]!.x, buttonOrigPos[prevButton]!.y, textOrigPos[prevButton]!.x, textOrigPos[prevButton]!.y)
+  function updateHighlight() {
+    const prev = prevButton
+    const curr = currentButton
+
+    if (prev >= 0 && prev !== curr) {
+      const btn = buttons[prev]
+      const txt = buttonTexts[prev]
+      const marker = buttonMarkers[prev]
+
+      btn.url = normalButtonImg
+      btn.alpha = 0.7
+      btn.borderColor = 'transparent'
+      btn.borderWidth = 0
+      if (marker) marker.visible = false
+
+      animateZoomOut(btn, txt, buttonOrigPos[prev].x, buttonOrigPos[prev].y, textOrigPos[prev].x, textOrigPos[prev].y)
     }
 
-    // Set styles for all buttons
     for (let i = 0; i < buttons.length; i++) {
-      const button = buttons[i]
-      const buttonMarker = buttonMarkers[i]
-      const buttonText = buttonTexts[i]
-      const buttonOrigPos_ = buttonOrigPos[i]
-      const textOrigPos_ = textOrigPos[i]
-      if (button === undefined || buttonText === undefined || buttonOrigPos_ === undefined || textOrigPos_ === undefined) continue
-      if (i === currentButton) {
-        button.url = selectedButtonImg
-        button.alpha = 1.0
-        button.borderColor = 'rgb(100,180,255)'
-        button.borderWidth = 3
-        if (buttonMarker) buttonMarker.visible = true
-        animateZoomIn(button, buttonText, buttonOrigPos_.x, buttonOrigPos_.y, textOrigPos_.x, textOrigPos_.y)
-      } else if (i !== prevButton) {
-        button.url = normalButtonImg
-        button.alpha = 0.7
-        button.borderColor = 'transparent'
-        button.borderWidth = 0
-        button.scaleX = 1.0
-        button.scaleY = 1.0
-        button.x = buttonOrigPos_.x
-        button.y = buttonOrigPos_.y
-        buttonText.scaleX = 1.0
-        buttonText.scaleY = 1.0
-        buttonText.x = textOrigPos_.x
-        buttonText.y = textOrigPos_.y
-        if (buttonMarker) buttonMarker.visible = false
+      const btn = buttons[i]
+      const txt = buttonTexts[i]
+      const marker = buttonMarkers[i]
+      const ox = buttonOrigPos[i].x
+      const oy = buttonOrigPos[i].y
+      const tx = textOrigPos[i].x
+      const ty = textOrigPos[i].y
+
+      if (i === curr) {
+        btn.url = selectedButtonImg
+        btn.alpha = 1.0
+        btn.borderColor = 'rgb(100,180,255)'
+        btn.borderWidth = 3
+        if (marker) marker.visible = true
+        animateZoomIn(btn, txt, ox, oy, tx, ty)
+      } else if (i !== prev) {
+        btn.url = normalButtonImg
+        btn.alpha = 0.7
+        btn.borderColor = 'transparent'
+        btn.borderWidth = 0
+        btn.scaleX = 1.0
+        btn.scaleY = 1.0
+        btn.x = ox
+        btn.y = oy
+        txt.scaleX = 1.0
+        txt.scaleY = 1.0
+        txt.x = tx
+        txt.y = ty
+        if (marker) marker.visible = false
       }
     }
 
-    prevButton = currentButton
+    prevButton = curr
   }
 
-  function updateValueText (index: number) {
-    const options = configOptions[index]
+  function updateValueText(index: number) {
+    const opt = configOptions[index]
     const valueText = valueTexts[index]
-    if (!options || !valueText) return
-    const key = options.key
-    if (options.type === 'toggle') {
-      const value = currentConfig[key as keyof typeof currentConfig]
-      valueText.url = value ? 'file:///assets/img/check_small_on.png' : 'file:///assets/img/check_small_off.png'
+    if (!opt || !valueText) return
+
+    if (opt.type === 'toggle') {
+      const value = currentConfig[opt.key as keyof typeof currentConfig]
+      ;(valueText as Image).url = value
+        ? 'file:///assets/img/check_small_on.png'
+        : 'file:///assets/img/check_small_off.png'
     } else {
       if (useImageText) {
-        (valueText as Image).url = textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png'
+        ;(valueText as Image).url =
+          textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png'
       } else {
-        (valueText as jsmaf.Text).text = jbBehaviorLabels[currentConfig.jb_behavior] || jbBehaviorLabels[0]
+        ;(valueText as jsmaf.Text).text =
+          jbBehaviorLabels[currentConfig.jb_behavior]
       }
     }
   }
 
-  function saveConfig () {
+  function saveConfig() {
     if (!configLoaded) {
       log('Config not loaded yet, skipping save')
       return
     }
+
     let configContent = 'const CONFIG = {\n'
-    configContent += '    autolapse: ' + currentConfig.autolapse + ',\n'
-    configContent += '    autopoop: ' + currentConfig.autopoop + ',\n'
-    configContent += '    autoclose: ' + currentConfig.autoclose + ',\n'
-    configContent += '    music: ' + currentConfig.music + ',\n'
-    configContent += '    jb_behavior: ' + currentConfig.jb_behavior + '\n'
+    configContent += `    autolapse: ${currentConfig.autolapse},\n`
+    configContent += `    autopoop: ${currentConfig.autopoop},\n`
+    configContent += `    autoclose: ${currentConfig.autoclose},\n`
+    configContent += `    music: ${currentConfig.music},\n`
+    configContent += `    jb_behavior: ${currentConfig.jb_behavior}\n`
     configContent += '};\n\n'
-    configContent += 'const payloads = [ //to be ran after jailbroken\n'
+
+    configContent += 'const payloads = [\n'
     for (let i = 0; i < userPayloads.length; i++) {
-      configContent += '    "' + userPayloads[i] + '"'
-      if (i < userPayloads.length - 1) {
-        configContent += ','
-      }
+      configContent += `    "${userPayloads[i]}"`
+      if (i < userPayloads.length - 1) configContent += ','
       configContent += '\n'
     }
     configContent += '];\n'
 
-    fs.write('config.js', configContent, function (err) {
-      if (err) {
-        log('ERROR: Failed to save config: ' + err.message)
-      } else {
-        log('Config saved successfully')
-      }
+    fs.write('config.js', configContent, err => {
+      if (err) log('ERROR: Failed to save config: ' + err.message)
+      else log('Config saved successfully')
     })
   }
 
-  function loadConfig () {
-    fs.read('config.js', function (err: Error | null, data?: string) {
+    function loadConfig() {
+    fs.read('config.js', (err: Error | null, data?: string) => {
       if (err) {
         log('ERROR: Failed to read config: ' + err.message)
+        configLoaded = true
         return
       }
 
       try {
-        eval(data || '') // eslint-disable-line no-eval
+        eval(data || '') // ????? CONFIG ? payloads ?? ?????
+
         if (typeof CONFIG !== 'undefined') {
           currentConfig.autolapse = CONFIG.autolapse || false
           currentConfig.autopoop = CONFIG.autopoop || false
           currentConfig.autoclose = CONFIG.autoclose || false
           currentConfig.music = CONFIG.music !== false
           currentConfig.jb_behavior = CONFIG.jb_behavior || 0
-
-          // Preserve user's payloads
-          if (typeof payloads !== 'undefined' && Array.isArray(payloads)) {
-            userPayloads = payloads.slice()
-          }
-
-          for (let i = 0; i < configOptions.length; i++) {
-            updateValueText(i)
-          }
-          configLoaded = true
-          log('Config loaded successfully')
         }
+
+        if (typeof payloads !== 'undefined' && Array.isArray(payloads)) {
+          userPayloads = payloads.slice()
+        }
+
+        for (let i = 0; i < configOptions.length; i++) {
+          updateValueText(i)
+        }
+
+        configLoaded = true
+        log('Config loaded successfully')
+
       } catch (e) {
         log('ERROR: Failed to parse config: ' + (e as Error).message)
-        configLoaded = true // Allow saving even on error
+        configLoaded = true
       }
     })
   }
 
-  function handleButtonPress () {
+  // ============================
+  //  ??????? ?? ????? ??? ???????
+  // ============================
+  function handleButtonPress() {
+    // ?? ??????
     if (currentButton === buttons.length - 1) {
       log('Restarting...')
       debugging.restart()
-    } else if (currentButton < configOptions.length) {
-      const option = configOptions[currentButton]!
+      return
+    }
+
+    // ?????? ?????????
+    if (currentButton < configOptions.length) {
+      const option = configOptions[currentButton]
       const key = option.key
 
       if (option.type === 'cycle') {
-        currentConfig.jb_behavior = (currentConfig.jb_behavior + 1) % jbBehaviorLabels.length
+        currentConfig.jb_behavior =
+          (currentConfig.jb_behavior + 1) % jbBehaviorLabels.length
+
         log(key + ' = ' + jbBehaviorLabels[currentConfig.jb_behavior])
+
       } else {
-        const boolKey = key as 'autolapse' | 'autopoop' | 'autoclose' | 'music'
+        const boolKey = key as keyof typeof currentConfig
         currentConfig[boolKey] = !currentConfig[boolKey]
 
-        if (key === 'autolapse' && currentConfig.autolapse === true) {
+        // autolapse ? autopoop ?? ?????? ????
+        if (key === 'autolapse' && currentConfig.autolapse) {
           currentConfig.autopoop = false
           for (let i = 0; i < configOptions.length; i++) {
-            if (configOptions[i]!.key === 'autopoop') {
+            if (configOptions[i].key === 'autopoop') {
               updateValueText(i)
               break
             }
           }
           log('autopoop disabled (autolapse enabled)')
-        } else if (key === 'autopoop' && currentConfig.autopoop === true) {
+        }
+
+        if (key === 'autopoop' && currentConfig.autopoop) {
           currentConfig.autolapse = false
           for (let i = 0; i < configOptions.length; i++) {
-            if (configOptions[i]!.key === 'autolapse') {
+            if (configOptions[i].key === 'autolapse') {
               updateValueText(i)
               break
             }
@@ -532,6 +565,9 @@ if (typeof lang === 'undefined') {
     }
   }
 
+  // ============================
+  //  ?????? ?? ???? ????????
+  // ============================
   jsmaf.onKeyDown = function (keyCode) {
     if (keyCode === 6 || keyCode === 5) {
       currentButton = (currentButton + 1) % buttons.length
@@ -547,8 +583,12 @@ if (typeof lang === 'undefined') {
     }
   }
 
+  // ============================
+  //  ??? ???????
+  // ============================
   updateHighlight()
   loadConfig()
 
   log(lang.configLoaded)
+
 })()

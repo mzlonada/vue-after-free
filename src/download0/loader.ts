@@ -5,6 +5,10 @@ import { lapse } from 'download0/lapse'
 import { binloader_init } from 'download0/binloader'
 import { checkJailbroken } from 'download0/check-jailbroken'
 import { netctrl_exploit } from 'download0/netctrl_c0w_twins'
+import { init_userland } from 'download0/userland'
+
+// تحميل المينيو مسبقًا (Side-effect import)
+import 'download0/main-menu'
 
 // ربط UI المينيو
 declare const showSuccess: (() => void) | undefined
@@ -18,6 +22,7 @@ stats.load()
 function is_exploit_complete () {
   fn.register(24, 'getuid', [], 'bigint')
   fn.register(585, 'is_in_sandbox', [], 'bigint')
+
   try {
     const uid = fn.getuid()
     const sandbox = fn.is_in_sandbox()
@@ -44,7 +49,9 @@ function get_fwversion () {
   const buf = malloc(0x8)
   const size = malloc(0x8)
   write64(size, 0x8)
-  if (sysctlbyname('kern.sdk_version', buf, size, 0, 0)) {
+
+  // NOTE: sysctlbyname returns 0 on success
+  if (sysctlbyname('kern.sdk_version', buf, size, 0, 0) === 0) {
     const byte1 = Number(read8(buf.add(2)))
     const byte2 = Number(read8(buf.add(3)))
     return byte2.toString(16) + '.' + byte1.toString(16).padStart(2, '0')
@@ -141,10 +148,13 @@ if (!is_jailbroken) {
     log('Lapse exploit completed successfully')
 
     try {
+      init_userland()
+      log('Userland initialized!')
+
       binloader_init()
       log('Binloader initialized!')
     } catch (e) {
-      log('ERROR: Failed to initialize binloader')
+      log('ERROR: Failed to initialize userland/binloader')
       throw e
     }
   }
@@ -157,6 +167,17 @@ if (!is_jailbroken) {
     if (ok) {
       log('[loader] NetCtrl exploit completed successfully')
       if (typeof showSuccess === 'function') showSuccess()
+
+      try {
+        init_userland()
+        log('Userland initialized!')
+
+        binloader_init()
+        log('Binloader initialized!')
+      } catch (e) {
+        log('ERROR: Failed to initialize userland/binloader')
+      }
+
     } else {
       log('[loader] NetCtrl failed after all retries')
       if (typeof showFail === 'function') showFail()
@@ -166,7 +187,6 @@ if (!is_jailbroken) {
 
 } else {
   utils.notify('Already Jailbroken!')
-  import 'download0/main-menu'
 }
 
 // ===== Binloader manual run =====
