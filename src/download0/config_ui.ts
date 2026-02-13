@@ -1,5 +1,4 @@
-// ????? ??????? ???????? ?????? (Side-effect imports)
-import 'download0/userland'
+// تحميل الملفات المطلوبة مسبقًا (Side-effect imports)
 import 'download0/languages'
 import 'download0/stats-tracker'
 
@@ -12,7 +11,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   log(lang.loadingConfig)
 
   // ============================
-  //  ???? ??????? ????????
+  //  نظام القراءة والكتابة
   // ============================
   const fs = {
     write(filename: string, content: string, callback: (error: Error | null) => void) {
@@ -39,7 +38,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   }
 
   // ============================
-  //  ????????? ??????????
+  //  الإعدادات الافتراضية
   // ============================
   const currentConfig = {
     autolapse: false,
@@ -65,7 +64,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   ]
 
   // ============================
-  //  UI ???????
+  //  UI الأساسي
   // ============================
   jsmaf.root.children.length = 0
 
@@ -108,7 +107,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   }
 
   // ============================
-  //  ??????????
+  //  الإحصائيات
   // ============================
   stats.load()
   const statsData = stats.get()
@@ -157,7 +156,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   }
 
   // ============================
-  //  ?????? ?????????
+  //  خيارات الإعدادات
   // ============================
   const configOptions = [
     { key: 'autolapse', label: lang.autoLapse, imgKey: 'autoLapse', type: 'toggle' },
@@ -251,7 +250,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   }
 
   // ============================
-  //  ?? ??????
+  //  زر الرجوع
   // ============================
   const backX = centerX - buttonWidth / 2
   const backY = startY + configOptions.length * buttonSpacing + 100
@@ -295,7 +294,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
   textOrigPos.push({ x: backText.x, y: backText.y })
 
   // ============================
-  //  ????????? + ??????
+  //  الأنيميشن + التنقل
   // ============================
   let zoomInInterval: number | null = null
   let zoomOutInterval: number | null = null
@@ -306,7 +305,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
     return (1 - Math.cos(t * Math.PI)) / 2
   }
 
-  function animateZoomIn(btn: Image, text: any, ox: number, oy: number, tx: number, ty: number) {
+  function animateZoomIn(btn: Image, text: Image | jsmaf.Text, ox: number, oy: number, tx: number, ty: number) {
     if (zoomInInterval) jsmaf.clearInterval(zoomInInterval)
     const startScale = btn.scaleX || 1.0
     const endScale = 1.1
@@ -337,7 +336,7 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
     }, step)
   }
 
-  function animateZoomOut(btn: Image, text: any, ox: number, oy: number, tx: number, ty: number) {
+  function animateZoomOut(btn: Image, text: Image | jsmaf.Text, ox: number, oy: number, tx: number, ty: number) {
     if (zoomOutInterval) jsmaf.clearInterval(zoomOutInterval)
     const startScale = btn.scaleX || 1.1
     const endScale = 1.0
@@ -465,13 +464,16 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
     }
     configContent += '];\n'
 
-    fs.write('config.js', configContent, err => {
-      if (err) log('ERROR: Failed to save config: ' + err.message)
-      else log('Config saved successfully')
+        fs.write('config.js', configContent, err => {
+      if (err) {
+        log('ERROR: Failed to save config: ' + err.message)
+      } else {
+        log('Config saved successfully')
+      }
     })
   }
-
-    function loadConfig() {
+  
+  function loadConfig() {
     fs.read('config.js', (err: Error | null, data?: string) => {
       if (err) {
         log('ERROR: Failed to read config: ' + err.message)
@@ -480,7 +482,8 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
       }
 
       try {
-        eval(data || '') // ????? CONFIG ? payloads ?? ?????
+        // eslint-disable-next-line no-eval
+        eval(data || '') // تحميل CONFIG و payloads من الملف
 
         if (typeof CONFIG !== 'undefined') {
           currentConfig.autolapse = CONFIG.autolapse || false
@@ -507,88 +510,3 @@ import { lang, useImageText, textImageBase } from 'download0/languages'
       }
     })
   }
-
-  // ============================
-  //  ??????? ?? ????? ??? ???????
-  // ============================
-  function handleButtonPress() {
-    // ?? ??????
-    if (currentButton === buttons.length - 1) {
-      log('Restarting...')
-      debugging.restart()
-      return
-    }
-
-    // ?????? ?????????
-    if (currentButton < configOptions.length) {
-      const option = configOptions[currentButton]
-      const key = option.key
-
-      if (option.type === 'cycle') {
-        currentConfig.jb_behavior =
-          (currentConfig.jb_behavior + 1) % jbBehaviorLabels.length
-
-        log(key + ' = ' + jbBehaviorLabels[currentConfig.jb_behavior])
-
-      } else {
-        const boolKey = key as keyof typeof currentConfig
-        currentConfig[boolKey] = !currentConfig[boolKey]
-
-        // autolapse ? autopoop ?? ?????? ????
-        if (key === 'autolapse' && currentConfig.autolapse) {
-          currentConfig.autopoop = false
-          for (let i = 0; i < configOptions.length; i++) {
-            if (configOptions[i].key === 'autopoop') {
-              updateValueText(i)
-              break
-            }
-          }
-          log('autopoop disabled (autolapse enabled)')
-        }
-
-        if (key === 'autopoop' && currentConfig.autopoop) {
-          currentConfig.autolapse = false
-          for (let i = 0; i < configOptions.length; i++) {
-            if (configOptions[i].key === 'autolapse') {
-              updateValueText(i)
-              break
-            }
-          }
-          log('autolapse disabled (autopoop enabled)')
-        }
-
-        log(key + ' = ' + currentConfig[boolKey])
-      }
-
-      updateValueText(currentButton)
-      saveConfig()
-    }
-  }
-
-  // ============================
-  //  ?????? ?? ???? ????????
-  // ============================
-  jsmaf.onKeyDown = function (keyCode) {
-    if (keyCode === 6 || keyCode === 5) {
-      currentButton = (currentButton + 1) % buttons.length
-      updateHighlight()
-    } else if (keyCode === 4 || keyCode === 7) {
-      currentButton = (currentButton - 1 + buttons.length) % buttons.length
-      updateHighlight()
-    } else if (keyCode === 14) {
-      handleButtonPress()
-    } else if (keyCode === 13) {
-      log('Restarting...')
-      debugging.restart()
-    }
-  }
-
-  // ============================
-  //  ??? ???????
-  // ============================
-  updateHighlight()
-  loadConfig()
-
-  log(lang.configLoaded)
-
-})()
