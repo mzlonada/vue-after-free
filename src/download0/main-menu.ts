@@ -4,8 +4,6 @@ import { fn, BigInt, mem } from 'download0/types'
 
 ;(function () {
 
-  // تحميل اللغة (JS بعد الـ build)
-  include('download0/languages.js')
   log(lang.loadingMainMenu)
 
   jsmaf.root.children.length = 0
@@ -48,6 +46,19 @@ import { fn, BigInt, mem } from 'download0/types'
     visible: false
   })
   jsmaf.root.children.push(failImg)
+
+  // ============================
+  //  دوال UI
+  // ============================
+  ;(window as any).showSuccess = () => {
+    successImg.visible = true
+    failImg.visible = false
+  }
+
+  ;(window as any).showFail = () => {
+    failImg.visible = true
+    successImg.visible = false
+  }
 
   // ============================
   //  قراءة الفيرجن
@@ -97,20 +108,7 @@ import { fn, BigInt, mem } from 'download0/types'
   }
 
   // ============================
-  //  عرض النجاح والفشل
-  // ============================
-  function showSuccess() {
-    successImg.visible = true
-    failImg.visible = false
-  }
-
-  function showFail() {
-    failImg.visible = true
-    successImg.visible = false
-  }
-
-  // ============================
-  //  اختيار الاستغلال تلقائيًا
+  //  تشغيل الاستغلال تلقائيًا
   // ============================
   function auto_select_exploit() {
     const fw = getFirmwareVersion()
@@ -120,18 +118,16 @@ import { fn, BigInt, mem } from 'download0/types'
 
         if (isGreaterThan_12_02(fw)) {
           log("Auto-select: NetCtrl")
-          include("download0/loader.js")   // ← JS بعد build
+          // تشغيل اللودر (TypeScript)
+          import('download0/loader').then(m => m.default?.())
         } else {
           log("Auto-select: Lapse")
-          include("download0/lapse.js")    // ← JS بعد build
+          import('download0/lapse').then(m => m.lapse?.())
         }
-
-        // مفيش showSuccess هنا
-        // النجاح الحقيقي يحصل من داخل loader.js
 
       } catch(e) {
         log("Exploit failed: " + e.message)
-        showFail()
+        failImg.visible = true
       }
 
     }, 1500)

@@ -1,32 +1,17 @@
-import { libc_addr } from 'download0/userland'
 import { stats } from 'download0/stats-tracker'
 import { fn, mem, BigInt, utils } from 'download0/types'
 import { sysctlbyname } from 'download0/kernel'
 import { lapse } from 'download0/lapse'
 import { binloader_init } from 'download0/binloader'
 import { checkJailbroken } from 'download0/check-jailbroken'
+import { netctrl_exploit } from 'download0/netctrl_c0w_twins'
 
-// تحميل userland لو مش موجود
-if (typeof libc_addr === 'undefined') {
-  include('download0/userland.js')
-}
-
-// تحميل السكربتات
-include('download0/stats-tracker.js')
-include('download0/binloader.js')
-include('download0/lapse.js')
-include('download0/kernel.js')
-include('download0/check-jailbroken.js')
-include('download0/netctrl_c0w_twins.js')
-
-log('All scripts loaded')
+// ربط UI المينيو
+declare const showSuccess: (() => void) | undefined
+declare const showFail: (() => void) | undefined
 
 // تحميل الإحصائيات
 stats.load()
-
-// ربط UI المينيو الجديد
-declare const showSuccess: (() => void) | undefined
-declare const showFail: (() => void) | undefined
 
 // ===== Helpers =====
 
@@ -92,7 +77,7 @@ function run_netctrl_once (): boolean {
     log('[netctrl_wrapper] netctrl_exploit() returned (no crash)')
     return true
   } catch (e) {
-    log('[netctrl_wrapper] ERROR in netctrl_exploit(): ' + (e as Error).message)
+    log('[netctrl_wrapper] ERROR: ' + (e as Error).message)
     return false
   }
 }
@@ -100,13 +85,8 @@ function run_netctrl_once (): boolean {
 function run_netctrl_with_retries (maxTries: number): boolean {
   for (let i = 1; i <= maxTries; i++) {
     log('[netctrl_wrapper] Attempt ' + i + '/' + maxTries)
-    const ok = run_netctrl_once()
-    if (ok) {
-      log('[netctrl_wrapper] Success on attempt ' + i)
-      return true
-    }
+    if (run_netctrl_once()) return true
   }
-  log('[netctrl_wrapper] All attempts failed')
   return false
 }
 
@@ -177,7 +157,6 @@ if (!is_jailbroken) {
     if (ok) {
       log('[loader] NetCtrl exploit completed successfully')
       if (typeof showSuccess === 'function') showSuccess()
-      // binloader_init() لو عايز تشغله بعد النجاح
     } else {
       log('[loader] NetCtrl failed after all retries')
       if (typeof showFail === 'function') showFail()
@@ -187,7 +166,7 @@ if (!is_jailbroken) {
 
 } else {
   utils.notify('Already Jailbroken!')
-  include('download0/main-menu.js')
+  import('download0/main-menu')
 }
 
 // ===== Binloader manual run =====
