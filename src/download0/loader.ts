@@ -18,35 +18,26 @@ include('lapse.js')
 include('kernel.js')
 include('check-jailbroken.js')
 include('stats-tracker.js')
-include('netctrl_c0w_twins.js')
 log('All scripts loaded')
 
 // تحميل الإحصائيات
 stats.load()
 
-// تشغيل الصوت كما هو
+export function show_success () {
+  setTimeout(() => {
+    jsmaf.root.children.push(bg_success)
+    log('Logging Success...')
+    stats.incrementSuccess()
+  }, 2000)
+}
+
 const audio = new jsmaf.AudioClip()
 audio.volume = 0.5
-audio.open('file:///../download0/sfx/bgm.wav')
+audio.open('file://../download0/sfx/bgm.wav')
 
-// واجهة بسيطة: خلفية فقط أثناء التشغيل
-jsmaf.root.children.length = 0
-
-const background = new Image({
-  url: 'file:///../download0/img/www.png',
-  x: 0,
-  y: 0,
-  width: 1920,
-  height: 1080
-})
-jsmaf.root.children.push(background)
-
-// حالة الجيلبريك الحالية
 const is_jailbroken = checkJailbroken()
 
-// =======================
-// دوال مساعدة
-// =======================
+// ===== Helpers =====
 
 function is_exploit_complete () {
   fn.register(24, 'getuid', [], 'bigint')
@@ -63,15 +54,15 @@ function is_exploit_complete () {
   return true
 }
 
-function write64 (addr, val) {
+function write64 (addr: BigInt, val: BigInt | number) {
   mem.view(addr).setBigInt(0, new BigInt(val), true)
 }
 
-function read8 (addr) {
+function read8 (addr: BigInt) {
   return mem.view(addr).getUint8(0)
 }
 
-function malloc (size) {
+function malloc (size: number) {
   return mem.malloc(size)
 }
 
@@ -88,14 +79,14 @@ function get_fwversion () {
   return null
 }
 
-const FW_VERSION = get_fwversion()
+const FW_VERSION: string | null = get_fwversion()
 
 if (FW_VERSION === null) {
   log('ERROR: Failed to determine FW version')
   throw new Error('Failed to determine FW version')
 }
 
-const compare_version = (a, b) => {
+const compare_version = (a: string, b: string) => {
   const a_arr = a.split('.')
   const amaj = Number(a_arr[0])
   const amin = Number(a_arr[1])
@@ -105,52 +96,24 @@ const compare_version = (a, b) => {
   return amaj === bmaj ? amin - bmin : amaj - bmaj
 }
 
-// =======================
-// عرض النتيجة (نجاح / فشل)
-// =======================
+// ===== NetCtrl wrapper مدمج هنا =====
 
-function showResult (success) {
-  jsmaf.root.children.length = 0
+// لو هتستخدم النسخة المعدلة حط اسم الملف اللي فيها الكود الجديد
+include('netctrl_c0w_twins.js')  // أو netctrl_c0w_twins2.js حسب ما سميته
 
-  const result = new Image({
-    url: success
-      ? 'file:///../download0/img/ok.png'
-      : 'file:///../download0/img/fail.png',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080
-  })
-
-  jsmaf.root.children.push(result)
-}
-
-// دالة النجاح المصدّرة – تستخدم صورة ok.png
-export function show_success () {
-  setTimeout(() => {
-    showResult(true)
-    log('Logging Success...')
-    stats.incrementSuccess()
-  }, 2000)
-}
-
-// =======================
-// NetCtrl wrapper
-// =======================
-
-function run_netctrl_once () {
+function run_netctrl_once (): boolean {
   log('[netctrl_wrapper] starting netctrl_exploit()')
   try {
     netctrl_exploit()
     log('[netctrl_wrapper] netctrl_exploit() returned (no crash)')
     return true
   } catch (e) {
-    log('[netctrl_wrapper] ERROR in netctrl_exploit(): ' + (e).message)
+    log('[netctrl_wrapper] ERROR in netctrl_exploit(): ' + (e as Error).message)
     return false
   }
 }
 
-function run_netctrl_with_retries (maxTries) {
+function run_netctrl_with_retries (maxTries: number): boolean {
   for (let i = 1; i <= maxTries; i++) {
     log('[netctrl_wrapper] Attempt ' + i + '/' + maxTries)
     const ok = run_netctrl_once()
@@ -163,9 +126,7 @@ function run_netctrl_with_retries (maxTries) {
   return false
 }
 
-// =======================
-// المنطق الرئيسي
-// =======================
+// ===== Main logic =====
 
 if (!is_jailbroken) {
   const jb_behavior =
@@ -180,10 +141,13 @@ if (!is_jailbroken) {
   let use_netctrl = false
 
   if (jb_behavior === 1) {
+    log('JB Behavior: NetControl (forced)')
     use_netctrl = true
   } else if (jb_behavior === 2) {
+    log('JB Behavior: Lapse (forced)')
     use_lapse = true
   } else {
+    log('JB Behavior: Auto Detect')
     if (compare_version(FW_VERSION, '7.00') >= 0 &&
         compare_version(FW_VERSION, '12.02') <= 0) {
       use_lapse = true
@@ -193,59 +157,70 @@ if (!is_jailbroken) {
     }
   }
 
-  // ===== Lapse =====
   if (use_lapse) {
+    log('[loader] Running Lapse exploit...')
     lapse()
 
     const start_time = Date.now()
-    const max_wait_ms = 5000
+    const max_wait_seconds = 5
+    const max_wait_ms = max_wait_seconds * 1000
 
     while (!is_exploit_complete()) {
-      if (Date.now() - start_time > max_wait_ms) {
-        showResult(false)
+      const elapsed = Date.now() - start_time
+      if (elapsed > max_wait_ms) {
+        log('ERROR: Timeout waiting for exploit to complete (' + max_wait_seconds + ' seconds)')
         throw new Error('Lapse timeout')
       }
+      const poll_start = Date.now()
+      while (Date.now() - poll_start < 500) {}
     }
 
     show_success()
+    const total_wait = ((Date.now() - start_time) / 1000).toFixed(1)
+    log('Exploit completed successfully after ' + total_wait + ' seconds')
 
+    log('Initializing binloader...')
     try {
       binloader_init()
+      log('Binloader initialized and running!')
     } catch (e) {
-      showResult(false)
+      log('ERROR: Failed to initialize binloader')
+      log('Error message: ' + (e as Error).message)
+      log('Error name: ' + (e as Error).name)
+      if ((e as Error).stack) {
+        log('Stack trace: ' + (e as Error).stack)
+      }
       throw e
     }
   }
 
-  // ===== NetCtrl =====
   if (use_netctrl) {
+    log('[loader] Running NetCtrl exploit with retries...')
     const ok = run_netctrl_with_retries(3)
     if (!ok) {
-      stats.incrementFailure()
-      showResult(false)
-    } else {
-      show_success()
-      try {
-        binloader_init()
-      } catch (e) {
-        showResult(false)
-        throw e
-      }
+      log('[loader] NetCtrl failed after all retries')
+      utils.notify('NetCtrl failed after retries - reboot and try again')
+      // لو حابب تحسبها فشل في الإحصائيات:
+      // stats.incrementFailure()
     }
   }
 } else {
-  showResult(true)
+  utils.notify('Already Jailbroken!')
+  include('main-menu.js')
 }
 
-// =======================
-// binloader يدويًا
-// =======================
-
 export function run_binloader () {
+  log('Initializing binloader...')
   try {
     binloader_init()
+    log('Binloader initialized and running!')
   } catch (e) {
-    showResult(false)
+    log('ERROR: Failed to initialize binloader')
+    log('Error message: ' + (e as Error).message)
+    log('Error name: ' + (e as Error).name)
+    if ((e as Error).stack) {
+      log('Stack trace: ' + (e as Error).stack)
+    }
     throw e
   }
 }

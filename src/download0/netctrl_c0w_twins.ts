@@ -6,11 +6,11 @@ import { show_success, run_binloader } from 'download0/loader'
 // include('userland.js')
 
 if (typeof libc_addr === 'undefined') {
-  include('userland.js')
+  include('userland.js');
 }
-include('kernel.js')
-include('stats-tracker.js')
-include('binloader.js')
+include('kernel.js');
+include('stats-tracker.js');
+include('binloader.js');
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart (targetLength, padString) {
     targetLength = targetLength >> 0 // truncate if number or convert non-number to 0
@@ -1013,6 +1013,7 @@ function exploit_phase_setup () {
   yield_to_render(exploit_phase_trigger)
 }
 
+
 function exploit_phase_trigger () {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     const msg = 'Netctrl failed - Reboot and try again'
@@ -1044,6 +1045,7 @@ function exploit_phase_leak () {
   log('Setting up arbitrary R/W...')
   yield_to_render(exploit_phase_rw)
 }
+
 
 function exploit_phase_rw () {
   setup_arbitrary_rw()
@@ -1520,7 +1522,8 @@ function leak_kqueue () {
   return true
 }
 
-function leak_kqueue_safe () {
+
+function leak_kqueue_safe() {
   try {
     return leak_kqueue()
   } catch (e) {
