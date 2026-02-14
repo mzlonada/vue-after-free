@@ -1378,7 +1378,7 @@ function setup_log_screen() {
 }
 
 /* ===========================
- *   yield_to_render  ← ضعه هنا
+ *   yield_to_render
  * ===========================
  */
 
@@ -1393,8 +1393,6 @@ function yield_to_render(callback) {
     }
   }, 0);
 }
-
-
 
 /* ===========================
  *   Triple Free Trigger
@@ -1920,3 +1918,5 @@ function exploit_phase_rw() {
 function exploit_phase_jailbreak() {
   jailbreak();
 }
+
+netctrl_exploit();
