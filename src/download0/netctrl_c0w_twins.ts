@@ -886,6 +886,25 @@ function setup_log_screen() {
 }
 
 /* ===========================
+ *   yield_to_render  ← ضعه هنا
+ * ===========================
+ */
+
+function yield_to_render(callback) {
+  var id = jsmaf.setInterval(function () {
+    jsmaf.clearInterval(id);
+    try {
+      callback();
+    } catch (e) {
+      log('ERROR: ' + e.message);
+      cleanup();
+    }
+  }, 0);
+}
+
+
+
+/* ===========================
  *   Triple Free Trigger
  * ===========================
  */
@@ -1257,5 +1276,3 @@ function exploit_phase_rw() {
 function exploit_phase_jailbreak() {
   jailbreak();
 }
-
-netctrl_exploit();
