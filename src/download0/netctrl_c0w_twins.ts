@@ -375,6 +375,12 @@ function get_rtprio() {
   return Number(read16(rtprio_scratch.add(2)));
 }
 
+function fill_buffer_64(addr, value, size) {
+  for (var i = 0; i < size; i += 8) {
+    write64(addr.add(i), value);
+  }
+}
+
 /* ===========================
  *   Worker Creation
  * ===========================
