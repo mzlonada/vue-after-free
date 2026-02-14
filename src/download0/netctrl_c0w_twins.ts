@@ -382,6 +382,40 @@ function fill_buffer_64(addr, value, size) {
 }
 
 /* ===========================
+ *   ROP Worker Builders
+ * ===========================
+ */
+
+function iov_recvmsg_worker_rop(ready, pipe_0, done, signal_buf) {
+  return {
+    rop: new BigInt(0),
+    loop_size: 0
+  };
+}
+
+function uio_readv_worker_rop(ready, pipe_0, done, signal_buf) {
+  return {
+    rop: new BigInt(0),
+    loop_size: 0
+  };
+}
+
+function uio_writev_worker_rop(ready, pipe_0, done, signal_buf) {
+  return {
+    rop: new BigInt(0),
+    loop_size: 0
+  };
+}
+
+function ipv6_sock_spray_and_read_rop(ready, pipe_0, done, signal_buf) {
+  return {
+    rop: new BigInt(0),
+    loop_size: 0
+  };
+}
+
+
+/* ===========================
  *   Worker Creation
  * ===========================
  */
