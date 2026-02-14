@@ -8,7 +8,8 @@ import { show_success } from 'download0/loader'
 // Usage: include('binloader.js') before userland/lapse
 //        After lapse completes, call: binloader_init()
 
-// Define binloader_init function
+let binloader_auto_run_done = false
+
 export function binloader_init () {
   log('binloader_init(): Initializing binloader...')
 
@@ -612,16 +613,17 @@ export function binloader_init () {
       BinLoader.init(payload.buf, payload.size)
 
       if (!skip_autoclose) {
-        show_success()
-        log('Waiting 3 seconds...')
-        const delay_start = Date.now()
-        while (Date.now() - delay_start < 3000) {
-          undefined // just a no-op
-        }
+        show_success(true, true)
+        log('Running payload in 3 seconds...')
+        const id = jsmaf.setInterval(function () {
+          jsmaf.clearInterval(id)
+          BinLoader.run()
+          log('Payload loaded successfully')
+        }, 3000)
+      } else {
+        BinLoader.run()
+        log('Payload loaded successfully')
       }
-
-      BinLoader.run()
-      log('Payload loaded successfully')
     } catch (e) {
       log('ERROR loading payload: ' + (e as Error).message)
       if ((e as Error).stack) log((e as Error).stack ?? '')
@@ -696,7 +698,7 @@ export function binloader_init () {
       BinLoader.init(payload.buf, payload.size)
       BinLoader.run()
       log('Payload loaded successfully')
-      show_success()
+      show_success(false, true)
     } catch (e) {
       log('ERROR loading payload: ' + (e as Error).message)
       if ((e as Error).stack) log((e as Error).stack ?? '')
@@ -754,13 +756,13 @@ export function binloader_init () {
     return bl_network_loader()
   }
 
-  // End of binloader_init() function
-  // Call bin_loader_main() to start binloader
-
-  if (!is_jailbroken) {
-    bin_loader_main()
-  } else {
-    bl_load_from_file('/download0/payloads/elfldr.elf')
+  if (!binloader_auto_run_done) {
+    binloader_auto_run_done = true
+    if (!is_jailbroken) {
+      bin_loader_main()
+    } else {
+      bl_load_from_file('/download0/payloads/elfldr.elf')
+    }
   }
 
   return {
