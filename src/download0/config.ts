@@ -2,7 +2,7 @@ export const CONFIG = {
   autolapse: false,
   autopoop: false,
   autoclose: false,
-  autoclose_delay: 0, //set to 20000 for ps4 hen
+  autoclose_delay: 0, // set to 20000 for ps4 hen
   music: true,
   jb_behavior: 0
 }

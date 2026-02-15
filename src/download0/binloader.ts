@@ -481,7 +481,7 @@ export function binloader_init () {
 
         // Check if autoclose is enabled
         if (typeof CONFIG !== 'undefined' && CONFIG.autoclose && !BinLoader.skip_autoclose) {
-          const closeDelay = (typeof CONFIG !== 'undefined' && CONFIG.autoclose_delay) ? CONFIG.autoclose_delay : 0 //set to 20000 for ps4 hen
+          const closeDelay = (typeof CONFIG !== 'undefined' && CONFIG.autoclose_delay) ? CONFIG.autoclose_delay : 0 // set to 20000 for ps4 hen
 
           fn.register(0x14, 'getpid', [], 'bigint')
           fn.register(0x25, 'kill', ['bigint', 'bigint'], 'bigint')
