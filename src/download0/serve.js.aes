@@ -111,7 +111,7 @@ try {
         }
         //triangle
         else if (keyCode === 12) {
-            include('payload_host.js')
+            include('default/payload_host.js')
         }
         
     }
@@ -246,7 +246,8 @@ try {
         include('loader.js')
     } 
     else {
-        include('main-menu.js')
+        var themeName = CONFIG.theme || 'default';
+        include('themes/' + themeName + '/main.js')
     }
     
     // handle WebSocket received messages

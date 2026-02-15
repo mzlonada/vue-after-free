@@ -368,8 +368,7 @@ import { fn, BigInt, mem } from 'download0/types'
       while (Date.now() - cleanup_start < 500) {
         // Wait
       }
-
-      include('main-menu.js')
+      include('themes/default/main.js')
     }
   }
 

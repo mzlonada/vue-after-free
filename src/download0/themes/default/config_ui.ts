@@ -43,13 +43,17 @@ if (typeof lang === 'undefined') {
     autoclose_delay: number
     music: boolean
     jb_behavior: number
+    theme: string
+    themes: string[]
   } = {
     autolapse: false,
     autopoop: false,
     autoclose: false,
     autoclose_delay: 0,
     music: true,
-    jb_behavior: 0
+    jb_behavior: 0,
+    theme: 'default',
+    themes: ['default']
   }
 
   // Store user's payloads so we don't overwrite them
@@ -58,6 +62,11 @@ if (typeof lang === 'undefined') {
 
   const jbBehaviorLabels = [lang.jbBehaviorAuto, lang.jbBehaviorNetctrl, lang.jbBehaviorLapse]
   const jbBehaviorImgKeys = ['jbBehaviorAuto', 'jbBehaviorNetctrl', 'jbBehaviorLapse']
+
+  // These will be updated after config loads
+  let availableThemes = ['default']
+  let themeLabels: string[] = ['Default']
+  let themeImgKeys: string[] = ['themeDefault']
 
   let currentButton = 0
   const buttons: Image[] = []
@@ -122,11 +131,12 @@ if (typeof lang === 'undefined') {
     { key: 'autopoop', label: lang.autoPoop, imgKey: 'autoPoop', type: 'toggle' },
     { key: 'autoclose', label: lang.autoClose, imgKey: 'autoClose', type: 'toggle' },
     { key: 'music', label: lang.music, imgKey: 'music', type: 'toggle' },
-    { key: 'jb_behavior', label: lang.jbBehavior, imgKey: 'jbBehavior', type: 'cycle' }
+    { key: 'jb_behavior', label: lang.jbBehavior, imgKey: 'jbBehavior', type: 'cycle' },
+    { key: 'theme', label: lang.theme || 'Theme', imgKey: 'theme', type: 'cycle' }
   ]
 
   const centerX = 960
-  const startY = 300
+  const startY = 200
   const buttonSpacing = 120
   const buttonWidth = 400
   const buttonHeight = 80
@@ -179,20 +189,41 @@ if (typeof lang === 'undefined') {
       jsmaf.root.children.push(checkmark)
     } else {
       let valueLabel: Image | jsmaf.Text
-      if (useImageText) {
-        valueLabel = new Image({
-          url: textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png',
-          x: btnX + 230,
-          y: btnY + 15,
-          width: 150,
-          height: 50
-        })
-      } else {
-        valueLabel = new jsmaf.Text()
-        valueLabel.text = jbBehaviorLabels[currentConfig.jb_behavior] || jbBehaviorLabels[0]!
-        valueLabel.x = btnX + 250
-        valueLabel.y = btnY + 28
-        valueLabel.style = 'white'
+      if (configOption.key === 'jb_behavior') {
+        if (useImageText) {
+          valueLabel = new Image({
+            url: textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png',
+            x: btnX + 230,
+            y: btnY + 15,
+            width: 150,
+            height: 50
+          })
+        } else {
+          valueLabel = new jsmaf.Text()
+          valueLabel.text = jbBehaviorLabels[currentConfig.jb_behavior] || jbBehaviorLabels[0]!
+          valueLabel.x = btnX + 250
+          valueLabel.y = btnY + 28
+          valueLabel.style = 'white'
+        }
+      } else if (configOption.key === 'theme') {
+        const themeIndex = availableThemes.indexOf(currentConfig.theme)
+        const displayIndex = themeIndex >= 0 ? themeIndex : 0
+
+        if (useImageText) {
+          valueLabel = new Image({
+            url: textImageBase + themeImgKeys[displayIndex] + '.png',
+            x: btnX + 230,
+            y: btnY + 15,
+            width: 150,
+            height: 50
+          })
+        } else {
+          valueLabel = new jsmaf.Text()
+          valueLabel.text = themeLabels[displayIndex] || themeLabels[0]!
+          valueLabel.x = btnX + 250
+          valueLabel.y = btnY + 28
+          valueLabel.style = 'white'
+        }
       }
       valueTexts.push(valueLabel)
       jsmaf.root.children.push(valueLabel)
@@ -338,10 +369,21 @@ if (typeof lang === 'undefined') {
       const value = currentConfig[key as keyof typeof currentConfig]
       valueText.url = value ? 'file:///assets/img/check_small_on.png' : 'file:///assets/img/check_small_off.png'
     } else {
-      if (useImageText) {
-        (valueText as Image).url = textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png'
-      } else {
-        (valueText as jsmaf.Text).text = jbBehaviorLabels[currentConfig.jb_behavior] || jbBehaviorLabels[0]
+      if (key === 'jb_behavior') {
+        if (useImageText) {
+          (valueText as Image).url = textImageBase + jbBehaviorImgKeys[currentConfig.jb_behavior] + '.png'
+        } else {
+          (valueText as jsmaf.Text).text = jbBehaviorLabels[currentConfig.jb_behavior] || jbBehaviorLabels[0]
+        }
+      } else if (key === 'theme') {
+        const themeIndex = availableThemes.indexOf(currentConfig.theme)
+        const displayIndex = themeIndex >= 0 ? themeIndex : 0
+
+        if (useImageText) {
+          (valueText as Image).url = textImageBase + themeImgKeys[displayIndex] + '.png'
+        } else {
+          (valueText as jsmaf.Text).text = themeLabels[displayIndex] || themeLabels[0]!
+        }
       }
     }
   }
@@ -357,7 +399,9 @@ if (typeof lang === 'undefined') {
     configContent += '    autoclose: ' + currentConfig.autoclose + ',\n'
     configContent += '    autoclose_delay: ' + currentConfig.autoclose_delay + ', //set to 20000 for ps4 hen\n'
     configContent += '    music: ' + currentConfig.music + ',\n'
-    configContent += '    jb_behavior: ' + currentConfig.jb_behavior + '\n'
+    configContent += '    jb_behavior: ' + currentConfig.jb_behavior + ',\n'
+    configContent += '    theme: \'' + currentConfig.theme + '\',\n'
+    configContent += '    themes: ' + JSON.stringify(currentConfig.themes) + '\n' // without JSON.stringify corruption will happen
     configContent += '};\n\n'
     configContent += 'const payloads = [ //to be ran after jailbroken\n'
     for (let i = 0; i < userPayloads.length; i++) {
@@ -395,6 +439,23 @@ if (typeof lang === 'undefined') {
           currentConfig.music = CONFIG.music !== false
           currentConfig.jb_behavior = CONFIG.jb_behavior || 0
 
+          // Update available themes
+          if (CONFIG.themes && Array.isArray(CONFIG.themes) && CONFIG.themes.length > 0) {
+            availableThemes = CONFIG.themes.slice()
+            currentConfig.themes = CONFIG.themes.slice()
+            // Regenerate theme labels and image keys
+            themeLabels = availableThemes.map((theme: string) => theme.charAt(0).toUpperCase() + theme.slice(1))
+            themeImgKeys = availableThemes.map((theme: string) => 'theme' + theme.charAt(0).toUpperCase() + theme.slice(1))
+          }
+
+          // Validate and set theme
+          if (CONFIG.theme && availableThemes.includes(CONFIG.theme)) {
+            currentConfig.theme = CONFIG.theme
+          } else {
+            log('WARNING: Theme "' + (CONFIG.theme || 'undefined') + '" not found in available themes, using default')
+            currentConfig.theme = availableThemes[0] || 'default'
+          }
+
           // Preserve user's payloads
           if (typeof payloads !== 'undefined' && Array.isArray(payloads)) {
             userPayloads = payloads.slice()
@@ -419,8 +480,16 @@ if (typeof lang === 'undefined') {
       const key = option.key
 
       if (option.type === 'cycle') {
-        currentConfig.jb_behavior = (currentConfig.jb_behavior + 1) % jbBehaviorLabels.length
-        log(key + ' = ' + jbBehaviorLabels[currentConfig.jb_behavior])
+        if (key === 'jb_behavior') {
+          currentConfig.jb_behavior = (currentConfig.jb_behavior + 1) % jbBehaviorLabels.length
+          log(key + ' = ' + jbBehaviorLabels[currentConfig.jb_behavior])
+        } else if (key === 'theme') {
+          const themeIndex = availableThemes.indexOf(currentConfig.theme)
+          const displayIndex = themeIndex >= 0 ? themeIndex : 0
+          const nextIndex = (displayIndex + 1) % availableThemes.length
+          currentConfig.theme = availableThemes[nextIndex]!
+          log(key + ' = ' + currentConfig.theme)
+        }
       } else {
         const boolKey = key as 'autolapse' | 'autopoop' | 'autoclose' | 'music'
         currentConfig[boolKey] = !currentConfig[boolKey]
@@ -467,7 +536,11 @@ if (typeof lang === 'undefined') {
       handleButtonPress()
     } else if (keyCode === backKey) {
       log('Restarting...')
-      debugging.restart()
+      // Save config before restart
+      saveConfig()
+      jsmaf.setTimeout(function () {
+        debugging.restart()
+      }, 100)
     }
   }
 

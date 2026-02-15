@@ -40,6 +40,7 @@ if (typeof CONFIG !== 'undefined' && CONFIG.music) {
 }
 
 const is_jailbroken = checkJailbroken()
+const themeFolder = (typeof CONFIG !== 'undefined' && typeof CONFIG.theme === 'string') ? CONFIG.theme : 'default'
 
 // Check if exploit has completed successfully
 function is_exploit_complete () {
@@ -169,7 +170,7 @@ if (!is_jailbroken) {
   }
 } else {
   utils.notify('Already Jailbroken!')
-  try { include('main-menu.js') } catch (e) { /* escaped sandbox */ }
+  try { include('themes/' + themeFolder + '/main.js') } catch (e) { /* escaped sandbox */ }
 }
 
 export function run_binloader () {
