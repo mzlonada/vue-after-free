@@ -208,6 +208,10 @@ var uio_readv_signal_buf = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_ready = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_done = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_signal_buf = malloc(8 * UIO_THREAD_NUM);
+var KR_BUFFERS = [];
+for (var i = 0; i < UIO_THREAD_NUM; i++) {
+    KR_BUFFERS[i] = malloc(0x100); // حجم آمن وثابت
+}
 var spray_ipv6_ready = malloc(8);
 var spray_ipv6_done = malloc(8);
 var spray_ipv6_signal_buf = malloc(8);
