@@ -208,10 +208,10 @@ var uio_readv_signal_buf = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_ready = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_done = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_signal_buf = malloc(8 * UIO_THREAD_NUM);
-var KR_BUFFERS = [];
 for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    KR_BUFFERS[i] = malloc(0x100); // حجم آمن وثابت
+  KR_BUFFERS[i] = malloc(0x100); // حجم آمن وثابت
 }
+
 var spray_ipv6_ready = malloc(8);
 var spray_ipv6_done = malloc(8);
 var spray_ipv6_signal_buf = malloc(8);
@@ -1433,6 +1433,7 @@ function kreadslow(addr, size) {
     log('[KR] Memory exhausted before start → returning error');
     return BigInt_Error;
   }
+  log(">>> KR_BUFFERS DEFINED HERE <<<");
   var leak_buffers = KR_BUFFERS; // ← استخدم buffers ثابتة
   write32(sockopt_val_buf, size);
   safe_set_sockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
