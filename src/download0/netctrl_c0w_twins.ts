@@ -1087,7 +1087,9 @@ function watchdog_start() {
     }
   }, 500);
 }
-
+function watchdog_tick(label) {
+  WATCHDOG_LAST_TICK = Date.now();
+}
 /* ===========================
   *   Twins Finder
   * ===========================
