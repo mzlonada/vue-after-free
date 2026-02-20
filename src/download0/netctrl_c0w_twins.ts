@@ -1421,7 +1421,7 @@ function kreadslow(addr, size) {
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) break;
     read(new BigInt(uio_sock_0), tmp, size);
-    for (var j = 0; j < UIO_THREAD_NUM; j++) read(new BigInt(uio_sock_0), leak_buffers[i], size);
+    for (var x = 0; x < UIO_THREAD_NUM; x++) read(new BigInt(uio_sock_0), leak_buffers[i], size);
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
