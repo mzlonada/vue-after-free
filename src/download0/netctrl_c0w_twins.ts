@@ -1526,7 +1526,8 @@ function kreadslow64(address) {
 function kwriteslow(addr, buffer, size) {
   log('[KW] Enter kwriteslow addr=' + hex(addr));
   write32(sockopt_val_buf, size);
-  set_sndbuf_raw(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+  set_sndbuf_raw(new BigInt(uio_sock_1), size);
+  write(new BigInt(uio_sock_1), tmp, size);
   write64(uioIovWrite.add(0x08), size);
 
   // Stage1: تجهيز uio في الكيرنل
