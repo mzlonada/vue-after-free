@@ -1502,8 +1502,7 @@ function kreadslow64(address) {
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
     log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    cleanup();
-    throw new Error('kreadslow64 failed at ' + hex(address));
+    return BigInt_Error;   // لا cleanup ولا throw
   }
   return read64(buffer);
 }
