@@ -1377,8 +1377,7 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
   if (debugging.info.memory.available === 0) {
-    log('[KR] Memory exhausted before start');
-    return BigInt_Error;
+    log('[KR] Warning: memory.available == 0 at start, continuing...');
   }
   if (!uio_sock_0 || !uio_sock_1) {
     log('[KR] Invalid uio sockets');
@@ -1522,8 +1521,7 @@ function kwriteslow(addr, buffer, size) {
     return BigInt_Error;
   }
   if (debugging.info.memory.available === 0) {
-    log('[KW] Memory exhausted before start');
-    return BigInt_Error;
+    log('[KR] Warning: memory.available == 0 at start, continuing...');
   }
   if (!uio_sock_0 || !uio_sock_1) {
     log('[KW] Invalid uio sockets');
@@ -1845,7 +1843,6 @@ function retry(label, attempts, fn) {
       return true;
     }
     log(label + ' attempt ' + (i + 1) + ' failed');
-    // لا cleanup هنا
   }
   log(label + ' all attempts failed');
   return false;
