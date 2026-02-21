@@ -959,13 +959,13 @@ function setup() {
   iov_sock_1 = read32(iov_sock.add(4));
 
   // Create ipv6 sockets
-  for (var i = 0; i < ipv6_socks.length; i++) {
+  for (var j = 0; j < ipv6_socks.length; j++) {
     var s = socket(AF_INET6, SOCK_STREAM, 0);
     if (!s || s.eq(BigInt_Error)) {
-      log('[SETUP] Failed to create ipv6 socket at index ' + i);
-      ipv6_socks[i] = new BigInt(0); // قيمة آمنة
+      log('[SETUP] Failed to create ipv6 socket at index ' + j);
+      ipv6_socks[j] = new BigInt(0); // قيمة آمنة
     } else {
-      ipv6_socks[i] = s;
+      ipv6_socks[j] = s;
     }
   }
 
