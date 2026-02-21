@@ -2147,11 +2147,3 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
  */
 
 netctrl_exploit();
-
-function safe(obj, name) {
-  if (!obj) {
-    log("SAFE-ERROR: missing " + name, true);
-    return null;
-  }
-  return obj;
-}
