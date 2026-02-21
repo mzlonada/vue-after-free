@@ -230,7 +230,10 @@ var tmp = malloc(PAGE_SIZE);
 var saved_fpu_ctrl = 0;
 var saved_mxcsr = 0;
 function safe(obj, name) {
-  if (!obj) throw new Error(name + ' is missing');
+  if (!obj) {
+    log("SAFE-ERROR: missing " + name, true);
+    return null;
+  }
   return obj;
 }
 
@@ -241,7 +244,8 @@ safe(utils, 'utils');
 safe(jsmaf, 'jsmaf');
 /* ===========================
  *   Watchdog (progress monitor)
- * =========================== */
+ * =========================== 
+ */
 
 function watchdog_start() {
   var timeoutMs = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 5000;
@@ -597,7 +601,8 @@ function fill_buffer_64(addr, value, size) {
 
 /* ===========================
  *   wait_for helper
- * =========================== */
+ * =========================== 
+ */
 
 function nanosleep_fun(nsec) {
   // nsec: عدد النانو ثانية (number)
@@ -806,7 +811,7 @@ function cleanup() {
   *   Logging Screen
   * ===========================
   */
-
+log("DEBUG: inside setup_log_screen()", true);
 var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
 function setup_log_screen() {
@@ -2142,3 +2147,11 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
  */
 
 netctrl_exploit();
+
+function safe(obj, name) {
+  if (!obj) {
+    log("SAFE-ERROR: missing " + name, true);
+    return null;
+  }
+  return obj;
+}
