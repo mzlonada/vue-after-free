@@ -263,7 +263,6 @@ function safe_set_sockopt(sd, level, optname, optval, optlen) {
     log('[SOCKOPT] invalid socket');
     return BigInt_Error;
   }
-
   if (level === IPPROTO_IPV6 && optname === IPV6_RTHDR && optlen === 0) {
     // allow clearing rthdr
   } else {
@@ -272,7 +271,6 @@ function safe_set_sockopt(sd, level, optname, optval, optlen) {
       return BigInt_Error;
     }
   }
-
   var result = setsockopt(sd, level, optname, optval, optlen);
   if (result.eq(BigInt_Error)) {
     log('[SOCKOPT] failed: ' + hex(result));
@@ -1444,13 +1442,14 @@ function kreadslow(addr, size) {
   free_rthdr(ipv6_socks[triplets[2]]);
   var iov_leak_add = leak_rthdr.add(0x20);
   var count2 = 0;
-  var zeroMemoryCount2 = 0;
   while (true) {
     count2++;
-    if (count2 % 500 === 0) {
-      log('[KR] Stage2 progress=' + count2);
-      watchdog_tick('kreadslow_stage2');
+    if (count2 > 10000) {
+      log('[KR] Stage2 failed after max iterations');
+      return BigInt_Error;
     }
+
+
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
@@ -1502,7 +1501,7 @@ function kreadslow64(address) {
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
     log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    return BigInt_Error;   // لا cleanup ولا throw
+    return BigInt_Error; // لا cleanup ولا throw
   }
   return read64(buffer);
 }
@@ -1846,8 +1845,9 @@ function retry(label, attempts, fn) {
       return true;
     }
     log(label + ' attempt ' + (i + 1) + ' failed');
-    cleanup(true); // cleanup workers + sockets
+    // لا cleanup هنا
   }
+  log(label + ' all attempts failed');
   return false;
 }
 
