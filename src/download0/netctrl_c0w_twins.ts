@@ -1094,22 +1094,29 @@ function setup_log_screen() {
  *   Watchdog (progress monitor)
  * =========================== */
 
-function watchdog_start() {
-  var timeoutMs = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 5000;
+function watchdog_start(timeoutMs = 5000) {
   if (WATCHDOG_ACTIVE) return;
   WATCHDOG_ACTIVE = true;
+
   log('[FLOW] Watchdog started (timeout = ' + timeoutMs + 'ms)');
+
+  // interval أوسع عشان ندي event loop فرصة يتنفس
   var id = jsmaf.setInterval(() => {
     var delta = Date.now() - WATCHDOG_LAST_TICK;
+
     if (delta > timeoutMs) {
       log('[WD] TIMEOUT — no progress for ' + delta + 'ms');
       log('[FLOW] Watchdog triggered fallback → exploit_phase_trigger');
+
       WATCHDOG_ACTIVE = false;
       jsmaf.clearInterval(id);
+
+      // fallback
       yield_to_render(exploit_phase_trigger);
+
       log('[FLOW] Watchdog stopped after timeout');
     }
-  }, 500);
+  }, 1200); // ← بدل 500ms
 }
 function watchdog_tick(label) {
   WATCHDOG_LAST_TICK = Date.now();
@@ -1856,14 +1863,23 @@ function retry(label, attempts, fn) {
 function yield_to_render(nextPhase) {
   var phaseName = nextPhase.name || 'anonymous_phase';
   var scheduledAt = Date.now();
-  log("[FLOW] Scheduling next phase: ".concat(phaseName, " at ").concat(scheduledAt));
+
+  log("[FLOW] Scheduling next phase: " + phaseName + " at " + scheduledAt);
+
+  // مهم جدًا: نعمل tick هنا
+  watchdog_tick('yield_scheduled');
+
   setTimeout(() => {
     var startedAt = Date.now();
-    log("[FLOW] ENTER ".concat(phaseName, " (delay: ").concat(startedAt - scheduledAt, "ms)"));
+    log("[FLOW] ENTER " + phaseName + " (delay: " + (startedAt - scheduledAt) + "ms)");
+
+    // tick تاني قبل تنفيذ الفيز
+    watchdog_tick('phase_enter');
+
     try {
       nextPhase();
     } catch (e) {
-      log("[FLOW] ERROR inside ".concat(phaseName, ": ").concat(e));
+      log("[FLOW] ERROR inside " + phaseName + ": " + e);
     }
   }, 0);
 }
