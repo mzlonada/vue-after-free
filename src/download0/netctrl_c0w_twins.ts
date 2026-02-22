@@ -150,7 +150,7 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 8;
-var KQUEUE_ITERATIONS = 6000;
+var KQUEUE_ITERATIONS = 10000;
 var MAX_ROUNDS_TWIN = 5;
 var MAX_ROUNDS_TRIPLET = 200;
 var MAIN_CORE = 4;
@@ -240,10 +240,6 @@ safe(kernel, 'kernel');
 safe(utils, 'utils');
 safe(jsmaf, 'jsmaf');
 
-// fallback logger to satisfy eslint
-var _log = function(msg: any) {
-  try { console.log(msg); } catch(e) {}
-};
 /* ===========================
   *   Worker Creation
   * ===========================
@@ -646,12 +642,11 @@ function init() {
   *   Setup
   * ===========================
   */
-// قبل setup_log_screen
-if (typeof _log === 'undefined') {
-  var _log = function (msg) {
-    try { ws.broadcast(msg); } catch (e) {}
-  };
-}
+// fallback logger to avoid "used before defined" + no-redeclare
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _log: any = function (msg: any) {
+  try { ws.broadcast(msg); } catch (e) {}
+};
 var prev_core = -1;
 var prev_rtprio = -1;
 var cleanup_called = false;
@@ -836,17 +831,16 @@ function setup_log_screen() {
     jsmaf.root.children.push(line);
     logLines.push(line);
   }
-  _log = function (msg, screen) {
+  _log = function (msg: string, screen?: boolean) {
     if (screen) {
       logBuf.push(msg);
       if (logBuf.length > LOG_MAX_LINES) logBuf.shift();
-      for (var _i11 = 0; _i11 < LOG_MAX_LINES; _i11++) {
-        logLines[_i11].text = _i11 < logBuf.length ? logBuf[_i11] : '';
+      for (let i = 0; i < LOG_MAX_LINES; i++) {
+        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
       }
     }
     ws.broadcast(msg);
   };
-}
 /* ===========================
   *   Twins Finder
   * ===========================
@@ -927,10 +921,13 @@ function find_triplet(master, other) {
 }
 function safe_memory_available() {
   try {
-    return debugging && debugging.info && debugging.info.memory ? safe_memory_available() : 1; // قيمة آمنة
+    if (debugging && debugging.info && debugging.info.memory) {
+      return debugging.info.memory.available;
+    }
   } catch (e) {
-    return 1;
+    // ignore
   }
+  return 1;
 }
 /* ===========================
  *   yield_to_render
@@ -1526,9 +1523,7 @@ function kreadslow64_safe(address) {
   return read64(buffer);
 }
 function build_uio(uio, uio_td, read, addr, size) {
-  // خليه self-contained: uio + أول iovec في نفس البافر
-
-  var iov_addr = uio.add(0x30);            // مكان أول iovec جوه نفس البافر
+  const iov_addr = uio.add(0x30);
 
   // struct uio
   write64(uio.add(0x00), iov_addr);        // uio_iov = &uio[0x30]
