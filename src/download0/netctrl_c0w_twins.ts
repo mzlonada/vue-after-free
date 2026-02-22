@@ -1635,6 +1635,9 @@ function kreadslow(addr, size) {
     for (var j = 0; j < UIO_THREAD_NUM; j++) {
       read(new BigInt(uio_sock_0), leak_buffers[j], size);
     }
+    wait_uio_writev();
+    write(new BigInt(uio_sock_1), tmp, size);
+  }
 
   if (count === 10000) {
     debug('kreadslow - Failed uio reclaim after 10000 iterations');
