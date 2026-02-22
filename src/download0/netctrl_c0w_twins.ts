@@ -5,7 +5,7 @@ if (typeof libc_addr === 'undefined') {
 }
 include('kernel.js');
 include('binloader.js');
-include('stats-tracker.js');
+
 // ==========================
 // NetCtrl exploit
 // ==========================
