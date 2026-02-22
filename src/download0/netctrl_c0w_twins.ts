@@ -831,16 +831,16 @@ function setup_log_screen() {
     jsmaf.root.children.push(line);
     logLines.push(line);
   }
-  _log = function (msg: string, screen?: boolean) {
-    if (screen) {
-      logBuf.push(msg);
-      if (logBuf.length > LOG_MAX_LINES) logBuf.shift();
-      for (let i = 0; i < LOG_MAX_LINES; i++) {
-        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
-      }
+_log = function (msg: string, screen?: boolean) {
+  if (screen) {
+    logBuf.push(msg);
+    if (logBuf.length > LOG_MAX_LINES) logBuf.shift();
+    for (let i = 0; i < LOG_MAX_LINES; i++) {
+      logLines[i].text = i < logBuf.length ? logBuf[i] : '';
     }
-    ws.broadcast(msg);
-  };
+  }
+  ws.broadcast(msg);
+};
 /* ===========================
   *   Twins Finder
   * ===========================
