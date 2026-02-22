@@ -1528,11 +1528,9 @@ function kreadslow64_safe(address) {
   return read64(buffer);
 }
 
-// بعد ما تجيب uio_iov من leak_rthdr مش محتاجه هنا
-// var uio_iov = read64(leak_rthdr);
+function build_uio(uio, uio_td, read, addr, size) {
+  // خليه self-contained: uio + أول iovec في نفس البافر
 
-// استخدم uio_buf self-contained
-build_uio(uio_buf, 0, true, addr, size);
   var iov_addr = uio.add(0x30);            // مكان أول iovec جوه نفس البافر
 
   // struct uio
