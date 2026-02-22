@@ -803,6 +803,7 @@ function cleanup() {
 
 var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
+
 function setup_log_screen() {
   jsmaf.root.children.length = 0;
   var bg = new Image({
@@ -813,6 +814,7 @@ function setup_log_screen() {
     height: 1080
   });
   jsmaf.root.children.push(bg);
+
   for (var i = 0; i < LOG_COLORS.length; i++) {
     new Style({
       name: 'log' + i,
@@ -820,8 +822,10 @@ function setup_log_screen() {
       size: 20
     });
   }
-  var logLines = [];
-  var logBuf = [];
+
+  var logLines: any[] = [];
+  var logBuf: string[] = [];
+
   for (var _i10 = 0; _i10 < LOG_MAX_LINES; _i10++) {
     var line = new jsmaf.Text();
     line.text = '';
@@ -831,16 +835,18 @@ function setup_log_screen() {
     jsmaf.root.children.push(line);
     logLines.push(line);
   }
-_log = function (msg: string, screen?: boolean) {
-  if (screen) {
-    logBuf.push(msg);
-    if (logBuf.length > LOG_MAX_LINES) logBuf.shift();
-    for (let i = 0; i < LOG_MAX_LINES; i++) {
-      logLines[i].text = i < logBuf.length ? logBuf[i] : '';
+
+  _log = function (msg: string, screen?: boolean) {
+    if (screen) {
+      logBuf.push(msg);
+      if (logBuf.length > LOG_MAX_LINES) logBuf.shift();
+      for (let i = 0; i < LOG_MAX_LINES; i++) {
+        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
+      }
     }
-  }
-  ws.broadcast(msg);
-};
+    ws.broadcast(msg);
+  };
+}
 /* ===========================
   *   Twins Finder
   * ===========================
