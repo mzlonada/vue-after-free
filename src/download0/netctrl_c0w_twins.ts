@@ -467,25 +467,6 @@ function init_workers() {
     w3.thread_id = Number(ret.and(0xFFFFFFFF));
   }
 
-  // ملاحظة: spray_ipv6_worker يتم سباونه في trigger_ipv6_spray_and_read، وليس هنا
-  return true;
-}
-
-  // uio_writev workers
-  for (var k = 0; k < UIO_THREAD_NUM; k++) {
-    var w3 = uio_writev_workers[k];
-    if (!w3 || !w3.rop) {
-      log('init_workers: invalid uio_writev_workers[' + k + ']');
-      return false;
-    }
-    ret = spawn_thread(w3.rop, w3.loop_size);
-    if (ret.eq(BigInt_Error)) {
-      log('init_workers: spawn_thread failed for uio_writev_workers[' + k + ']');
-      return false;
-    }
-    w3.thread_id = Number(ret.and(0xFFFFFFFF));
-  }
-
   return true;
 }
 function nanosleep_fun(nsec) {
