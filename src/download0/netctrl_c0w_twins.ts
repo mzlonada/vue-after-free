@@ -4,7 +4,6 @@ if (typeof libc_addr === 'undefined') {
   include('userland.js');
 }
 include('kernel.js');
-include('stats-tracker.js');
 include('binloader.js');
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart(targetLength, padString) {
@@ -612,8 +611,8 @@ function init() {
     return amaj === bmaj ? (amin - bmin) : (amaj - bmaj);
   };
 
-  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.00') > 0) {
-    log('Unsupported PS4 firmware\nSupported: 9.00-13.00\nAborting...');
+  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '14.00') > 0) {
+    log('Unsupported PS4 firmware\nSupported: 9.00-14.00\nAborting...');
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
   }
@@ -822,7 +821,7 @@ function find_twins() {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
-        log('netctrl failed!');
+        log(' Jailbreak failed!');
         cleanup();
         return false;
       }
@@ -919,70 +918,53 @@ var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
 
 function setup_log_screen() {
-    // مسح أي عناصر سابقة
-    jsmaf.root.children.length = 0;
+  // مسح أي عناصر سابقة
+  jsmaf.root.children.length = 0;
 
-    // خلفية واحدة فقط (الصورة اللي هتحطها في نفس الفولدر)
-    var bg = new Image({
-        url: 'splash.jpg',
-        x: 0,
-        y: 0,
-        width: 1920,
-        height: 1080
-    });
-    jsmaf.root.children.push(bg);
+  // خلفية
+  var bg = new Image({
+    url: './splash.jpg',
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080
+  });
+  jsmaf.root.children.push(bg);
 
-    // ستايل السطر الأول (أخضر)
+  // ستايلات الألوان
+  for (var i = 0; i < LOG_COLORS.length; i++) {
     new Style({
-        name: 'log_green',
-        color: '#00FF00',
-        size: 28
+      name: 'log' + i,
+      color: '#FFFFFF',
+      size: 20
     });
+  }
 
-    // ستايل باقي السطور (أبيض)
-    new Style({
-        name: 'log_white',
-        color: '#FFFFFF',
-        size: 26
-    });
+  var logLines = [];
+  var logBuf = [];
 
-    var logLines = [];
-    var logBuf = [];
+  for (var lineIndex = 0; lineIndex < LOG_MAX_LINES; lineIndex++) {
+    var line = new jsmaf.Text();
+    line.text = '';
+    line.style = 'log' + (lineIndex % LOG_COLORS.length);
+    line.x = 20;
+    line.y = 120 + lineIndex * 20;
+    jsmaf.root.children.push(line);
+    logLines.push(line);
+  }
 
-    // عدد السطور اللي هتظهر في منتصف الشاشة
-    var lines = 20;
-
-    for (var i = 0; i < lines; i++) {
-        var line = new jsmaf.Text();
-        line.text = '';
-        line.style = 'log_white';
-        line.x = 960;            // منتصف الشاشة
-        line.y = 300 + i * 28;   // يبدأ من فوق شوية وينزل
-        line.align = 'center';   // محاذاة في المنتصف
-        jsmaf.root.children.push(line);
-        logLines.push(line);
+  _log = function (msg, screen) {
+    if (screen) {
+      logBuf.push(msg);
+      if (logBuf.length > LOG_MAX_LINES) {
+        logBuf.shift();
+      }
+      for (var i = 0; i < LOG_MAX_LINES; i++) {
+        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
+      }
     }
-
-    // دالة اللوج
-    _log = function (msg, screen) {
-        if (screen) {
-            logBuf.push(msg);
-            if (logBuf.length > lines) logBuf.shift();
-
-            for (var i = 0; i < lines; i++) {
-                if (i < logBuf.length) {
-                    logLines[i].text = logBuf[i];
-
-                    // أول سطر فقط أخضر
-                    logLines[i].style = (i === 0) ? 'log_green' : 'log_white';
-                } else {
-                    logLines[i].text = '';
-                }
-            }
-        }
-
-        ws.broadcast(msg);
-    };
+    ws.broadcast(msg);
+  };
 }
 function yield_to_render(callback) {
   var id = jsmaf.setInterval(function () {
@@ -1074,7 +1056,7 @@ function setup_arbitrary_rw() {
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
   if (ret_write.eq(BigInt_Error)) {
     cleanup();
-    throw new Error('Netctrl failed - Reboot and try again');
+    throw new Error(' Jailbreak failed - Reboot and try again');
   }
 
   // Increase reference counts for the pipes.
@@ -1475,7 +1457,7 @@ function kreadslow64(address) {
   // debug("Buffer from kreadslow: " + hex(buffer));
   if (buffer.eq(BigInt_Error)) {
     cleanup();
-    throw new Error('Netctrl failed - Reboot and try again');
+    throw new Error(' Jailbreak failed - Reboot and try again');
   }
   return read64(buffer);
 }
@@ -1484,7 +1466,7 @@ function kreadslow64_safe(address) {
   if (buffer.eq(BigInt_Error)) {
     log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' + hex(address));
     cleanup();
-    throw new Error('Netctrl failed - Reboot and try again');
+    throw new Error(' Jailbreak failed - Reboot and try again');
   }
   return read64(buffer);
 }
@@ -1541,7 +1523,7 @@ function kreadslow(addr, size) {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
-        log('netctrl failed!');
+        log(' Jailbreak failed!');
         cleanup();
         return BigInt_Error;
       }
@@ -1598,7 +1580,7 @@ function kreadslow(addr, size) {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 5) {
-        log('netctrl failed!');
+        log(' Jailbreak failed!');
         cleanup();
         return BigInt_Error;
       }
@@ -1711,7 +1693,7 @@ function kwriteslow(addr, buffer, size) {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
-        log('netctrl failed!');
+        log(' Jailbreak failed!');
         cleanup();
         return BigInt_Error;
       }
@@ -1752,7 +1734,7 @@ function kwriteslow(addr, buffer, size) {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= 5) {
-        log('netctrl failed!');
+        log(' Jailbreak failed!');
         cleanup();
         return BigInt_Error;
       }
