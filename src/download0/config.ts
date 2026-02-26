@@ -2,12 +2,10 @@ export const CONFIG = {
   autolapse: false,
   autopoop: false,
   autoclose: false,
-  autoclose_delay: 0, // set to 20000 for ps4 hen
+  autoclose_delay: 3000,
   music: true,
   jb_behavior: 0,
   theme: 'default'
 }
 
-export const payloads = [ // to be ran after jailbroken
-//  '/mnt/sandbox/download/CUSA00960/payloads/example_payload.elf'
-]
+export const payloads = []

@@ -135,12 +135,6 @@ if (typeof lang === 'undefined') {
   new Style({ name: 'white', color: 'white', size: 24 })
   new Style({ name: 'title', color: 'white', size: 32 })
 
-  if (typeof CONFIG !== 'undefined' && CONFIG.music) {
-    const audio = new jsmaf.AudioClip()
-    audio.volume = 0.5
-    audio.open('file://../download0/sfx/bgm.wav')
-  }
-
   const background = new Image({
     url: 'file:///../download0/img/multiview_bg_VAF.png',
     x: 0,
@@ -444,26 +438,22 @@ if (typeof lang === 'undefined') {
       log('Config not loaded yet, skipping save')
       return
     }
-    let configContent = 'const CONFIG = {\n'
-    configContent += '    autolapse: ' + currentConfig.autolapse + ',\n'
-    configContent += '    autopoop: ' + currentConfig.autopoop + ',\n'
-    configContent += '    autoclose: ' + currentConfig.autoclose + ',\n'
-    configContent += '    autoclose_delay: ' + currentConfig.autoclose_delay + ', //set to 20000 for ps4 hen\n'
-    configContent += '    music: ' + currentConfig.music + ',\n'
-    configContent += '    jb_behavior: ' + currentConfig.jb_behavior + ',\n'
-    configContent += '    theme: \'' + currentConfig.theme + '\'\n'
-    configContent += '};\n\n'
-    configContent += 'const payloads = [ //to be ran after jailbroken\n'
-    for (let i = 0; i < userPayloads.length; i++) {
-      configContent += '    "' + userPayloads[i] + '"'
-      if (i < userPayloads.length - 1) {
-        configContent += ','
-      }
-      configContent += '\n'
+    const configData = {
+      config: {
+        autolapse: currentConfig.autolapse,
+        autopoop: currentConfig.autopoop,
+        autoclose: currentConfig.autoclose,
+        autoclose_delay: currentConfig.autoclose_delay,
+        music: currentConfig.music,
+        jb_behavior: currentConfig.jb_behavior,
+        theme: currentConfig.theme
+      },
+      payloads: userPayloads
     }
-    configContent += '];\n'
 
-    fs.write('config.js', configContent, function (err) {
+    const configContent = JSON.stringify(configData, null, 2)
+
+    fs.write('config.json', configContent, function (err) {
       if (err) {
         log('ERROR: Failed to save config: ' + err.message)
       } else {
@@ -473,15 +463,18 @@ if (typeof lang === 'undefined') {
   }
 
   function loadConfig () {
-    fs.read('config.js', function (err: Error | null, data?: string) {
+    fs.read('config.json', function (err: Error | null, data?: string) {
       if (err) {
         log('ERROR: Failed to read config: ' + err.message)
         return
       }
 
       try {
-        eval(data || '') // eslint-disable-line no-eval
-        if (typeof CONFIG !== 'undefined') {
+        const configData = JSON.parse(data || '{}')
+
+        if (configData.config) {
+          const CONFIG = configData.config
+
           currentConfig.autolapse = CONFIG.autolapse || false
           currentConfig.autopoop = CONFIG.autopoop || false
           currentConfig.autoclose = CONFIG.autoclose || false
@@ -498,12 +491,17 @@ if (typeof lang === 'undefined') {
           }
 
           // Preserve user's payloads
-          if (typeof payloads !== 'undefined' && Array.isArray(payloads)) {
-            userPayloads = payloads.slice()
+          if (configData.payloads && Array.isArray(configData.payloads)) {
+            userPayloads = configData.payloads.slice()
           }
 
           for (let i = 0; i < configOptions.length; i++) {
             updateValueText(i)
+          }
+          if (currentConfig.music) {
+            startBgmIfEnabled()
+          } else {
+            stopBgm()
           }
           configLoaded = true
           log('Config loaded successfully')
@@ -534,6 +532,17 @@ if (typeof lang === 'undefined') {
       } else {
         const boolKey = key as 'autolapse' | 'autopoop' | 'autoclose' | 'music'
         currentConfig[boolKey] = !currentConfig[boolKey]
+
+        if (boolKey === 'music') {
+          if (typeof CONFIG !== 'undefined') {
+            CONFIG.music = currentConfig.music
+          }
+          if (currentConfig.music) {
+            startBgmIfEnabled()
+          } else {
+            stopBgm()
+          }
+        }
 
         if (key === 'autolapse' && currentConfig.autolapse === true) {
           currentConfig.autopoop = false

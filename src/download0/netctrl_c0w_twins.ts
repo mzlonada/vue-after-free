@@ -4,7 +4,6 @@ if (typeof libc_addr === 'undefined') {
   include('userland.js');
 }
 include('kernel.js');
-include('stats-tracker.js');
 include('binloader.js');
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart(targetLength, padString) {

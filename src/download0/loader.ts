@@ -24,19 +24,17 @@ log('All scripts loaded')
 export function show_success (immediate?: boolean) {
   if (immediate) {
     jsmaf.root.children.push(bg_success)
-    log('Logging Success...')
+    log('Showing Success Image...')
   } else {
     setTimeout(() => {
       jsmaf.root.children.push(bg_success)
-      log('Logging Success...')
+      log('Showing Success Image...')
     }, 2000)
   }
 }
 
-if (typeof CONFIG !== 'undefined' && CONFIG.music) {
-  const audio = new jsmaf.AudioClip()
-  audio.volume = 0.5  // 50% volume
-  audio.open('file://../download0/sfx/bgm.wav')
+if (typeof startBgmIfEnabled === 'function') {
+  startBgmIfEnabled()
 }
 
 const is_jailbroken = checkJailbroken()
@@ -140,7 +138,7 @@ if (!is_jailbroken) {
 
       if (elapsed > max_wait_ms) {
         log('ERROR: Timeout waiting for exploit to complete (' + max_wait_seconds + ' seconds)')
-        throw new Error('Lapse timeout')
+        throw new Error('Lapse failed! restart and try again...')
       }
 
       // Poll every 500ms

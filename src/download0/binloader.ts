@@ -112,7 +112,8 @@ export function binloader_init () {
     '/mnt/usb1/payload.bin.bin',
     '/mnt/usb2/payload.bin.bin', // yes we have to do this 😅
     '/mnt/usb3/payload.bin.bin',
-    '/mnt/usb4/payload.bin.bin'
+    '/mnt/usb4/payload.bin.bin',
+    '/mnt/sandbox/download/CUSA00960/payload.bin'
   ]
   const DATA_PAYLOAD_PATH = '/data/payload.bin'
 
@@ -491,8 +492,8 @@ export function binloader_init () {
           log('Current PID: ' + pid_num)
 
           if (closeDelay > 0) {
-            log('CONFIG.autoclose enabled - closing in ' + (closeDelay / 1000) + ' seconds...')
-            utils.notify('Auto close in ' + (closeDelay / 1000) + ' seconds...')
+            log('CONFIG.autoclose enabled - closed after ' + (closeDelay / 1000) + ' seconds...')
+            utils.notify('Vue closed after ' + (closeDelay / 1000) + ' seconds...')
             const killId = jsmaf.setInterval(function () {
               jsmaf.clearInterval(killId)
               log('Sending SIGKILL to PID ' + pid_num)
