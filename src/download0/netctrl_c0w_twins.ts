@@ -4,6 +4,7 @@ if (typeof libc_addr === 'undefined') {
   include('userland.js');
 }
 include('kernel.js');
+include('stats-tracker.js');
 include('binloader.js');
 if (!String.prototype.padStart) {
   String.prototype.padStart = function padStart(targetLength, padString) {
@@ -115,14 +116,14 @@ var MSG_IOV_NUM = 0x17;
 
 // Params for kext stability
 var IPV6_SOCK_NUM = 96;
-var IOV_THREAD_NUM = 8;
-var UIO_THREAD_NUM = 8;
+var IOV_THREAD_NUM = 6;
+var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 8;
 var KQUEUE_ITERATIONS = 5000;
-var MAX_ROUNDS_TWIN = 5;
-var MAX_ROUNDS_TRIPLET = 200;
-var MAIN_CORE = 4;
+var MAX_ROUNDS_TWIN = 10;
+var MAX_ROUNDS_TRIPLET = 100;
+var MAIN_CORE = 0;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
 var RTP_SET = 1;
@@ -587,8 +588,7 @@ function wait_uio_writev() {
   // debug("Exit wait_uio_writev()");
 }
 function init() {
-  log('=== PS4 NetCtrl Jailbreak ===');
-  log('build: 603c72d1c73447ecb6dc22d03b486ced34f6423e');
+  log('***** Starting PS4 Jailbreak *****');
 
   FW_VERSION = get_fwversion();
   log('Detected PS4 firmware: ' + FW_VERSION);
@@ -919,53 +919,70 @@ var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
 
 function setup_log_screen() {
-  // مسح أي عناصر سابقة
-  jsmaf.root.children.length = 0;
+    // مسح أي عناصر سابقة
+    jsmaf.root.children.length = 0;
 
-  // خلفية
-  var bg = new Image({
-    url: 'file:///../download0/img/multiview_bg_VAF.png',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080
-  });
-  jsmaf.root.children.push(bg);
-
-  // ستايلات الألوان
-  for (var i = 0; i < LOG_COLORS.length; i++) {
-    new Style({
-      name: 'log' + i,
-      color: LOG_COLORS[i],
-      size: 20
+    // خلفية واحدة فقط (الصورة اللي هتحطها في نفس الفولدر)
+    var bg = new Image({
+        url: 'splash.jpg',
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080
     });
-  }
+    jsmaf.root.children.push(bg);
 
-  var logLines = [];
-  var logBuf = [];
+    // ستايل السطر الأول (أخضر)
+    new Style({
+        name: 'log_green',
+        color: '#00FF00',
+        size: 28
+    });
 
-  for (var lineIndex = 0; lineIndex < LOG_MAX_LINES; lineIndex++) {
-    var line = new jsmaf.Text();
-    line.text = '';
-    line.style = 'log' + (lineIndex % LOG_COLORS.length);
-    line.x = 20;
-    line.y = 120 + lineIndex * 20;
-    jsmaf.root.children.push(line);
-    logLines.push(line);
-  }
+    // ستايل باقي السطور (أبيض)
+    new Style({
+        name: 'log_white',
+        color: '#FFFFFF',
+        size: 26
+    });
 
-  _log = function (msg, screen) {
-    if (screen) {
-      logBuf.push(msg);
-      if (logBuf.length > LOG_MAX_LINES) {
-        logBuf.shift();
-      }
-      for (var i = 0; i < LOG_MAX_LINES; i++) {
-        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
-      }
+    var logLines = [];
+    var logBuf = [];
+
+    // عدد السطور اللي هتظهر في منتصف الشاشة
+    var lines = 20;
+
+    for (var i = 0; i < lines; i++) {
+        var line = new jsmaf.Text();
+        line.text = '';
+        line.style = 'log_white';
+        line.x = 960;            // منتصف الشاشة
+        line.y = 300 + i * 28;   // يبدأ من فوق شوية وينزل
+        line.align = 'center';   // محاذاة في المنتصف
+        jsmaf.root.children.push(line);
+        logLines.push(line);
     }
-    ws.broadcast(msg);
-  };
+
+    // دالة اللوج
+    _log = function (msg, screen) {
+        if (screen) {
+            logBuf.push(msg);
+            if (logBuf.length > lines) logBuf.shift();
+
+            for (var i = 0; i < lines; i++) {
+                if (i < logBuf.length) {
+                    logLines[i].text = logBuf[i];
+
+                    // أول سطر فقط أخضر
+                    logLines[i].style = (i === 0) ? 'log_green' : 'log_white';
+                } else {
+                    logLines[i].text = '';
+                }
+            }
+        }
+
+        ws.broadcast(msg);
+    };
 }
 function yield_to_render(callback) {
   var id = jsmaf.setInterval(function () {
@@ -1143,7 +1160,8 @@ function jailbreak() {
   log('Kernel base: ' + hex(kernel.addr.base));
   jailbreak_shared(FW_VERSION);
   log('Jailbreak Complete - JAILBROKEN');
-  utils.notify('The Vue-after-Free team congratulates you\nNetCtrl Finished OK\nEnjoy freedom');
+  utils.notify('Jailbreak Success');
+  utils.notify('M.ELHOUT');
   cleanup(false); // Close sockets and kill workers on success
   show_success();
   run_binloader();
