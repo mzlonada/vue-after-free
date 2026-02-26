@@ -29,8 +29,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Replace version string with commit hash
-        run: find ./dist -type f -name '*.js' -exec sed -i "s/%VERSION_STRING%/${{ github.sha }}/g" {} +
+      - name: Replace version strings
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          TAG="${{ github.event_name == 'release' && github.ref_name || '1.4' }}"
+          find ./dist -type f -name '*.js' -exec sed -i "s/%VERSION_STRING%/${SHORT_SHA}/g" {} +
+          find ./dist -type f -name '*.js' -exec sed -i "s/%VERSION_TAG%/${TAG}/g" {} +
 
       - name: Copy assets to dist
         run: |
@@ -40,6 +44,7 @@ jobs:
           cp -r src/download0/sfx dist/download0/
           cp -r src/download0/vid dist/download0/
           cp src/download0/*.aes dist/download0/
+          cp src/download0/config.json dist/download0/
 
       - name: Generate manifest
         run: |
@@ -56,15 +61,28 @@ jobs:
       - name: Build lite variant
         run: |
           mkdir -p dist-lite/download0
+          mkdir -p dist-lite/download0/themes/default
+          
 
           # Core runtime JS
           for f in serve.js.aes dummy_psn.json.aes loader.js userland.js types.js kernel.js \
                    lapse.js netctrl_c0w_twins.js binloader.js check-jailbroken.js defs.js; do
             cp dist/download0/$f dist-lite/download0/
+            
           done
 
-          # Hardcoded lite config - auto detect, auto close, no music, no menus
-          printf 'var CONFIG = {\n    autolapse: true,\n    autopoop: false,\n    autoclose: true,\n    autoclose_delay: 0,\n    music: false,\n    jb_behavior: 0\n};\nvar payloads = [];\n' > dist-lite/download0/config.js
+          # Hardcoded lite config - auto detect, auto close, no music, no menu
+          printf '{
+              "config": {
+                  "autolapse": true,
+                  "autopoop": false,
+                  "autoclose": true,
+                  "autoclose_delay": 3000,
+                  "music": false,
+                  "jb_behavior": 0
+              },
+              "payloads": []
+          }' > dist-lite/download0/config.json
 
           # Generate lite manifest
           cd dist-lite/download0
