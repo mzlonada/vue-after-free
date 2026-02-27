@@ -209,11 +209,14 @@ function build_rthdr(buf, size) {
 function set_sockopt(sd, level, optname, optval, optlen) {
   var result = setsockopt(sd, level, optname, optval, optlen);
   if (result.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
+    log('set_sockopt FAILED: sd=' + hex(sd) +
+        ' level=' + level +
+        ' optname=' + optname +
+        ' optlen=' + optlen);
     throw new Error('set_sockopt error: ' + hex(result));
   }
   return result;
 }
-
 // Global buffer to minimize footprint
 var sockopt_len_ptr = malloc(4);
 var nanosleep_timespec = malloc(0x10);
