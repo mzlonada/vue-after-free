@@ -7,7 +7,7 @@ import { show_success } from 'download0/loader'
 //
 // Usage: include('binloader.js') before userland/lapse
 //        After lapse completes, call: binloader_init()
-
+utils
 let binloader_auto_run_done = false
 
 export function binloader_init () {
@@ -492,7 +492,7 @@ export function binloader_init () {
           log('Current PID: ' + pid_num)
 
           if (closeDelay > 0) {
-            log('CONFIG.autoclose enabled - closed after ' + (closeDelay / 1000) + ' seconds...')
+            log('Auto Exit from psvue');
             const killId = jsmaf.setInterval(function () {
               jsmaf.clearInterval(killId)
               log('Sending SIGKILL to PID ' + pid_num)

@@ -118,8 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 8;
-var KQUEUE_ITERATIONS = 4000;
+var TRIPLEFREE_ITERATIONS = 10;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -919,57 +918,57 @@ function init_threading() {
   saved_fpu_ctrl = Number(read32(jmpbuf.add(0x40)));
   saved_mxcsr    = Number(read32(jmpbuf.add(0x44)));
 }
+
 var LOG_MAX_LINES = 38;
-var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
-
 function setup_log_screen() {
-  // مسح أي عناصر سابقة
-  jsmaf.root.children.length = 0;
+    // مسح أي عناصر سابقة
+    jsmaf.root.children.length = 0;
 
-  // خلفية
-  var bg = new Image({
-    url: 'file:///../download0/splash.jpg',
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080
-  });
-  jsmaf.root.children.push(bg);
+    // خلفية بلون خفيف (رمادي فاتح)
+    var bg = new jsmaf.Rect();
+    bg.x = 0;
+    bg.y = 0;
+    bg.width = 1920;
+    bg.height = 1080;
+    bg.color = "#202020"; // رمادي غامق خفيف، مش أسود
+    jsmaf.root.children.push(bg);
 
-  // ستايلات الألوان
-  for (var i = 0; i < LOG_COLORS.length; i++) {
+    // ستايل واحد فقط للون الأبيض
     new Style({
-      name: 'log' + i,
-      color: '#FFFFFF',
-      size: 20
+        name: 'log_white',
+        color: '#FFFFFF',
+        size: 20
     });
-  }
 
-  var logLines = [];
-  var logBuf = [];
+    var logLines = [];
+    var logBuf = [];
 
-  for (var lineIndex = 0; lineIndex < LOG_MAX_LINES; lineIndex++) {
-    var line = new jsmaf.Text();
-    line.text = '';
-    line.style = 'log' + (lineIndex % LOG_COLORS.length);
-    line.x = 20;
-    line.y = 120 + lineIndex * 20;
-    jsmaf.root.children.push(line);
-    logLines.push(line);
-  }
-
-  _log = function (msg, screen) {
-    if (screen) {
-      logBuf.push(msg);
-      if (logBuf.length > LOG_MAX_LINES) {
-        logBuf.shift();
-      }
-      for (var i = 0; i < LOG_MAX_LINES; i++) {
-        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
-      }
+    for (var i = 0; i < LOG_MAX_LINES; i++) {
+        var line = new jsmaf.Text();
+        line.text = '';
+        line.style = 'log_white';
+        line.x = 20;
+        line.y = 120 + i * 20;
+        jsmaf.root.children.push(line);
+        logLines.push(line);
     }
-    ws.broadcast(msg);
-  };
+
+    _log = function (msg, screen) {
+        if (screen) {
+            logBuf.push(msg);
+            if (logBuf.length > LOG_MAX_LINES) {
+                logBuf.shift();
+            }
+            for (var i = 0; i < LOG_MAX_LINES; i++) {
+                logLines[i].text = i < logBuf.length ? logBuf[i] : '';
+            }
+        }
+        console.log(msg);
+    };
+
+    log = function(msg) {
+        _log(msg, true);
+    };
 }
 function yield_to_render(callback) {
   jsmaf.setTimeout(function () {
@@ -1567,7 +1566,7 @@ function leak_kqueue() {
   var count = 0;
 
   // استخدام الثابت العالمي بدل MAX_KQ المحلي
-  var MAX_KQ = KQUEUE_ITERATIONS;
+  var MAX_KQ = 7000;
 
   while (count < MAX_KQ) {
     count++;
@@ -2433,5 +2432,5 @@ setTimeout(function () {
       show_fail();
     }
   }
-}, 500);
+}, 700);
 

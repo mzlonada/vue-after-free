@@ -11,7 +11,6 @@ function show_fail_screen(message) {
         console.log(msg);
     }
 }
-
 function checkJailbroken() {
     try {
         fn.register(24, 'getuid', [], 'bigint');
@@ -36,7 +35,7 @@ function checkJailbroken() {
 
         var jailbroken = uidAfterVal === 0;
         log(jailbroken ? 'Already jailbroken' : 'Not jailbroken');
-
+        log('Exit psvue');
         return jailbroken;
 
     } catch (e) {
