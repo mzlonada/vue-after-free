@@ -1,5 +1,5 @@
 // include('userland.js')
-
+/* eslint-disable prefer-rest-params */
 if (typeof libc_addr === 'undefined') {
   include('userland.js');
 }
