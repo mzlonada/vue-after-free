@@ -2402,13 +2402,11 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
 
   // It's gonna loop
 
-function someFunction() {
   return {
     rop,
-    loop_size: 0
+    loop_size: 0 // loop_size
   };
-} // ← القوس ده مهم جدًا
-
+}
 try {
   netctrl_exploit();
 } catch (e) {
