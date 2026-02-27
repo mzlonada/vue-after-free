@@ -923,7 +923,7 @@ function setup_log_screen() {
 
   // خلفية
   var bg = new Image({
-    url: './splash.jpg',
+    url: 'file:///../download0/splash.jpg',
     x: 0,
     y: 0,
     width: 1920,
