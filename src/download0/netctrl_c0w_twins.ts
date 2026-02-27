@@ -921,54 +921,39 @@ function init_threading() {
 
 var LOG_MAX_LINES = 38;
 function setup_log_screen() {
-    // مسح أي عناصر سابقة
-    jsmaf.root.children.length = 0;
+  jsmaf.root.children.length = 0;
+  // ستايل واحد فقط - أبيض
+  new Style({
+    name: 'log_white',
+    color: '#FFFFFF',
+    size: 20
+  });
 
-    // خلفية بلون خفيف (رمادي فاتح)
-    var bg = new jsmaf.Rect();
-    bg.x = 0;
-    bg.y = 0;
-    bg.width = 1920;
-    bg.height = 1080;
-    bg.color = "#202020"; // رمادي غامق خفيف، مش أسود
-    jsmaf.root.children.push(bg);
+  var logLines = [];
+  var logBuf = [];
 
-    // ستايل واحد فقط للون الأبيض
-    new Style({
-        name: 'log_white',
-        color: '#FFFFFF',
-        size: 20
-    });
+  for (var lineIndex = 0; lineIndex < LOG_MAX_LINES; lineIndex++) {
+    var line = new jsmaf.Text();
+    line.text = '';
+    line.style = 'log_white';   // ← كل السطور أبيض
+    line.x = 20;
+    line.y = 120 + lineIndex * 20;
+    jsmaf.root.children.push(line);
+    logLines.push(line);
+  }
 
-    var logLines = [];
-    var logBuf = [];
-
-    for (var i = 0; i < LOG_MAX_LINES; i++) {
-        var line = new jsmaf.Text();
-        line.text = '';
-        line.style = 'log_white';
-        line.x = 20;
-        line.y = 120 + i * 20;
-        jsmaf.root.children.push(line);
-        logLines.push(line);
+  _log = function (msg, screen) {
+    if (screen) {
+      logBuf.push(msg);
+      if (logBuf.length > LOG_MAX_LINES) {
+        logBuf.shift();
+      }
+      for (var i = 0; i < LOG_MAX_LINES; i++) {
+        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
+      }
     }
-
-    _log = function (msg, screen) {
-        if (screen) {
-            logBuf.push(msg);
-            if (logBuf.length > LOG_MAX_LINES) {
-                logBuf.shift();
-            }
-            for (var i = 0; i < LOG_MAX_LINES; i++) {
-                logLines[i].text = i < logBuf.length ? logBuf[i] : '';
-            }
-        }
-        console.log(msg);
-    };
-
-    const logMsg = function(msg) {
-        _log(msg, true);
-    };
+    ws.broadcast(msg);
+  };
 }
 function yield_to_render(callback) {
   jsmaf.setTimeout(function () {
@@ -2417,20 +2402,19 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
 
   // It's gonna loop
 
+function someFunction() {
   return {
     rop,
-    loop_size: 0 // loop_size
+    loop_size: 0
   };
-}
-setTimeout(function () {
-  try {
-    netctrl_exploit();
-  } catch (e) {
-    log('ERROR in netctrl_exploit: ' + e.message);
-    cleanup(true);
-    if (typeof show_fail === 'function') {
-      show_fail();
-    }
-  }
-}, 700);
+} // ← القوس ده مهم جدًا
 
+try {
+  netctrl_exploit();
+} catch (e) {
+  log('ERROR in netctrl_exploit: ' + e.message);
+  cleanup(true);
+  if (typeof show_fail === 'function') {
+    show_fail();
+  }
+}
