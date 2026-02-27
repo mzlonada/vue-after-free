@@ -966,8 +966,9 @@ function setup_log_screen() {
         console.log(msg);
     };
 
-    log = function(msg) {
+    const logMsg = function(msg) {
         _log(msg, true);
+};
     };
 }
 function yield_to_render(callback) {
