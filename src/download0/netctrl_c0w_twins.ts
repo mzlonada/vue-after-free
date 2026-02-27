@@ -2407,12 +2407,5 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-try {
-  netctrl_exploit();
-} catch (e) {
-  log('ERROR in netctrl_exploit: ' + e.message);
-  cleanup(true);
-  if (typeof show_fail === 'function') {
-    show_fail();
-  }
-}
+netctrl_exploit();
+// cleanup();
