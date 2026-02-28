@@ -908,24 +908,25 @@ function init_threading() {
 }
 
 var LOG_MAX_LINES = 38;
+
 function setup_log_screen() {
   jsmaf.root.children.length = 0;
-  // ستايل واحد فقط - أبيض
+
   new Style({
     name: 'log_white',
     color: '#FFFFFF',
     size: 20
   });
 
-  var logLines = [];
-  var logBuf = [];
+  const logLines = [];
+  const logBuf = [];
 
-  for (var lineIndex = 0; lineIndex < LOG_MAX_LINES; lineIndex++) {
-    var line = new jsmaf.Text();
+  for (let i = 0; i < LOG_MAX_LINES; i++) {
+    const line = new jsmaf.Text();
     line.text = '';
-    line.style = 'log_white';   // ← كل السطور أبيض
+    line.style = 'log_white';
     line.x = 20;
-    line.y = 120 + lineIndex * 20;
+    line.y = 120 + i * 20;
     jsmaf.root.children.push(line);
     logLines.push(line);
   }
@@ -936,14 +937,24 @@ function setup_log_screen() {
       if (logBuf.length > LOG_MAX_LINES) {
         logBuf.shift();
       }
-      for (var i = 0; i < LOG_MAX_LINES; i++) {
-        logLines[i].text = i < logBuf.length ? logBuf[i] : '';
+
+      // تحديث السطور اللي فيها رسائل
+      for (let i = 0; i < logBuf.length; i++) {
+        logLines[i].text = logBuf[i];
+      }
+
+      // مسح السطور الفاضية
+      for (let i = logBuf.length; i < LOG_MAX_LINES; i++) {
+        logLines[i].text = '';
       }
     }
+
     ws.broadcast(msg);
   };
 }
 function yield_to_render(callback) {
+  if (typeof callback !== 'function') return;
+
   jsmaf.setTimeout(function () {
     try {
       callback();
