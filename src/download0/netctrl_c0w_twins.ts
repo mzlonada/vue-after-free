@@ -999,33 +999,65 @@ function exploit_phase_trigger() {
     if (typeof show_fail === 'function') show_fail();
     return;
   }
+
   exploit_count++;
   log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
+
   if (!trigger_ucred_triplefree()) {
+    // المحاولة دي فشلت في التربل فري → جرّب تاني
     yield_to_render(exploit_phase_trigger);
     return;
   }
+
   log('Leaking kqueue...');
   yield_to_render(exploit_phase_leak);
 }
 
 function exploit_phase_leak() {
-  leak_kqueue_safe();  // لو فشلت هترمي Error وتوقف الجيلبريك بنضافة
+  try {
+    leak_kqueue_safe();   // لو فشلت هترمي Error
+  } catch (e) {
+    log('Leak failed: ' + e.message);
+    // تنظيف محاولة واحدة (مش cleanup كامل)
+    cleanup(false);
+    // نرجع نعيد من أول التربل فري في نفس الجلسة
+    yield_to_render(exploit_phase_trigger);
+    return;
+  }
 
   log(' Exploit Read/Write...');
   yield_to_render(exploit_phase_rw);
 }
 
 function exploit_phase_rw() {
-  setup_arbitrary_rw();
+  try {
+    setup_arbitrary_rw();   // نفس الفكرة: لو فشلت ترمي Error
+  } catch (e) {
+    log('R/W setup failed: ' + e.message);
+    cleanup(false);
+    yield_to_render(exploit_phase_trigger);
+    return;
+  }
+
   log('Jailbreaking...');
   yield_to_render(exploit_phase_jailbreak);
 }
 
 function exploit_phase_jailbreak() {
-  log(' Stability by M.ELHOUT...');
-  jailbreak();
+  try {
+    log(' Stability by M.ELHOUT...');
+    jailbreak();            // لو فيها Error → نفس المعاملة
+  } catch (e) {
+    log('Jailbreak failed: ' + e.message);
+    cleanup(false);
+    yield_to_render(exploit_phase_trigger);
+    return;
+  }
+
+  // لو وصلنا هنا → الجيلبريك نجح
+  exploit_end = true;
 }
+
 function setup_arbitrary_rw() {
   log('Setting up arbitrary R/W...');
 
