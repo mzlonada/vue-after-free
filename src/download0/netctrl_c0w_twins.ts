@@ -1057,7 +1057,6 @@ function exploit_phase_jailbreak() {
   // لو وصلنا هنا → الجيلبريك نجح
   exploit_end = true;
 }
-
 function setup_arbitrary_rw() {
   log('Setting up arbitrary R/W...');
 
@@ -1618,25 +1617,14 @@ function leak_kqueue() {
 
   return true;
 }
+
 function leak_kqueue_safe() {
-  var ok = false;
-
-  for (var i = 0; i < 3; i++) {
-    if (leak_kqueue()) {
-      ok = true;
-      break;
-    }
-    log('[leak_kqueue_safe] failed, retrying...');
+  try {
+    return leak_kqueue();
+  } catch (e) {
+    log('leak_kqueue_safe ERROR: ' + e.message);
+    return false;
   }
-
-  if (!ok) {
-    log('Jailbreak failed!');
-    log('leak_kqueue_safe: unable to leak kqueue after retries');
-    cleanup();
-    throw new Error(' Jailbreak failed - Reboot and try again');
-  }
-
-  return true;
 }
 function kreadslow64(address) {
   debug('kreadslow64: addr=' + hex(address));

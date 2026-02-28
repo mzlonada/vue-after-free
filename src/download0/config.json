@@ -8,5 +8,5 @@
         "jb_behavior": 0,
         "theme": "default"
     },
-    "payloads": []
+    "payloads": ["fake-signin.bin"]
 }
