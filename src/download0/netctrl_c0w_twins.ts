@@ -2408,11 +2408,3 @@ try {
     show_fail();
   }
 }
-
-
-
-// شيل ده كله
-for (var i = 0; i < 0x20; i = i + 8) {
-  var readed = kread64(master_r_pipe_data.add(i));
-  debug('Reading master_r_pipe_data[' + i + '] : ' + hex(readed));
-}
