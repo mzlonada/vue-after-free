@@ -1012,8 +1012,6 @@ function exploit_phase_leak() {
     return;
   }
   yield_to_render(exploit_phase_rw);
-  log(' Exploit Read/Write...');
-  log(' Stability by M.ELHOUT...');
   
 }
 function exploit_phase_rw() {
@@ -1029,6 +1027,7 @@ function exploit_phase_jailbreak() {
 }
 function setup_arbitrary_rw() {
   log(' Exploit Read/Write...');
+  log(' Stability by M.ELHOUT...');
 
   // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
