@@ -610,7 +610,7 @@ function init() {
     return amaj === bmaj ? (amin - bmin) : (amaj - bmaj);
   };
 
-  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '14.00') > 0) {
+  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
     log('Unsupported PS4 firmware\nSupported: 9.00-14.00\nAborting...');
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
@@ -964,26 +964,23 @@ function yield_to_render(callback) {
     }
   }, 0);
 }
+
 var exploit_count = 0;
 var exploit_end = false;
-
 function netctrl_exploit() {
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
-    log('Unsupported firmware, aborting.');
     return;
   }
   log('Setting up exploit...');
   yield_to_render(exploit_phase_setup);
 }
-
 function exploit_phase_setup() {
   var ok = setup();
   if (!ok) {
     log('Setup failed, aborting exploit.');
-    cleanup(true);
-    if (typeof show_fail === 'function') show_fail();
+    cleanup();
     return;
   }
   log('Workers spawned');
@@ -991,71 +988,38 @@ function exploit_phase_setup() {
   exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
-
 function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    cleanup(true);
-    if (typeof show_fail === 'function') show_fail();
+    cleanup();
     return;
   }
-
   exploit_count++;
   log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
-
   if (!trigger_ucred_triplefree()) {
-    // المحاولة دي فشلت في التربل فري → جرّب تاني
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
   log('Leaking kqueue...');
   yield_to_render(exploit_phase_leak);
 }
-
 function exploit_phase_leak() {
-  try {
-    leak_kqueue_safe();   // لو فشلت هترمي Error
-  } catch (e) {
-    log('Leak failed: ' + e.message);
-    // تنظيف محاولة واحدة (مش cleanup كامل)
-    cleanup(false);
-    // نرجع نعيد من أول التربل فري في نفس الجلسة
+  if (!leak_kqueue_safe()) {
+    log('[leak_kqueue_safe] failed, retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
   log(' Exploit Read/Write...');
+  log(' Stability by M.ELHOUT...');
   yield_to_render(exploit_phase_rw);
 }
-
 function exploit_phase_rw() {
-  try {
-    setup_arbitrary_rw();   // نفس الفكرة: لو فشلت ترمي Error
-  } catch (e) {
-    log('R/W setup failed: ' + e.message);
-    cleanup(false);
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
-
+  setup_arbitrary_rw();
   log('Jailbreaking...');
   yield_to_render(exploit_phase_jailbreak);
 }
-
 function exploit_phase_jailbreak() {
-  try {
-    log(' Stability by M.ELHOUT...');
-    jailbreak();            // لو فيها Error → نفس المعاملة
-  } catch (e) {
-    log('Jailbreak failed: ' + e.message);
-    cleanup(false);
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
-
-  // لو وصلنا هنا → الجيلبريك نجح
-  exploit_end = true;
+  jailbreak();
 }
 function setup_arbitrary_rw() {
   log('Setting up arbitrary R/W...');
