@@ -995,31 +995,34 @@ function exploit_phase_trigger() {
     return;
   }
   exploit_count++;
-  log('Triggering Retrying... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
+  log('Triggering Retrying... ');
   if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('Leaking Exploit...');
   yield_to_render(exploit_phase_leak);
+  log('Leaking Exploit...');
+  
 }
 function exploit_phase_leak() {
   if (!leak_kqueue_safe()) {
-    log('[leak_kqueue_safe] failed, retrying...');
     yield_to_render(exploit_phase_trigger);
+    log('[leak_kqueue_safe] failed, retrying...');
+    
     return;
   }
-  
+  yield_to_render(exploit_phase_rw);
   log(' Exploit Read/Write...');
   log(' Stability by M.ELHOUT...');
-  yield_to_render(exploit_phase_rw);
+  
 }
 function exploit_phase_rw() {
   setup_arbitrary_rw();
+  yield_to_render(exploit_phase_jailbreak);
   log('Jailbreaking...');
   utils.notify('Jailbreak Success');
   utils.notify('M.ELHOUT');
-  yield_to_render(exploit_phase_jailbreak);
+  
 }
 function exploit_phase_jailbreak() {
   jailbreak();
@@ -2384,12 +2387,5 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-try {
-  netctrl_exploit();
-} catch (e) {
-  log('ERROR in netctrl_exploit: ' + e.message);
-  cleanup(true);
-  if (typeof show_fail === 'function') {
-    show_fail();
-  }
-}
+netctrl_exploit();
+// cleanup();
