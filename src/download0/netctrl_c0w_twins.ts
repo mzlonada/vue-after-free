@@ -976,10 +976,8 @@ var exploit_end = false;
 
 function netctrl_exploit() {
   setup_log_screen();
-  log('netctrl_exploit: starting...', true);  // ← سطر تأكيد أولي
   var supported_fw = init();
   if (!supported_fw) {
-    log('Unsupported firmware, aborting.');
     return;
   }
   log('Setting up exploit...');
@@ -2407,5 +2405,12 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-netctrl_exploit();
-// cleanup();
+try {
+  netctrl_exploit();
+} catch (e) {
+  log('ERROR in netctrl_exploit: ' + e.message);
+  cleanup(true);
+  if (typeof show_fail === 'function') {
+    show_fail();
+  }
+}
