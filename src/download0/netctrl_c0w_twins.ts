@@ -995,12 +995,12 @@ function exploit_phase_trigger() {
     return;
   }
   exploit_count++;
-  log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
+  log('Triggering Retrying... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
   if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('Leaking kqueue...');
+  log('Leaking Exploit...');
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
@@ -1009,6 +1009,7 @@ function exploit_phase_leak() {
     yield_to_render(exploit_phase_trigger);
     return;
   }
+  
   log(' Exploit Read/Write...');
   log(' Stability by M.ELHOUT...');
   yield_to_render(exploit_phase_rw);
@@ -1016,13 +1017,15 @@ function exploit_phase_leak() {
 function exploit_phase_rw() {
   setup_arbitrary_rw();
   log('Jailbreaking...');
+  utils.notify('Jailbreak Success');
+  utils.notify('M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
-  log('Setting up arbitrary R/W...');
+  log(' Exploit Read/Write...');
 
   // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
@@ -1195,8 +1198,6 @@ function jailbreak() {
   jailbreak_shared(FW_VERSION);
 
   log('Jailbreak Complete - JAILBROKEN');
-  utils.notify('Jailbreak Success');
-  utils.notify('M.ELHOUT');
 
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
