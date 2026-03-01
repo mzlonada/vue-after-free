@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 7;
+var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -817,6 +817,8 @@ function cleanup(kill_workers = false) {
   set_rtprio(prev_rtprio);
 
   log('Cleanup completed');
+  log('Jailbreak failed — please reboot your PS4.');
+  utils.notify('Jailbreak failed stage — please reboot your PS4.');
 }
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
@@ -1050,15 +1052,29 @@ function exploit_phase_leak() {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  
   log(' Exploit Read/Write...');
   log(' Stability by M.ELHOUT...');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  setup_arbitrary_rw();
+
+  // محاولة الدخول لمرحلة R/W
+  var ok = true;
+  try {
+    setup_arbitrary_rw();
+  } catch (e) {
+    ok = false;
+  }
+
+  // لو فشل قبل ما يوصل للـ R/W الحقيقي
+  if (!ok) {
+    utils.notify('Jailbreak failed leak stage — please reboot your PS4.');
+    return;
+  }
+
+  // نجاح كامل
   utils.notify('Jailbreak Success');
-  utils.notify('M.ELHOUT');
+  utils.notify('Stability by M.ELHOUT');
 }
 function exploit_phase_jailbreak() {
   jailbreak();
@@ -1571,7 +1587,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 5000;
+  var MAX_KQ = 3500;
 
   while (count < MAX_KQ) {
     count++;
@@ -1675,12 +1691,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 5000;
-var KWRITE_MAX_UIO_RECLAIM = 5000;
+var KREAD_MAX_UIO_RECLAIM  = 4000;
+var KWRITE_MAX_UIO_RECLAIM = 4000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 3000;
-var KWRITE_MAX_IOV_RECLAIM = 3000;
+var KREAD_MAX_IOV_RECLAIM  = 4000;
+var KWRITE_MAX_IOV_RECLAIM = 4000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
