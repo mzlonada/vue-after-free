@@ -1032,7 +1032,6 @@ function exploit_phase_setup() {
   var ok = setup();
   if (!ok) {
     log('Setup failed, aborting exploit.');
-    cleanup();
     exploit_end = false;
     return;
   }
@@ -1046,7 +1045,6 @@ function exploit_phase_trigger() {
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    cleanup();
     exploit_end = false;
     return;
   }
@@ -1068,7 +1066,6 @@ function exploit_phase_leak() {
 
   if (!leak_kqueue_safe()) {
     log('Leak failed — retrying...');
-    cleanup();
     yield_to_render(exploit_phase_trigger);
     return;
   }
