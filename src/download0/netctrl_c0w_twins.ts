@@ -1072,7 +1072,7 @@ function exploit_phase_rw() {
 
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
-  utils.notify('سبحان الله وبحمده سبحان الله العظيم ');
+  utils.notify('&#1587;&#1576;&#1581;&#1575;&#1606; &#1575;&#1604;&#1604;&#1607; &#1608;&#1576;&#1581;&#1605;&#1583;&#1607; &#1587;&#1576;&#1581;&#1575;&#1606; &#1575;&#1604;&#1604;&#1607; &#1575;&#1604;&#1593;&#1592;&#1610;&#1605;');
 }
 function exploit_phase_jailbreak() {
   jailbreak();
