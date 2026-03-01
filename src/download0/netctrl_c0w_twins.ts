@@ -999,9 +999,11 @@ function setup_log_screen() {
   };
 }
 function yield_to_render(callback) {
+  if (exploit_end) return;            // ← لو خلصنا، امنع أي فازة متأخرة
   if (typeof callback !== 'function') return;
 
   jsmaf.setTimeout(function () {
+    if (exploit_end) return;          // ← حماية إضافية
     try {
       callback();
     } catch (e) {
@@ -1025,72 +1027,58 @@ function netctrl_exploit() {
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
+  if (exploit_end) return;
+
   var ok = setup();
   if (!ok) {
     log('Setup failed, aborting exploit.');
     cleanup();
+    exploit_end = true;
     return;
   }
+
   log('Workers spawned');
   exploit_count = 0;
-  exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
+  if (exploit_end) return;
+
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
     cleanup();
+    exploit_end = true;
     return;
   }
+
   exploit_count++;
   log('Triggering Retrying... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
+
   if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
+
   log('Leaking Exploit...');
   yield_to_render(exploit_phase_leak);
 }
+
 function exploit_phase_leak() {
+  if (exploit_end) return;
 
   if (!leak_kqueue_safe()) {
     utils.notify('Leak failed — retrying...');
-    yield_to_render(exploit_phase_trigger);   // ← هنا السحر
-    return;
-  }
-
-  log(' Exploit Read/Write...');
-  log(' Stability by M.ELHOUT...');
-  yield_to_render(exploit_phase_rw);
-}
-function exploit_phase_rw_prepare() {
-  var ready = check_rw_ready();   // ← دي اللي تتأكد من كل الشروط
-  if (!ready) {
-    // لو مش جاهز، ارجع للمرحلة اللي قبلها
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
-  // جاهز؟ روح للمرحلة الأساسية
-  yield_to_render(exploit_phase_rw_commit);
+  log('Exploit Read/Write...');
+  log(' Stability by M.ELHOUT...');
+  yield_to_render(exploit_phase_rw);
 }
-function exploit_phase_rw_commit() {
-  var ok = true;
 
-  try {
-    setup_arbitrary_rw();   // ← هنا التنفيذ فقط
-  } catch (e) {
-    ok = false;
-  }
-
-  if (!ok) {
-    utils.notify('Jailbreak failed — please reboot your PS4.');
-    return;
-  }
-
-  utils.notify('Jailbreak Success');
-}
 function exploit_phase_rw() {
+  if (exploit_end) return;
 
   var ok = true;
   try {
@@ -1101,9 +1089,11 @@ function exploit_phase_rw() {
 
   if (!ok) {
     utils.notify('Jailbreak failed — please reboot your PS4.');
+    exploit_end = true;
     return;
   }
 
+  exploit_end = true;  // ← مهم جدًا: امنع أي فازة متأخرة
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
   utils.notify('Sobhan allh W b Hamdh');
