@@ -1033,7 +1033,7 @@ function exploit_phase_setup() {
   if (!ok) {
     log('Setup failed, aborting exploit.');
     cleanup();
-    exploit_end = true;
+    exploit_end = false;
     return;
   }
 
@@ -1046,7 +1046,8 @@ function exploit_phase_trigger() {
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    exploit_end = true;
+    cleanup();
+    exploit_end = false;
     return;
   }
 
@@ -1067,6 +1068,7 @@ function exploit_phase_leak() {
 
   if (!leak_kqueue_safe()) {
     log('Leak failed — retrying...');
+    cleanup();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1088,17 +1090,18 @@ function exploit_phase_rw() {
 
   if (!ok) {
     utils.notify('Jailbreak failed — please reboot your PS4.');
-    exploit_end = true;
+    exploit_end = false;
     return;
   }
   log(' Stability by M.ELHOUT...');
   utils.notify('Jailbreak Success');
-  utils.notify('*Stability by M.ELHOUT');
-  utils.notify('Sobhan allh W b Hamdh*');
-  utils.notify('Sobhan allh alazeem');
+  utils.notify('Stability by M.ELHOUT');
+  utils.notify('< Sob7an allh W b Hamdh >');
+  utils.notify('< Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
   jailbreak();
+  cleanup();
   exploit_end = true;
 }
 function safe_fhold_fd(fd, label) {
