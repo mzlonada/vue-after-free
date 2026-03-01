@@ -1093,7 +1093,7 @@ function exploit_phase_rw() {
     return;
   }
 
-  exploit_end = true;  // ← مهم جدًا: امنع أي فازة متأخرة
+    // ← مهم جدًا: امنع أي فازة متأخرة
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
   utils.notify('Sobhan allh W b Hamdh');
@@ -1101,6 +1101,7 @@ function exploit_phase_rw() {
 }
 function exploit_phase_jailbreak() {
   jailbreak();
+  exploit_end = true;
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
