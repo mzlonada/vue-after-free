@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 4;
-var TRIPLEFREE_ITERATIONS = 6;
+var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1063,6 +1063,33 @@ function exploit_phase_leak() {
   log(' Stability by M.ELHOUT...');
   yield_to_render(exploit_phase_rw);
 }
+function exploit_phase_rw_prepare() {
+  var ready = check_rw_ready();   // ← دي اللي تتأكد من كل الشروط
+  if (!ready) {
+    // لو مش جاهز، ارجع للمرحلة اللي قبلها
+    yield_to_render(exploit_phase_trigger);
+    return;
+  }
+
+  // جاهز؟ روح للمرحلة الأساسية
+  yield_to_render(exploit_phase_rw_commit);
+}
+function exploit_phase_rw_commit() {
+  var ok = true;
+
+  try {
+    setup_arbitrary_rw();   // ← هنا التنفيذ فقط
+  } catch (e) {
+    ok = false;
+  }
+
+  if (!ok) {
+    utils.notify('Jailbreak failed — please reboot your PS4.');
+    return;
+  }
+
+  utils.notify('Jailbreak Success');
+}
 function exploit_phase_rw() {
 
   var ok = true;
@@ -1079,7 +1106,8 @@ function exploit_phase_rw() {
 
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
-  utils.notify('&#1587;&#1576;&#1581;&#1575;&#1606;&#32;&#1575;&#1604;&#1604;&#1607;&#32;&#1608;&#1576;&#1581;&#1605;&#1583;&#1607;&#32;&#1587;&#1576;&#1581;&#1575;&#1606;&#32;&#1575;&#1604;&#1604;&#1607;&#32;&#1575;&#1604;&#1593;&#1592;&#1610;&#1605;');
+  utils.notify('Sobhan allh W b Hamdh');
+  utils.notify('Sobhan allh alazeem');
 }
 function exploit_phase_jailbreak() {
   jailbreak();
@@ -1731,8 +1759,8 @@ var KREAD_MAX_UIO_RECLAIM  = 7000;
 var KWRITE_MAX_UIO_RECLAIM = 7000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 3500;
-var KWRITE_MAX_IOV_RECLAIM = 3500;
+var KREAD_MAX_IOV_RECLAIM  = 5000;
+var KWRITE_MAX_IOV_RECLAIM = 5000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
