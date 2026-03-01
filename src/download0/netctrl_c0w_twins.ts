@@ -1046,7 +1046,6 @@ function exploit_phase_trigger() {
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    cleanup();
     exploit_end = true;
     return;
   }
@@ -1067,13 +1066,13 @@ function exploit_phase_leak() {
   if (exploit_end) return;
 
   if (!leak_kqueue_safe()) {
-    utils.notify('Leak failed — retrying...');
+    log('Leak failed — retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
   log('Exploit Read/Write...');
-  log(' Stability by M.ELHOUT...');
+  
   yield_to_render(exploit_phase_rw);
 }
 
@@ -1092,11 +1091,10 @@ function exploit_phase_rw() {
     exploit_end = true;
     return;
   }
-
-    // ← مهم جدًا: امنع أي فازة متأخرة
+  log(' Stability by M.ELHOUT...');
   utils.notify('Jailbreak Success');
-  utils.notify('Stability by M.ELHOUT');
-  utils.notify('Sobhan allh W b Hamdh');
+  utils.notify('*Stability by M.ELHOUT');
+  utils.notify('Sobhan allh W b Hamdh*');
   utils.notify('Sobhan allh alazeem');
 }
 function exploit_phase_jailbreak() {
