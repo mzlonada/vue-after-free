@@ -225,6 +225,11 @@ var nc_clear_buf = malloc(8);
 var spawn_thr_args = malloc(0x80);
 var spawn_tid = malloc(0x8);
 var spawn_cpid = malloc(0x8);
+
+function arabic(str) {
+  return str.split('').map(c => '&#' + c.charCodeAt(0) + ';').join('');
+}
+
 function get_sockopt(sd, level, optname, optval, optlen) {
   // const len_ptr = malloc(4);
   write32(sockopt_len_ptr, optlen);
@@ -1048,7 +1053,7 @@ function exploit_phase_trigger() {
 function exploit_phase_leak() {
 
   if (!leak_kqueue_safe()) {
-    utils.notify('<span style="color:red;font-weight:bold;">Leak failed — please reboot your PS4.</span>');
+    utils.notify('Leak failed — please reboot your PS4.');
     return;
   }
 
@@ -1066,13 +1071,13 @@ function exploit_phase_rw() {
   }
 
   if (!ok) {
-    utils.notify('<span style="color:red;font-weight:bold;">Jailbreak failed — please reboot your PS4.</span>');
+    utils.notify('Jailbreak failed — please reboot your PS4.');
     return;
   }
 
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
-  utils.notify('&#1587;&#1576;&#1581;&#1575;&#1606; &#1575;&#1604;&#1604;&#1607; &#1608;&#1576;&#1581;&#1605;&#1583;&#1607; &#1587;&#1576;&#1581;&#1575;&#1606; &#1575;&#1604;&#1604;&#1607; &#1575;&#1604;&#1593;&#1592;&#1610;&#1605;');
+  utils.notify(arabic('سبحان الله وبحمده سبحان الله العظيم'));
 }
 function exploit_phase_jailbreak() {
   jailbreak();
