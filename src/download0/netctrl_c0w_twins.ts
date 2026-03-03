@@ -1657,7 +1657,7 @@ function leak_kqueue() {
 
   var count     = 0;
   var MAX_KQ    = 4000;
-  var INNER_MAX = 60;
+  var INNER_MAX = 50;
 
   var success   = false;
 
@@ -1685,7 +1685,7 @@ function leak_kqueue() {
     while (inner_tries < INNER_MAX) {
 
       // 5) دبق خفيف
-      for (var d = 0; d < 10; d++) { //delay 
+      for (var d = 0; d < 5; d++) { //delay 
       }
 
       // 6) محاولة قراءة rthdr بعد free
@@ -1797,8 +1797,8 @@ var KREAD_MAX_UIO_RECLAIM  = 2000;
 var KWRITE_MAX_UIO_RECLAIM = 2000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 1000;
-var KWRITE_MAX_IOV_RECLAIM = 1000;
+var KREAD_MAX_IOV_RECLAIM  = 500;
+var KWRITE_MAX_IOV_RECLAIM = 500;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;

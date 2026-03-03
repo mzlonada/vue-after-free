@@ -3,7 +3,7 @@
         "autolapse": false,
         "autopoop": false,
         "autoclose": false,
-        "autoclose_delay": 1500,
+        "autoclose_delay": 3500,
         "music": true,
         "jb_behavior": 0,
         "theme": "default"
