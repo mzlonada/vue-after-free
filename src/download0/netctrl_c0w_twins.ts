@@ -1793,12 +1793,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 3000;
-var KWRITE_MAX_UIO_RECLAIM = 3000;
+var KREAD_MAX_UIO_RECLAIM  = 2000;
+var KWRITE_MAX_UIO_RECLAIM = 2000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 2000;
-var KWRITE_MAX_IOV_RECLAIM = 2000;
+var KREAD_MAX_IOV_RECLAIM  = 1000;
+var KWRITE_MAX_IOV_RECLAIM = 1000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
