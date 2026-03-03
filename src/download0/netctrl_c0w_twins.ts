@@ -1634,8 +1634,8 @@ function leak_kqueue() {
   var magic_add  = leak_rthdr.add(0x08);
 
   var count      = 0;
-  var MAX_KQ     = 4000;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 300;      // أعلى من 500 لزيادة فرصة الـ window
+  var MAX_KQ     = 7000;     // أقل من 2000 لأن النجاح بقى أعلى
+  var INNER_MAX  = 200;      // أعلى من 500 لزيادة فرصة الـ window
 
   var success    = false;
 
@@ -1760,8 +1760,8 @@ var KREAD_MAX_UIO_RECLAIM  = 10000;
 var KWRITE_MAX_UIO_RECLAIM = 10000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 5000;
-var KWRITE_MAX_IOV_RECLAIM = 5000;
+var KREAD_MAX_IOV_RECLAIM  = 10000;
+var KWRITE_MAX_IOV_RECLAIM = 10000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
