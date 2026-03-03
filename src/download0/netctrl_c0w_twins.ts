@@ -1074,6 +1074,8 @@ function exploit_phase_leak() {
 }
 
 function exploit_phase_rw() {
+  log(' Exploit Read/Write...');
+  log('Stability by M.ELHOUT');
   if (exploit_end) return;
 
   var ok = true;
@@ -1114,8 +1116,7 @@ function safe_fhold_fd(fd, label) {
   fhold(fp);
 }
 function setup_arbitrary_rw() {
-  log(' Exploit Read/Write...');
-  log('Stability by M.ELHOUT');
+
 
   // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
@@ -1632,7 +1633,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 1000; 
+  var MAX_KQ = 2000; 
 
   while (count < MAX_KQ) {
     count++;
