@@ -1092,7 +1092,6 @@ function exploit_phase_rw() {
 
   if (!ok) {
     log('R/W setup failed — please reboot your PS4.');
-    exploit_end = true;
     return;
   }
 
@@ -1686,7 +1685,8 @@ function leak_kqueue() {
     while (inner_tries < INNER_MAX) {
 
       // 5) دبق خفيف
-      for (var d = 0; d < 10; d++) {}
+      for (var d = 0; d < 10; d++) { //delay 
+      }
 
       // 6) محاولة قراءة rthdr بعد free
       get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
