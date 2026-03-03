@@ -1635,7 +1635,7 @@ function leak_kqueue() {
 
   var count      = 0;
   var MAX_KQ     = 3000;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 500;      // أعلى من 500 لزيادة فرصة الـ window
+  var INNER_MAX  = 200;      // أعلى من 500 لزيادة فرصة الـ window
 
   var success    = false;
 
