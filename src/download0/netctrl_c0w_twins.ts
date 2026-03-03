@@ -1659,7 +1659,7 @@ function leak_kqueue() {
     while (inner_tries < INNER_MAX) {
 
       // دبق خفيف
-      for (var d = 0; d < 25; d++) {
+      for (var d = 0; d < 15; d++) {
         // noop
       }
 
@@ -1674,7 +1674,7 @@ function leak_kqueue() {
       }
 
       // منع الكراش
-      if ((inner_tries % 50) === 0) {
+      if ((inner_tries % 20) === 0) {
         sched_yield();
       }
 
