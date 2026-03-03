@@ -1633,7 +1633,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 4000; 
+  var MAX_KQ = 10000; 
 
   while (count < MAX_KQ) {
     count++;
