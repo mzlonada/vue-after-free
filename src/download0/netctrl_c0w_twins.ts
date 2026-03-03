@@ -1659,7 +1659,7 @@ function leak_kqueue() {
     while (inner_tries < INNER_MAX) {
 
       // micro‑delay ثابت (بديل debug)
-      for (var d = 0; d < 40; d++) { asm_nop(); }
+      for (var d = 0; d < 40; d++) {}
 
       get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
