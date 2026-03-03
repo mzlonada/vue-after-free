@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 10;
+var TRIPLEFREE_ITERATIONS = 8;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1633,7 +1633,7 @@ function leak_kqueue() {
   var magic_add = leak_rthdr.add(0x08);
 
   var count = 0;
-  var MAX_KQ = 10000; 
+  var MAX_KQ = 6000; 
 
   while (count < MAX_KQ) {
     count++;
@@ -1653,7 +1653,7 @@ function leak_kqueue() {
     
     // توازن إيقاع: ندي الكيرنل نفس ياخده
     sched_yield();
-    nanosleep_fun(2.5); // كانت 1، خليناها 2 علشان ثبات أعلى
+    nanosleep_fun(3); // كانت 1، خليناها 2 علشان ثبات أعلى
 
     // محاولة التسريب
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
@@ -1744,8 +1744,8 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM  = 4000;
+var KWRITE_MAX_UIO_RECLAIM = 4000;
 
 // IOV reclaim max loops
 var KREAD_MAX_IOV_RECLAIM  = 2000;
