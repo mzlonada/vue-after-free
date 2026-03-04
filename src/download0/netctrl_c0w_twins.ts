@@ -1657,7 +1657,7 @@ function leak_kqueue() {
 
   var count     = 0;
   var MAX_KQ    = 4000;
-  var INNER_MAX = 50;
+  var INNER_MAX = 40;
 
   var success   = false;
 
@@ -1793,15 +1793,15 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM  = 1200;
+var KWRITE_MAX_UIO_RECLAIM = 1200;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 500;
-var KWRITE_MAX_IOV_RECLAIM = 500;
+var KREAD_MAX_IOV_RECLAIM  = 300;
+var KWRITE_MAX_IOV_RECLAIM = 300;
 
 // Memory exhaustion threshold
-var MEMORY_ZERO_THRESHOLD = 5;
+var MEMORY_ZERO_THRESHOLD = 2;
 
 // Offsets inside leak_rthdr
 var UIO_LEAK_OFFSET = 0x08;
