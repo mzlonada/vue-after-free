@@ -117,7 +117,7 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
-var MAIN_LOOP_ITERATIONS = 5;
+var MAIN_LOOP_ITERATIONS = 4;
 var TRIPLEFREE_ITERATIONS = 10;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
@@ -1661,7 +1661,7 @@ function leak_kqueue() {
     close(kq);
     sched_yield();
   }
-
+  sched_yield();
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
@@ -1738,12 +1738,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 1500;
-var KWRITE_MAX_UIO_RECLAIM = 1500;
+var KREAD_MAX_UIO_RECLAIM  = 2000;
+var KWRITE_MAX_UIO_RECLAIM = 2000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 250;
-var KWRITE_MAX_IOV_RECLAIM = 250;
+var KREAD_MAX_IOV_RECLAIM  = 500;
+var KWRITE_MAX_IOV_RECLAIM = 500;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 3;
