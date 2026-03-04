@@ -110,8 +110,8 @@ var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
 var UCRED_SIZE = 0x168;
 var RTHDR_TAG = 0x13370000;
-var UIO_IOV_NUM = 0x0C; // 12 بدل 20
-var MSG_IOV_NUM = 0x0C; // 12 بدل 23
+var UIO_IOV_NUM = 0x14; // 20
+var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
 var IPV6_SOCK_NUM = 96;
@@ -121,7 +121,7 @@ var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 7;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
-var MAIN_CORE = 0;
+var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
 var RTP_SET = 1;
