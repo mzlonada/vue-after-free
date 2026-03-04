@@ -1052,7 +1052,6 @@ function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W - Retrying exploit.');
     cleanup();
-    sched_yield(); 
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1063,7 +1062,6 @@ function exploit_phase_trigger() {
   if (!trigger_ucred_triplefree()) {
     log('Triplefree failed — Retrying exploit.');
     cleanup();
-    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1077,7 +1075,6 @@ function exploit_phase_leak() {
   if (!leak_kqueue_safe()) {
     log('Leak failed — Retrying exploit.');
     cleanup();
-    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1094,7 +1091,6 @@ function exploit_phase_rw() {
   } catch (e) {
     log('R/W setup failed — please reboot your PS4.');
     cleanup();
-    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1111,7 +1107,6 @@ function exploit_phase_jailbreak() {
 
   jailbreak();
   cleanup();
-  sched_yield();
   log('Jailbreak completed successfully');
 }
 function safe_fhold_fd(fd, label) {
@@ -1658,7 +1653,8 @@ function leak_kqueue() {
 
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
-
+  sched_yield(); // تهوية صغيرة قبل get_rthdr
+  
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
