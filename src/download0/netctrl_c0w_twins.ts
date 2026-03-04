@@ -1031,7 +1031,6 @@ function exploit_phase_setup() {
   var ok = setup();
   if (!ok) {
     log('Setup failed, aborting exploit.');
-    cleanup();
     return;
   }
   log('Workers spawned');
@@ -1040,7 +1039,6 @@ function exploit_phase_setup() {
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
-  if (exploit_end) return;
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W - Retrying exploit.');
@@ -1072,14 +1070,7 @@ function exploit_phase_leak() {
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  try {
-    setup_arbitrary_rw();
-  } catch (e) {
-    log('R/W setup failed — please reboot your PS4.');
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
-
+  setup_arbitrary_rw();
   log('Stability by M.ELHOUT...');
   yield_to_render(exploit_phase_jailbreak);
 
@@ -1090,6 +1081,7 @@ function exploit_phase_rw() {
 function exploit_phase_jailbreak() {
   jailbreak();
   log('Jailbreak completed successfully');
+  cleanup();
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
