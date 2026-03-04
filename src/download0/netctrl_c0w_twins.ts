@@ -1125,8 +1125,6 @@ function exploit_phase_jailbreak() {
   catch(e) { log('Jailbreak error.'); }
 
   log('Jailbreak completed successfully');
-  cleanup();
-  exploit_end = true;
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
