@@ -1113,6 +1113,7 @@ function exploit_phase_rw() {
   }
 
   log('R/W OK — moving to jailbreak...');
+  log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
 
   utils.notify('Jailbreak Success');
