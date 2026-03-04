@@ -1706,6 +1706,7 @@ function leak_kqueue() {
     close(kq);
     sched_yield();
   }
+  sched_yield();
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
