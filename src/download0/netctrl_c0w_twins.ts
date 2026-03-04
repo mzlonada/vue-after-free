@@ -1015,35 +1015,28 @@ function yield_to_render(callback) {
     }
   }, 0);
 }
+
 var exploit_count = 0;
 var exploit_end   = false;
-
 function netctrl_exploit() {
   setup_log_screen();
-
   var supported_fw = init();
   if (!supported_fw) {
     return;
   }
-
-  exploit_end   = false;
-  exploit_count = 0;
-
   log('Setting up exploit...');
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
-  if (exploit_end) return;
-
   var ok = setup();
   if (!ok) {
-    log('Setup failed — exploit aborted.');
-    exploit_end = true;
+    log('Setup failed, aborting exploit.');
+    cleanup();
     return;
   }
-
   log('Workers spawned');
   exploit_count = 0;
+  exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
@@ -1070,27 +1063,21 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  if (exploit_end) return;
-
   if (!leak_kqueue_safe()) {
-    log('Leak failed — Retrying exploit.');
-    cleanup();
+    log('[leak_safe] failed, retrying...');
+    log('[leak_safe] Retrying_leak...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
   log('Exploit Read/Write...');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  if (exploit_end) return;
-
   try {
     setup_arbitrary_rw();
   } catch (e) {
     log('R/W setup failed — please reboot your PS4.');
-    cleanup();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1103,10 +1090,7 @@ function exploit_phase_rw() {
   utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
-  if (exploit_end) return;
-
   jailbreak();
-  cleanup();
   log('Jailbreak completed successfully');
 }
 function safe_fhold_fd(fd, label) {
@@ -1653,8 +1637,7 @@ function leak_kqueue() {
 
   // نحرر triplets[1] عشان نستخدمه في التسريب
   free_rthdr(ipv6_socks[triplets[1]]);
-  sched_yield(); // تهوية صغيرة قبل get_rthdr
-  
+
   var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
