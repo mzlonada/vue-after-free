@@ -1063,8 +1063,6 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  if (exploit_end) return;
-
   let ok = false;
   try { ok = leak_kqueue_safe(); }
   catch(e) { ok = false; }
@@ -1078,15 +1076,10 @@ function exploit_phase_leak() {
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  if (exploit_end) return;
-
   try {
     setup_arbitrary_rw();
   } catch(e) {
     log('R/W setup failed — retrying...');
-    cleanup();
-    sched_yield();
-    yield_to_render(exploit_phase_trigger);
     return;
   }
 
@@ -1099,12 +1092,7 @@ function exploit_phase_rw() {
   utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
-  if (exploit_end) return;
-
-  try { jailbreak(); }
-  catch(e) { log('Jailbreak error.'); }
-
-  log('Jailbreak completed successfully');
+  jailbreak();
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
