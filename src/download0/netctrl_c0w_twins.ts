@@ -117,8 +117,8 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
-var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 7;
+var MAIN_LOOP_ITERATIONS = 5;
+var TRIPLEFREE_ITERATIONS = 10;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 4;
@@ -1640,7 +1640,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 7000;
+  var MAX_KQ = 3000;
 
   while (count < MAX_KQ) {
     count++;
