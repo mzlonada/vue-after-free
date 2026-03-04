@@ -1044,7 +1044,6 @@ function exploit_phase_trigger() {
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W - Retrying exploit.');
-    cleanup();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1054,7 +1053,6 @@ function exploit_phase_trigger() {
 
   if (!trigger_ucred_triplefree()) {
     log('Triplefree failed — Retrying exploit.');
-    cleanup();
     yield_to_render(exploit_phase_trigger);
     return;
   }
