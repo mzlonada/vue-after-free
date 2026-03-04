@@ -1034,28 +1034,18 @@ function netctrl_exploit() {
 
   yield_to_render(exploit_phase_setup);
 }
-
 function exploit_phase_setup() {
-  if (exploit_end) return;
-
-  var ok = false;
-  try { ok = setup(); }
-  catch(e) { ok = false; }
-
+  var ok = setup();
   if (!ok) {
-    log('Setup failed — aborting.');
+    log('Setup failed, aborting exploit.');
     cleanup();
-    exploit_end = true;
     return;
   }
-
   log('Workers spawned');
   exploit_count = 0;
-  exploit_end   = false;
-
+  exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
-
 function exploit_phase_trigger() {
   if (exploit_end) return;
 
@@ -1075,7 +1065,6 @@ function exploit_phase_trigger() {
 
   if (!ok) {
     log('Trigger failed — retrying...');
-    cleanup();
     sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
@@ -1093,7 +1082,6 @@ function exploit_phase_leak() {
 
   if (!ok) {
     log('Leak failed — retrying...');
-    cleanup();
     sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
