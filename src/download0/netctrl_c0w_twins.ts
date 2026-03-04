@@ -1042,7 +1042,7 @@ function exploit_phase_trigger() {
 
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed to acquire kernel R/W - Retrying exploit.');
-    yield_to_render(exploit_phase_trigger);
+    cleanup();
     return;
   }
 
