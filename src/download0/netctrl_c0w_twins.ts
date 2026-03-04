@@ -1074,7 +1074,6 @@ function exploit_phase_trigger() {
 
   if (!ok) {
     log('Trigger failed — retrying...');
-    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1091,7 +1090,6 @@ function exploit_phase_leak() {
 
   if (!ok) {
     log('Leak failed — retrying...');
-    sched_yield();
     yield_to_render(exploit_phase_trigger);
     return;
   }
