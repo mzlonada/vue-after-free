@@ -113,7 +113,7 @@ export function binloader_init () {
     '/mnt/usb2/payload.bin.bin', // yes we have to do this 😅
     '/mnt/usb3/payload.bin.bin',
     '/mnt/usb4/payload.bin.bin',
-    '/mnt/sandbox/download/CUSA00960/payload.bin'
+    '/mnt/sandbox/download/CUSA00960/payload.bin',
     '/mnt/usb0/fake-signin.bin',
     '/mnt/usb1/fake-signin.bin',
     '/mnt/usb2/fake-signin.bin',
