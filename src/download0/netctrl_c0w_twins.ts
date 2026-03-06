@@ -986,6 +986,9 @@ function exploit_phase_rw() {
   log('R/W OK — moving to jailbreak.');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
+  utils.notify('Jailbreak Success');
+  utils.notify('Stability by M.ELHOUT');
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
 
@@ -998,9 +1001,7 @@ function exploit_phase_jailbreak() {
   }
   // لو jb نجح
   log('Jailbreak completed successfully');
-  utils.notify('Jailbreak Success');
-  utils.notify('Stability by M.ELHOUT');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
+
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
