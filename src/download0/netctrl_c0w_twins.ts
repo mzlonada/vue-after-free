@@ -970,13 +970,14 @@ function exploit_phase_leak() {
   const leak_ok = leak_kqueue_safe();
 
   if (!leak_ok) {
-    log('Leaking Failed......');
+    log('Leaking Failed.');
     log('Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
 
   // لو leak نجح
+  log('Leaking success.');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
@@ -984,30 +985,27 @@ function exploit_phase_rw() {
   const rw_ok = setup_arbitrary_rw();
 
   if (!rw_ok) {
-
-    // حاول الانتقال لمرحلة leak
-    yield_to_render(exploit_phase_leak);
-
-    const leak_ok = leak_kqueue_safe();
-
-    if (!leak_ok) {
-      log('R/W Failed...');
-      log('Restart your PS4.');
-      cleanup();
-      return;
-    }
-
+    log('R/W Failed.');
+    log('Restart your PS4.');
+    cleanup();
     return;
   }
-
   // لو R/W نجح
-  log('R/W OK — moving to jailbreak...');
+  log('R/W OK — moving to jailbreak.....');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
-  jailbreak();
 
+  const jb_ok = jailbreak();
+
+  if (!jb_ok) {
+    log('jailbreak Failed...');
+    log('Restart your PS4.');
+    cleanup();
+    return;
+  }
+  // لو jb نجح
   log('Jailbreak completed successfully');
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
