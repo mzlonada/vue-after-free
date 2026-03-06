@@ -986,9 +986,6 @@ function exploit_phase_rw() {
   log('R/W OK — moving to jailbreak.');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
-  utils.notify('Jailbreak Success');
-  utils.notify('Stability by M.ELHOUT');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function exploit_phase_jailbreak() {
 
@@ -1071,6 +1068,9 @@ function setup_arbitrary_rw() {
   } catch (e) {}
   remove_uaf_file();
   log('Arbitrary R/W ready');
+  utils.notify('Jailbreak Success');
+  utils.notify('Stability by M.ELHOUT');
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
