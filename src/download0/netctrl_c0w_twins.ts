@@ -921,7 +921,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 8); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 4); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 var exploit_count = 0;
 var exploit_end = false;
@@ -966,24 +966,24 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  if (exploit_end) return;
-  var ok = false;
-  try {
-    ok = leak_kqueue_safe();
-  } catch (e) {
-    ok = false;
-  }
-  if (!ok) {
+  leak_kqueue_safe();
+  if (!leak_kqueue_safe()) {
     log('Leaking Failed......');
     log('Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
+  log('R/W OK — moving to jailbreak...');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
   setup_arbitrary_rw();
-  log('R/W OK — moving to jailbreak...');
+  if (!leak_kqueue_safe()) {
+    log('R/W Failed......');
+    log('Restart your ps4 .');
+    cleanup();
+    return;
+  }
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
   utils.notify('Jailbreak Success');
