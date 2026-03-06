@@ -966,38 +966,52 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  leak_kqueue_safe();
-  if (!leak_kqueue_safe()) {
+
+  const leak_ok = leak_kqueue_safe();
+
+  if (!leak_ok) {
     log('Leaking Failed......');
     log('Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('R/W OK — moving to jailbreak...');
+
+  // لو leak نجح
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  setup_arbitrary_rw();
-  if (!leak_kqueue_safe()) {
-    log('R/W Failed......');
-    log('Restart your ps4 .');
-    cleanup();
+
+  const rw_ok = setup_arbitrary_rw();
+
+  if (!rw_ok) {
+
+    // حاول الانتقال لمرحلة leak
+    yield_to_render(exploit_phase_leak);
+
+    const leak_ok = leak_kqueue_safe();
+
+    if (!leak_ok) {
+      log('R/W Failed...');
+      log('Restart your PS4.');
+      cleanup();
+      return;
+    }
+
     return;
   }
+
+  // لو R/W نجح
+  log('R/W OK — moving to jailbreak...');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
+}
+function exploit_phase_jailbreak() {
+  jailbreak();
+
+  log('Jailbreak completed successfully');
   utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
   utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
-}
-function exploit_phase_jailbreak() {
-  if (exploit_end) return;
-  try {
-    jailbreak();
-  } catch (e) {
-    log('Jailbreak error.');
-  }
-  log('Jailbreak completed successfully');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1012,7 +1026,6 @@ function safe_fhold_fd(fd, label) {
   fhold(fp);
 }
 function setup_arbitrary_rw() {
-  log('Setting up arbitrary R/W...');
   if (kq_fdp.eq(0)) {
     log('Invalid kq_fdp');
     throw new Error('rw_fail');
