@@ -938,12 +938,8 @@ function netctrl_exploit() {
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
-  var ok = setup();
-  if (!ok) {
-    log('Setup failed, aborting exploit.');
-    cleanup();
-    return;
-  }
+ setup()
+
   log('Workers spawned');
   exploit_count = 0;
   exploit_end = false;
@@ -970,8 +966,7 @@ function exploit_phase_leak() {
   const leak_ok = leak_kqueue_safe();
 
   if (!leak_ok) {
-    log('Leaking Failed.');
-    log('Retry triggering...');
+    log('Leaking Failed.# Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -983,21 +978,12 @@ function exploit_phase_leak() {
 function exploit_phase_rw() {
 
   setup_arbitrary_rw()
-  log('R/W OK — moving to jailbreak.');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
 
-  const jb_ok = jailbreak();
-
-  if (!jb_ok) {
-    log('jailbreak Failed...');
-    log('Restart your PS4.');
-    return;
-  }
-  // لو jb نجح
-  log('Jailbreak completed successfully');
+  jailbreak()
 
 }
 function safe_fhold_fd(fd, label) {
@@ -1067,9 +1053,8 @@ function setup_arbitrary_rw() {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {}
   remove_uaf_file();
-  log('Arbitrary R/W ready');
   utils.notify('Stability by M.ELHOUT');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
+  
 }
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
@@ -1152,9 +1137,11 @@ function jailbreak() {
 
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
+  run_binloader();
   show_success();
   utils.notify('Jailbreak Success');
-  run_binloader();
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
+  
 }
 function fhold(fp) {
   // زيادة f_count مع حراسة بسيطة
