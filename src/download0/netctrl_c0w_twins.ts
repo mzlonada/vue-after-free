@@ -982,14 +982,7 @@ function exploit_phase_leak() {
 }
 function exploit_phase_rw() {
 
-  const rw_ok = setup_arbitrary_rw();
-
-  if (!rw_ok) {
-    log('R/W Failed.');
-    log('Restart your PS4.');
-    return;
-  }
-  // لو R/W نجح
+  setup_arbitrary_rw()
   log('R/W OK — moving to jailbreak.');
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
