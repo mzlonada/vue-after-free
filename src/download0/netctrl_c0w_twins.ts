@@ -1068,7 +1068,6 @@ function setup_arbitrary_rw() {
   } catch (e) {}
   remove_uaf_file();
   log('Arbitrary R/W ready');
-  utils.notify('Jailbreak Success');
   utils.notify('Stability by M.ELHOUT');
   utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
 }
@@ -1154,6 +1153,7 @@ function jailbreak() {
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
   show_success();
+  utils.notify('Jailbreak Success');
   run_binloader();
 }
 function fhold(fp) {
