@@ -1053,7 +1053,7 @@ function setup_arbitrary_rw() {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {}
   remove_uaf_file();
-  utils.notify('Stability by M.ELHOUT');
+  
   
 }
 function find_allproc() {
@@ -1137,11 +1137,9 @@ function jailbreak() {
 
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
-  run_binloader();
   show_success();
-  utils.notify('Jailbreak Success');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
-  
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
+  run_binloader();
 }
 function fhold(fp) {
   // زيادة f_count مع حراسة بسيطة
