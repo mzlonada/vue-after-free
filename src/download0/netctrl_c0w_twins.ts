@@ -1395,7 +1395,7 @@ function trigger_ucred_triplefree() {
   }
   return true;
 }
-function leak_kqueue_simplified() {
+function leak_kqueue() {
   debug('Leaking kqueue...');
 
   // 1) صفّر الذاكرة مرة واحدة فقط
