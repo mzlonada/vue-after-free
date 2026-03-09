@@ -923,34 +923,23 @@ function yield_to_render(callback) {
     }
   }, 1); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
+
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
-    log('Unsupported firmware — exploit aborted.');
     return;
   }
-  log('Setting up exploit...');
+  log('Stability by M.ELHOUT');
   exploit_end = false;
   exploit_count = 0;
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
-  if (exploit_end) return;
-  let ok = false;
-  try {
-    ok = setup();
-  } catch (e) {
-    ok = false;
-  }
-  if (!ok) {
-    log('Setup failed — aborting.');
-    cleanup();
-    exploit_end = true;
-    return;
-  }
+  setup();
+  
   exploit_count = 0;
   exploit_end = false;
 
