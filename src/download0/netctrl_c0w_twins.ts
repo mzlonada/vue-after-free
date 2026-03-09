@@ -119,8 +119,8 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 4;
 var TRIPLEFREE_ITERATIONS = 4;
-var MAX_ROUNDS_TWIN = 10;
-var MAX_ROUNDS_TRIPLET = 120;
+var MAX_ROUNDS_TWIN = 5;
+var MAX_ROUNDS_TRIPLET = 100;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -933,17 +933,14 @@ function netctrl_exploit() {
     return;
   }
   log('Stability by M.ELHOUT');
-  exploit_end = false;
-  exploit_count = 0;
   yield_to_render(exploit_phase_setup);
 }
-function exploit_phase_setup() {
-  setup();
-  
-  exploit_count = 0;
-  exploit_end = false;
-
-  yield_to_render(exploit_phase_trigger);
+function exploit_phase_setup () {
+  setup()
+  log('Workers spawned')
+  exploit_count = 0
+  exploit_end = false
+  yield_to_render(exploit_phase_trigger)
 }
 function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
