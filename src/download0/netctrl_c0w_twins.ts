@@ -477,9 +477,9 @@ function wait_for(addr, threshold) {
     threshold = new BigInt(0x0, threshold);
   }
   var spins = 0;
-  var MAX_SPINS = 100000;
+  var MAX_SPINS = 20000;
   while (!read64(addr).eq(threshold)) {
-    nanosleep_fun(1);
+    nanosleep_fun(2);
     spins++;
     if (spins >= MAX_SPINS) {
       log('wait_for: timeout waiting for ' + hex(addr));
@@ -598,9 +598,7 @@ function wait_uio_writev() {
 function init() {
   log('***** Starting PS4 Jailbreak *****');
   FW_VERSION = get_fwversion();
-  log('Detected PS4 firmware: ' + FW_VERSION);
   if (!FW_VERSION) {
-    log('Failed to detect PS4 firmware version.\nAborting...');
     send_notification('Failed to detect PS4 firmware version.\nAborting...');
     return false;
   }
@@ -617,7 +615,6 @@ function init() {
     return amaj === bmaj ? amin - bmin : amaj - bmaj;
   };
   if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
-    log('Unsupported PS4 firmware\nSupported: 9.00-13.04\nAborting...');
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
   }
@@ -640,7 +637,6 @@ function setup() {
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
-      log('setup: invalid spray_rthdr_len');
       cleanup(true);
       return false;
     }
@@ -653,7 +649,6 @@ function setup() {
     write64(msg.add(0x18), MSG_IOV_NUM);
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
-      log('setup: malloc(dummyBuffer) failed');
       cleanup(true);
       return false;
     }
@@ -669,7 +664,6 @@ function setup() {
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
-        log('setup: failed to create ipv6_socks[' + s + ']');
         cleanup(true);
         return false;
       }
@@ -691,19 +685,16 @@ function setup() {
     fcntl(new BigInt(victimWpipeFd), F_SETFL, O_NONBLOCK);
     init_threading();
     if (!create_workers()) {
-      log('setup: create_workers failed');
       cleanup(true);
       return false;
     }
     if (!init_workers()) {
-      log('setup: init_workers failed');
       cleanup(true);
       return false;
     }
     debug('Spawned workers iov[' + IOV_THREAD_NUM + '] uio_readv[' + UIO_THREAD_NUM + '] uio_writev[' + UIO_THREAD_NUM + ']');
     return true;
   } catch (e) {
-    log('setup ERROR: ' + e.message);
     cleanup(true);
     return false;
   }
@@ -712,7 +703,6 @@ function cleanup() {
   var kill_workers = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
   if (cleanup_called) return;
   cleanup_called = true;
-  log('Cleaning up...');
 
   // Close IPv6 sockets safely
   for (var sd of ipv6_socks) {
@@ -790,7 +780,6 @@ function find_twins() {
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
-        log(' Jailbreak failed!');
         cleanup();
         return false;
       }
@@ -822,7 +811,6 @@ function find_twins() {
   }
   twins[0] = -1;
   twins[1] = -1;
-  log('find_twins failed');
   return false;
 }
 function find_triplet(master, other, iterations) {
@@ -1479,12 +1467,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 800;
-var KWRITE_MAX_UIO_RECLAIM = 800;
+var KREAD_MAX_UIO_RECLAIM = 300;
+var KWRITE_MAX_UIO_RECLAIM = 300;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 80;
-var KWRITE_MAX_IOV_RECLAIM = 80;
+var KREAD_MAX_IOV_RECLAIM = 40;
+var KWRITE_MAX_IOV_RECLAIM = 40;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 4;
