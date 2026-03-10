@@ -907,7 +907,7 @@ function setup_log_screen() {
     ws.broadcast(msg);
   };
 }
-function yield_micro(callback) {
+function yield_to_render(callback) {
   if (exploit_end) return;
   if (typeof callback !== 'function') return;
   jsmaf.setTimeout(function () {
@@ -937,7 +937,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 4); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 1); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 
 var exploit_count = 0;
@@ -981,14 +981,14 @@ function exploit_phase_leak() {
 
   log('Leaking done .....');
 
-  yield_micro(exploit_phase_rw);
+  yield_to_render(exploit_phase_rw);
 }
 function exploit_phase_rw() {
   setup_arbitrary_rw();
 
   log('Write done .....');
 
-  yield_micro(exploit_phase_jailbreak);
+  yield_to_render(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
   jailbreak();
