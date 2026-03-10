@@ -908,7 +908,7 @@ function yield_to_render(callback) {
         show_fail();
       }
     }
-  }, 1); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
+  }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
 }
 var exploit_count = 0;
 var exploit_end = false;
@@ -1474,15 +1474,15 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM = 1200;
+var KWRITE_MAX_UIO_RECLAIM = 12000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 1000;
-var KWRITE_MAX_IOV_RECLAIM = 1000;
+var KREAD_MAX_IOV_RECLAIM = 200;
+var KWRITE_MAX_IOV_RECLAIM = 200;
 
 // Memory exhaustion threshold
-var MEMORY_ZERO_THRESHOLD = 4;
+var MEMORY_ZERO_THRESHOLD = 5;
 
 // Offsets inside leak_rthdr
 var UIO_LEAK_OFFSET = 0x08;
