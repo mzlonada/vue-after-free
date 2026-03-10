@@ -907,22 +907,7 @@ function setup_log_screen() {
     ws.broadcast(msg);
   };
 }
-function yield_to_render(callback) {
-  if (exploit_end) return;
-  if (typeof callback !== 'function') return;
-  jsmaf.setTimeout(function () {
-    if (exploit_end) return;
-    try {
-      callback();
-    } catch (e) {
-      log('ERROR: ' + e.message);
-      cleanup(true);
-      if (typeof show_fail === 'function') {
-        show_fail();
-      }
-    }
-  }, 0); // تهوية مثالية — لا تبطّئ ولا تضغط على النظام
-}
+
 function yield_to_render(callback) {
   if (exploit_end) return;
   if (typeof callback !== 'function') return;
