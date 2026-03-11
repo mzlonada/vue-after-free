@@ -237,25 +237,30 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
+  log('[RTHDR] set_rthdr sd=' + hex(sd) +
+      ' buf=' + hex(buf) +
+      ' len=' + len);
   return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
 }
+
 function get_rthdr(sd, buf, max_len) {
+  log('[RTHDR] get_rthdr sd=' + hex(sd) +
+      ' buf=' + hex(buf) +
+      ' max_len=' + max_len);
   return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
-  // return ret;
 }
 function free_rthdrs(sds) {
+  log('[RTHDR] free_rthdrs count=' + sds.length);
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
+      log('[RTHDR]  free_rthdrs sd=' + hex(sd));
       set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
     }
   }
 }
+
 function free_rthdr(sd) {
+  log('[RTHDR] free_rthdr sd=' + hex(sd));
   set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
 }
 function pin_to_core(core) {
