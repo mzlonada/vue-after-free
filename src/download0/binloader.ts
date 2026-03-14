@@ -492,7 +492,7 @@ export function binloader_init () {
           log('Current PID: ' + pid_num)
 
           if (closeDelay > 0) {
-            log('Auto Exit from psvue');
+            log('Auto Exit from psvue')
             const killId = jsmaf.setInterval(function () {
               jsmaf.clearInterval(killId)
               log('Sending SIGKILL to PID ' + pid_num)
