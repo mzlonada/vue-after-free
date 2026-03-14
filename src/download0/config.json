@@ -1,12 +1,11 @@
 {
     "config": {
-        "autolapse": false,
+        "autolapse": true,
         "autopoop": false,
-        "autoclose": false,
-        "autoclose_delay": 2000,
-        "music": true,
-        "jb_behavior": 0,
-        "theme": "default"
+        "autoclose": true,
+        "autoclose_delay": 3000,
+        "music": false,
+        "jb_behavior": 0
     },
     "payloads": []
 }
