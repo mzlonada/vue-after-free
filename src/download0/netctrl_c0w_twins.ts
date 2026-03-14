@@ -1507,7 +1507,7 @@ function kreadslow (addr, size) {
     }
   }
 
-  for (var i = 0; i < UIO_THREAD_NUM; i++) {
+  for (let i = 0; i < UIO_THREAD_NUM; i++) {
       write64(leak_buffers[i], LEAK_TAG);
   }
 
