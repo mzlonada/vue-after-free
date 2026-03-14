@@ -1,4 +1,3 @@
-/* eslint-disable no-void */
 import { BigInt, mem, fn, utils, syscalls } from 'download0/types'
 
 /** *** kernel_offset.js *****/
