@@ -1113,8 +1113,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
-  utils.notify('[Stability by DV M. ELHOUT]');
+  utils.notify('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
+  utils.notify('[ Stability by DV M.ELHOUT ]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1554,10 +1554,6 @@ function kreadslow(addr, size) {
       log('kreadslow: malloc leak_buffers[' + i + '] failed');
       return BigInt_Error;
     }
-  }
-
-  for (let i = 0; i < UIO_THREAD_NUM; i++) {
-    write64(leak_buffers[i], LEAK_TAG);
   }
   
   write32(sockopt_val_buf, size);
