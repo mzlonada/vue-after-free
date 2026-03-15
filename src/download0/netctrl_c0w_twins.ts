@@ -1082,8 +1082,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
-  utils.notify('[ Stability by DV M.ELHOUT ]');
+  utils.notify('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
+  utils.notify('[Stability by DV M. ELHOUT]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
