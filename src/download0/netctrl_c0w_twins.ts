@@ -787,7 +787,8 @@ function fill_buffer_64(buf, val, len) {
     write64(buf.add(i), val);
   }
 }
-function findTwinsHub(ipv6_socks, spray_add, leak_add, spray_rthdr, spray_rthdr_len, leak_rthdr, RTHDR_TAG) {
+function find_twins(ipv6_socks, spray_add, leak_add, spray_rthdr, spray_rthdr_len, leak_rthdr, RTHDR_TAG) {
+
 
   let twins = [-1, -1];
 
@@ -846,7 +847,7 @@ function findTwinsHub(ipv6_socks, spray_add, leak_add, spray_rthdr, spray_rthdr_
 function find_triplet(master, other, iterations) {
 
   if (typeof iterations === 'undefined')
-      iterations = MAX_ROUNDS_TRIPLET;
+    iterations = MAX_ROUNDS_TRIPLET;
 
   let count = 0;
   let val, j;
