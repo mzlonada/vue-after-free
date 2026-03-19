@@ -625,12 +625,32 @@ function init() {
   log('Kernel offsets loaded for FW ' + FW_VERSION);
   return true;
 }
+function test_ipv6_rthdr_setsockopt() {
+  // 1) افتح سوكت IPv6
+  var sd = socket(AF_INET6, SOCK_STREAM, 0);
+  log("socket(AF_INET6) = " + hex(sd));
+  if (sd.eq(BigInt_Error)) {
+    log("socket failed");
+    return;
+  }
+
+  // 2) حضّر روت هيدر بسيط
+  var buf = malloc(UCRED_SIZE);
+  var len = build_rthdr(buf, UCRED_SIZE);
+  log("build_rthdr len = 0x" + len.toString(16));
+
+  // 3) نداء مباشر لـ setsockopt
+  var res = setsockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+  log("setsockopt(IPV6_RTHDR) -> " + hex(res));
+}
 var prev_core = -1;
 var prev_rtprio = -1;
 var cleanup_called = false;
 function setup() {
   try {
     debug('Preparing netctrl...');
+
+    test_ipv6_rthdr_setsockopt();
 
     // حفظ حالة الكور والأولوية الحالية
     prev_core = get_current_core();
