@@ -237,10 +237,9 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
+  // debug
+  debug("set_rthdr: sd=" + hex(sd) + " len=" + hex(len));
   return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
 }
 function get_rthdr(sd, buf, max_len) {
   return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
@@ -250,8 +249,12 @@ function get_rthdr(sd, buf, max_len) {
 }
 function free_rthdrs(sds) {
   for (var sd of sds) {
-    if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
-      set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
+    if (!sd.eq(BigInt_Error)) {
+      try {
+        set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
+      } catch (e) {
+        // تجاهل الفشل هنا، لأنه غالبًا مفيش روت هيدر متسجل أصلاً
+      }
     }
   }
 }
