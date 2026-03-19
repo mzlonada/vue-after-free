@@ -799,6 +799,9 @@ function find_twins() {
   twins[1] = -1;
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
+  if ((val & 0xFFFF0000) === RTHDR_TAG) {
+    log("HIT TAG: i=" + i + " j=" + j);
+  }
   while (count < MAX_ROUNDS_TWIN) {
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
