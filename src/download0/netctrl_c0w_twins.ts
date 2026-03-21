@@ -199,11 +199,18 @@ var saved_fpu_ctrl = 0;
 var saved_mxcsr = 0;
 function build_rthdr(buf, size) {
   var len = (size >> 3) - 1 & ~1;
-  var actual_size = len + 1 << 3;
-  write8(buf.add(0x00), 0); // ip6r_nxt
-  write8(buf.add(0x01), len); // ip6r_len
-  write8(buf.add(0x02), IPV6_RTHDR_TYPE_0); // ip6r_type
-  write8(buf.add(0x03), len >> 1); // ip6r_segleft
+  var actual_size = (len + 1) << 3;
+
+  log("[RTHDR-BUILD] size=" + size +
+      " len=" + len +
+      " actual_size=" + actual_size +
+      " buf=" + buf);
+
+  write8(buf.add(0x00), 0);              // ip6r_nxt
+  write8(buf.add(0x01), len);            // ip6r_len
+  write8(buf.add(0x02), IPV6_RTHDR_TYPE_0);
+  write8(buf.add(0x03), len >> 1);       // ip6r_segleft
+
   return actual_size;
 }
 function set_sockopt(sd, level, optname, optval, optlen) {
@@ -239,6 +246,7 @@ var nc_clear_buf = malloc(8);
 var spawn_thr_args = malloc(0x80);
 var spawn_tid = malloc(0x8);
 var spawn_cpid = malloc(0x8);
+
 function get_sockopt(sd, level, optname, optval, optlen) {
   // const len_ptr = malloc(4);
   write32(sockopt_len_ptr, optlen);
@@ -250,6 +258,26 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   }
   return read32(sockopt_len_ptr);
 }
+var real_get_sockopt = get_sockopt;
+
+get_sockopt = function(sd, level, optname, optval, optlen) {
+  write32(sockopt_len_ptr, optlen);
+  log("[GETSOCKOPT] BEFORE sd=" + sd +
+      " level=" + level +
+      " optname=" + optname +
+      " optlen_in=" + optlen);
+
+  var result = getsockopt(sd, level, optname, optval, sockopt_len_ptr);
+
+  var out_len = read32(sockopt_len_ptr);
+  log("[GETSOCKOPT] AFTER result=" + result +
+      " out_len=" + out_len);
+
+  if (result.eq(BigInt_Error)) {
+    throw new Error('get_sockopt error: ' + hex(result));
+  }
+  return out_len;
+};
 function set_rthdr(sd, buf, len) {
   return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
   // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
@@ -276,23 +304,24 @@ function get_rthdr(sd, buf, max_len) {
   // return ret;
 }
 var real_get_rthdr = get_rthdr;
+
 get_rthdr = function(sock, buf, len) {
-  //log("[RTHDR] GET BEFORE sock=" + sock + " len=" + len);
-
+  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
   var ret = real_get_rthdr(sock, buf, len);
-
-  //log("[RTHDR] GET AFTER ret=" + ret);
-
+  log("[RTHDR-GET] AFTER ret=" + ret);
   return ret;
 };
+
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
+      log("[RTHDR-FREE-ALL] sd=" + sd);
       set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
     }
   }
 }
 function free_rthdr(sd) {
+  log("[RTHDR-FREE] sd=" + sd);
   set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
 }
 function pin_to_core(core) {
@@ -799,11 +828,21 @@ function cleanup() {
 }
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
+    log("[BUF-FILL] SKIP buf=" + buf + " len=" + len);
     return;
   }
+
+  log("[BUF-FILL] START buf=" + buf +
+      " len=" + len +
+      " val=" + val);
+
   for (var i = 0; i < len; i += 8) {
     write64(buf.add(i), val);
   }
+
+  log("[BUF-FILL] END wrote=" + len + " bytes");
+  // log("[BUF-FILL] wrote @ offset " + i);
+
 }
 function find_twins() {
   var count = 0;
