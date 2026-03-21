@@ -236,6 +236,12 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   }
   return read32(sockopt_len_ptr);
 }
+function set_rthdr(sd, buf, len) {
+  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
+  // return ret;
+}
 // 1) احفظ الدالة الأصلية
 var real_set_rthdr = set_rthdr;
 
@@ -255,6 +261,16 @@ function get_rthdr(sd, buf, max_len) {
   // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
   // return ret;
 }
+var real_get_rthdr = get_rthdr;
+get_rthdr = function(sock, buf, len) {
+  log("[RTHDR] GET BEFORE sock=" + sock + " len=" + len);
+
+  var ret = real_get_rthdr(sock, buf, len);
+
+  log("[RTHDR] GET AFTER ret=" + ret);
+
+  return ret;
+};
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
