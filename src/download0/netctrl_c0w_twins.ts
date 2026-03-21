@@ -277,11 +277,11 @@ function get_rthdr(sd, buf, max_len) {
 }
 var real_get_rthdr = get_rthdr;
 get_rthdr = function(sock, buf, len) {
-  log("[RTHDR] GET BEFORE sock=" + sock + " len=" + len);
+  //log("[RTHDR] GET BEFORE sock=" + sock + " len=" + len);
 
   var ret = real_get_rthdr(sock, buf, len);
 
-  log("[RTHDR] GET AFTER ret=" + ret);
+  //log("[RTHDR] GET AFTER ret=" + ret);
 
   return ret;
 };
