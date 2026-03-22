@@ -897,7 +897,7 @@ function find_twins() {
 
       zeroMemoryCount++;
 
-      if (zeroMemoryCount >= 50) {   // ← ← ← التحكم في تخفيف الضغط
+      if (zeroMemoryCount >= 10) {   // ← ← ← التحكم في تخفيف الضغط
         log("[TWINS] MEMORY LIMIT REACHED");
         cleanup();                  // ← ← ← ده اللي بيخفف الضغط
         return false;
