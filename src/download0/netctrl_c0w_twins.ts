@@ -684,6 +684,7 @@ var prev_rtprio = -1;
 var cleanup_called = false;
 function setup() {
   try {
+    send_notification('SETUP: entered');
 
     debug('Preparing netctrl...');
 
