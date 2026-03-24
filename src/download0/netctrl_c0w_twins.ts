@@ -679,9 +679,11 @@ function init() {
   log('Kernel offsets loaded for FW ' + FW_VERSION);
   return true;
 }
+var prev_core = -1;
+var prev_rtprio = -1;
+var cleanup_called = false;
 function setup() {
   try {
-    send_notification('SETUP: entered');
 
     debug('Preparing netctrl...');
 
