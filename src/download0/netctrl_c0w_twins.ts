@@ -671,9 +671,9 @@ function init() {
     var bmin = Number(b_arr[1]);
     return amaj === bmaj ? amin - bmin : amaj - bmaj;
   };
-  if (compare_version(FW_VERSION, '9.00') < 0) {
-      send_notification('Unsupported PS4 firmware\nAborting...');
-      return false;
+  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
+    send_notification('Unsupported PS4 firmware\nAborting...');
+    return false;
   }
   kernel_offset = get_kernel_offset(FW_VERSION);
   log('Kernel offsets loaded for FW ' + FW_VERSION);
