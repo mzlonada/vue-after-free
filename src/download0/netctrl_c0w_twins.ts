@@ -108,7 +108,7 @@ var CPU_SET_SIZE = 0x10;
 var PIPEBUF_SIZE = 0x20;
 var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
-var UCRED_SIZE = 0x80;
+var UCRED_SIZE = 0x168;
 var RTHDR_TAG = 0x13370000;
 var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
@@ -138,7 +138,7 @@ var twins = new Array(2);
 var triplets = new Array(3);
 var ipv6_socks = new Array(IPV6_SOCK_NUM);
 var spray_rthdr = malloc(UCRED_SIZE);
-var spray_rthdr_len = UCRED_SIZE;
+var spray_rthdr_len = malloc(UCRED_SIZE);
 var leak_rthdr = malloc(UCRED_SIZE);
 
 // Allocate buffer for ipv6_sockets magic spray
