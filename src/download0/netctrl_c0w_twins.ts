@@ -1469,7 +1469,7 @@ function trigger_ucred_triplefree() {
     // 3) reclaim fd → uaf_socket
     send_notification("step 3: start (reclaim fd → uaf_socket)");
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 3: uaf_socket = " + uaf_socket done");
+    send_notification("step 3: uaf_socket = " + uaf_socket ");
 
 
     // 4) free previous ucred
