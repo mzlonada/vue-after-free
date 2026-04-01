@@ -660,7 +660,7 @@ function init() {
     return false;
   }
   kernel_offset = get_kernel_offset(FW_VERSION);
-  log('Kernel offsets loaded for FW ' + FW_VERSION);
+  send_notification ('Kernel offsets loaded for FW ' + FW_VERSION);
   return true;
 }
 var prev_core = -1;
@@ -1167,8 +1167,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  utils.notify('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
-  utils.notify('[ Stability by DV M.ELHOUT ]');
+  send_notification ('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
+  send_notification ('[ Stability by DV M.ELHOUT ]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
