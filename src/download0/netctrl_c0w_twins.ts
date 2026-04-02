@@ -803,7 +803,7 @@ function find_twins() {
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
       write32(leak_add, 0); // تعديل رقم 4
-      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+      get_rthdr(ipv6_socks[i], leak_rthdr, 32);
       val = read32(leak_add);
       j = val & 0xFFFF;
       if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
