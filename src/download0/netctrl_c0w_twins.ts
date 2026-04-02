@@ -769,8 +769,8 @@ function cleanup() {
   log('Cleanup completed');
 }
 function monitor_header(sock, buf, maxLen, tag) {
-  write32(tag_len, maxLen);
-  const ret = get_rthdr(sock, buf, tag_len);
+  // نفس شكل النداء القديم: الطول مباشرة
+  const ret = get_rthdr(sock, buf, maxLen);
 
   log("[MON] ret = " + ret);
 
@@ -779,7 +779,8 @@ function monitor_header(sock, buf, maxLen, tag) {
     return { ok: false };
   }
 
-  const actual_len = read32(tag_len);
+  // اعتبر الطول الفعلي هو ret (لو بيرجع عدد البايتات المقروءة)
+  const actual_len = ret;
   log("[MON] len = " + actual_len);
 
   const hits = scan_for_tag(buf, actual_len, tag);
