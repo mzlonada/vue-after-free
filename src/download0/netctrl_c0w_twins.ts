@@ -767,22 +767,19 @@ function cleanup() {
   log('Cleanup completed');
 }
 function monitor_header(sock, buf, maxLen, tag) {
-  // اطلب القراءة
   write32(tag_len, maxLen);
   const ret = get_rthdr(sock, buf, tag_len);
 
-  log("ret", ret);
+  log("[MON] ret = " + ret);
 
   if (ret < 0) {
-    log("status", "FAIL");
+    log("[MON] status = FAIL");
     return { ok: false };
   }
 
-  // الطول الفعلي
   const actual_len = read32(tag_len);
-  log("len", actual_len);
+  log("[MON] len = " + actual_len);
 
-  // اعمل scan
   const hits = scan_for_tag(buf, actual_len, tag);
 
   return {
@@ -791,6 +788,7 @@ function monitor_header(sock, buf, maxLen, tag) {
     hits
   };
 }
+
 function scan_for_tag(buf, maxLen, tag) {
   const hits = [];
 
@@ -803,17 +801,19 @@ function scan_for_tag(buf, maxLen, tag) {
   }
 
   if (hits.length === 0) {
-    log("tag_found", false);
+    log("[MON] tag_found = false");
   } else {
-    log("tag_found", true);
-    log("tag_hits", hits);
+    log("[MON] tag_found = true");
+    log("[MON] tag_hits = " + JSON.stringify(hits));
   }
 
   return hits;
 }
-function log(key, value) {
-  send_notification ("[MON]", key, "=", value);
+
+function log(msg) {
+  send_notification(msg);
 }
+
 // خريطة تكرار الأوفستات
 var offset_map = {};
 
