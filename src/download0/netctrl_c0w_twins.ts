@@ -774,7 +774,7 @@ function fill_buffer_64(buf, val, len) {
     write64(buf.add(i), val);
   }
 }
-function find_twins(max_rounds) {
+function find_twins() {
   // -----------------------------
   //  INITIAL STATE
   // -----------------------------
