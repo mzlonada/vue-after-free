@@ -1398,11 +1398,12 @@ function trigger_ucred_triplefree() {
       var ref = read32(leak_rthdr);
 
       // تسجيل فقط
-      send_notification("[STEP 10] refcount observed=" + ref);
+      //send_notification("[STEP 10] refcount observed=" + ref);
 
       // مراقبة فقط — من غير أي شرط يمنع التقدم
       if (ref <= 0) {
         send_notification("[STEP 10] unexpected refcount value observed");
+        return true;
       }
 
       count++;
