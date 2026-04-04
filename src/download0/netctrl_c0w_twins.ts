@@ -236,18 +236,37 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   }
   return read32(sockopt_len_ptr);
 }
+// 1) الدالة الأصلية
 function set_rthdr(sd, buf, len) {
   return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
-  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
-  // return ret;
 }
+
+// 2) احفظ الأصلية
+var real_set_rthdr = set_rthdr;
+
+// 3) wrapper اختياري للّوج
+set_rthdr = function (sock, buf, len) {
+  log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
+  var ret = real_set_rthdr(sock, buf, len);
+  log("[RTHDR] AFTER ret=" + ret);
+  return ret;
+};
+
+// 1) الأصلية
 function get_rthdr(sd, buf, max_len) {
   return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
-  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
-  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
-  // return ret;
 }
+
+// 2) احفظ الأصلية
+var real_get_rthdr = get_rthdr;
+
+// 3) wrapper للّوج لو حابب
+get_rthdr = function (sock, buf, len) {
+  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
+  var ret = real_get_rthdr(sock, buf, len);
+  log("[RTHDR-GET] AFTER ret=" + ret);
+  return ret;
+};
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(BigInt_Error)) {
