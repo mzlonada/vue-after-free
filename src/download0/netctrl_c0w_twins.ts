@@ -1399,9 +1399,9 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 15] Read complete");
 
     success = true;
+    end = true;
     send_notification("=== LOOP #" + main_count + " END (SUCCESS) ===");
     break;
-
   } // END WHILE
 
   if (success) {
