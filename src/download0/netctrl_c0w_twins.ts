@@ -114,12 +114,12 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 64;
-var IOV_THREAD_NUM = 24;
-var UIO_THREAD_NUM = 24;
+var IPV6_SOCK_NUM = 96;
+var IOV_THREAD_NUM = 8;
+var UIO_THREAD_NUM = 8;
 var MAIN_LOOP_ITERATIONS = 3;
-var TRIPLEFREE_ITERATIONS = 20;
-var MAX_ROUNDS_TWIN = 100;
+var TRIPLEFREE_ITERATIONS = 4;
+var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 120;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
@@ -477,7 +477,7 @@ function wait_for(addr, threshold) {
     threshold = new BigInt(0x0, threshold);
   }
   var spins = 0;
-  var MAX_SPINS = 100000;
+  var MAX_SPINS = 50000;
   while (!read64(addr).eq(threshold)) {
     nanosleep_fun(2);
     spins++;
@@ -1082,8 +1082,8 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  send_notification ('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
-  send_notification('[Stability by DV M. ELHOUT]');
+  utils.notify('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
+  utils.notify('[Stability by DV M. ELHOUT]');
 }
 function safe_fhold_fd(fd, label) {
   if (fd < 0) {
