@@ -114,9 +114,9 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 32;
-var IOV_THREAD_NUM = 100;
-var UIO_THREAD_NUM = 100;
+var IPV6_SOCK_NUM = 64;
+var IOV_THREAD_NUM = 24;
+var UIO_THREAD_NUM = 24;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 20;
 var MAX_ROUNDS_TWIN = 100;
