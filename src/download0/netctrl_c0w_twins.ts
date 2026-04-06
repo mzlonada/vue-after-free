@@ -939,16 +939,7 @@ function exploit_phase_setup() {
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
-  if (exploit_count >= MAIN_LOOP_ITERATIONS) {
-    log('Failed please Restart your ps4 #');
-    cleanup();
-    return;
-  }
-  exploit_count++;
-  if (!trigger_ucred_triplefree()) {
-    yield_to_render(exploit_phase_trigger);
-    return;
-  }
+
   yield_to_render(exploit_phase_leak);
 }
 function exploit_phase_leak() {
