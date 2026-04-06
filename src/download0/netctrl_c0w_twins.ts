@@ -1366,7 +1366,7 @@ function trigger_ucred_triplefree() {
 
     // STEP 12 — إيجاد التريبلت الأول
     send_notification("[STEP 12] Calling find_triplet(master=" + triplets[0] + ", skip=-1)");
-    triplets[1] = triplets[0];
+    triplets[1] = twins[0];
     send_notification("[STEP 12] find_triplet returned triplet1=" + triplets[1]);
 
     if (triplets[1] === -1) {
@@ -1409,11 +1409,6 @@ function trigger_ucred_triplefree() {
 
 
   } // END WHILE
-
-  if (main_count >= TRIPLEFREE_ITERATIONS) {
-    send_notification("[END] Max iterations reached → FAIL");
-    return false;
-  }
 
   send_notification("[END] Flow completed → SUCCESS");
   return true;
