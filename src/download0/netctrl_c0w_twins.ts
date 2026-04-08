@@ -819,7 +819,7 @@ function find_twins() {
       get_rthdr(ipv6_socks[i], leak_rthdr, 8);
       val = read32(leak_add);
       j = val & 0xFFFF;
-      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i === j && j >= 0 && j < ipv6_socks.length) {
         twins[0] = i;
         twins[1] = j;
         log(' TWINS : [' + i + '] [' + j + ']');
